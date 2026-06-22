@@ -19,3 +19,4 @@ Cargo.lock
 *.swp
 .idea/
 .vscode/
+*.tar.gz
