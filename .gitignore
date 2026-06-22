@@ -1,0 +1,21 @@
+# Rust / Cargo
+target/
+**/target/
+Cargo.lock
+*.rs.bk
+
+# Soroban build output
+*.wasm
+.soroban/
+
+# Env / secrets (should never be here, but guard anyway)
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

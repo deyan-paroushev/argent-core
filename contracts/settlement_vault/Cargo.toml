@@ -1,0 +1,19 @@
+[package]
+name = "settlement_vault"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+# NOTE: credit_ledger is NOT a crate dependency. Importing it as a crate would
+# pull its #[contractimpl] exports into this wasm and collide on `initialize`
+# at link time. Instead we use contractimport!(credit_ledger.wasm) in lib.rs to
+# generate only the client + types. This requires credit_ledger.wasm to be
+# built first (stellar contract build handles ordering).
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "credit_ledger",
+    "settlement_vault",
+    "rewards_ledger",
+]
+
+[workspace.dependencies]
+soroban-sdk = "22.0.0"
+
+# Soroban contracts must be small and panic-on-abort.
+# These settings apply to every member crate's release build.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

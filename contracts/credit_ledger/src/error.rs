@@ -1,0 +1,81 @@
+use soroban_sdk::contracterror;
+
+/// Contract errors. Numbered stably so the off-chain service can map them to
+/// HTTP responses. Each corresponds to a refusal path in the architecture doc.
+#[contracterror]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum Error {
+    NotInitialized = 1,
+    AlreadyInitialized = 2,
+    NotAuthorized = 3,
+    PartyNotApproved = 4,
+    /// A framework with this id already exists.
+    FrameworkExists = 5,
+    /// The referenced framework does not exist or is not active.
+    FrameworkNotActive = 6,
+    /// The position's owner/custodian, or the pledging bank, does not match the
+    /// parties named in the control framework.
+    FrameworkPartyMismatch = 7,
+
+    PositionNotFound = 10,
+    PositionExists = 11,
+    PositionNotFree = 12,
+    AttestationStale = 13,
+    /// A bank pledge was attempted on a position the custodian has not yet
+    /// confirmed and immobilized under the control agreement.
+    PositionNotEarmarked = 14,
+    /// The custodian tried to immobilize a position the owner has not selected.
+    PositionNotSelected = 15,
+    /// Custodian tried to confirm release on a position not awaiting release.
+    PositionNotReleasePending = 16,
+    /// These exact bars (serials_hash) are already active under another
+    /// position. The same physical set cannot be double-pledged.
+    BarSetAlreadyActive = 17,
+
+    PledgeNotFound = 20,
+    PledgeNotActive = 21,
+
+    LineNotFound = 30,
+    LineNotActive = 31,
+    LimitExceedsBorrowingBase = 32,
+    InsufficientCapacity = 33,
+    OutstandingBalance = 34,
+    /// bank_resume_line was called on a line that is not under a bank stop.
+    LineNotSuspended = 36,
+    /// The bank-set risk parameters are invalid: the rule is
+    /// 0 < ltv_bps (advance) < maintenance_bps <= 10000. This prevents a line
+    /// from being configured to lend past the value of its collateral.
+    InvalidRiskParams = 35,
+
+    DuplicateAuthRef = 40,
+    AmountNotPositive = 41,
+    /// A repayment with this payment reference was already applied.
+    DuplicatePaymentRef = 42,
+    /// An adjustment with this id already exists.
+    AdjustmentExists = 43,
+    /// The adjustment is not in the status this step requires.
+    AdjustmentWrongStatus = 44,
+    /// Approving the adjustment would leave the line under-covered at the
+    /// advance rate (released collateral must still cover the drawn balance).
+    AdjustmentUndercovered = 45,
+
+    NotDefaulted = 50,
+    CurePeriodNotExpired = 51,
+    AlreadyEnforced = 52,
+
+    /// The submitted price is older than the allowed freshness window.
+    PriceStale = 60,
+    /// The submitted price's confidence band is wider than the allowed tolerance.
+    PriceConfidenceTooWide = 61,
+    /// The submitted price or confidence was not a positive value.
+    PriceNotPositive = 62,
+
+    /// No enforcement-readiness record exists for this line.
+    ReadinessNotFound = 70,
+    /// The readiness record is not in a state that permits this transition.
+    ReadinessWrongStatus = 71,
+    /// A required readiness field (agent / route / settlement asset) is unset,
+    /// so the record cannot be promoted to Ready.
+    ReadinessIncompleteFields = 72,
+}
