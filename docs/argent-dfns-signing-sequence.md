@@ -1,4 +1,4 @@
-# Argent — DFNS Governed Intent Layer
+# Argent: DFNS Governed Intent Layer
 
 **How Argent's lifecycle acts are governed, approved, and signed once DFNS is the institutional intent layer above Soroban.**
 
@@ -83,19 +83,19 @@ So Argent must not claim "DFNS policies automatically protect the workflow." The
 
 Every governed Argent act follows this sequence. The two-stage release and the enforcement flow are the clearest cases, but the pattern is uniform.
 
-State 1 — Initiated. A party initiates an act (e.g. the bank authorizes release). The service composes the Soroban invocation and simulates it to discover the authorization entries, exactly as today.
+State 1, Initiated. A party initiates an act (e.g. the bank authorizes release). The service composes the Soroban invocation and simulates it to discover the authorization entries, exactly as today.
 
-State 2 — Policy-evaluated. The act is submitted to DFNS. The Permissions Gatekeeper checks the initiator's authority; the Policy Engine evaluates the act against its rules.
+State 2, Policy-evaluated. The act is submitted to DFNS. The Permissions Gatekeeper checks the initiator's authority; the Policy Engine evaluates the act against its rules.
 
-State 3a — Signed immediately. If no policy requires approval (e.g. a low-value, whitelisted, routine act), DFNS signs the authorization-entry hash via MPC and the act proceeds. This is the synchronous-feeling path.
+State 3a, Signed immediately. If no policy requires approval (e.g. a low-value, whitelisted, routine act), DFNS signs the authorization-entry hash via MPC and the act proceeds. This is the synchronous-feeling path.
 
-State 3b — Pending approval. If a policy requires approval, the act enters a pending state. Nothing is signed yet. The transaction waits. A pending object is created with an initiator, an approval group, and (optionally) an auto-reject timeout. The service records this pending state; the lifecycle UI shows the act as awaiting approval, not done.
+State 3b, Pending approval. If a policy requires approval, the act enters a pending state. Nothing is signed yet. The transaction waits. A pending object is created with an initiator, an approval group, and (optionally) an auto-reject timeout. The service records this pending state; the lifecycle UI shows the act as awaiting approval, not done.
 
-State 4 — Approved (or rejected). A member of the approval group reviews and approves with their own passkey. The initiator may not approve their own act, but may cancel it. A single rejection from any approver rejects the act. On quorum, the Policy Engine marks the activity authorized. On timeout without quorum, the activity is auto-rejected.
+State 4, Approved (or rejected). A member of the approval group reviews and approves with their own passkey. The initiator may not approve their own act, but may cancel it. A single rejection from any approver rejects the act. On quorum, the Policy Engine marks the activity authorized. On timeout without quorum, the activity is auto-rejected.
 
-State 5 — Signed. Only now does the approved act descend to the MPC nodes and the authorization-entry hash is signed.
+State 5, Signed. Only now does the approved act descend to the MPC nodes and the authorization-entry hash is signed.
 
-State 6 — Broadcast and recorded. The signed transaction is assembled and broadcast to Stellar. The service records the on-chain transaction, exactly as today, the contract event and the ledger entry are unchanged.
+State 6, Broadcast and recorded. The signed transaction is assembled and broadcast to Stellar. The service records the on-chain transaction, exactly as today, the contract event and the ledger entry are unchanged.
 
 The only structurally new states are 3b (pending) and 4 (approval/rejection). States 1, 2, 5, and 6 already exist in the current synchronous flow, compressed together. The integration pulls them apart and inserts the pending/approval gap.
 
