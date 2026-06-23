@@ -109,6 +109,13 @@ impl RewardsLedger {
         if cfg.start_ledger >= cfg.end_ledger || cfg.claim_window_ledgers == 0 {
             return Err(Error::InvalidWindow);
         }
+        if Self::is_zero_hash(&env, &cfg.eligible_mcc_policy_hash)
+            || Self::is_zero_hash(&env, &cfg.redemption_terms_hash)
+            || Self::is_zero_hash(&env, &cfg.sponsor_product_scope_hash)
+            || Self::is_zero_hash(&env, &cfg.funding_commitment_hash)
+        {
+            return Err(Error::InvalidEvidenceHash);
+        }
 
         let key = DataKey::Campaign(campaign_id.clone());
         if env.storage().persistent().has(&key) {
@@ -154,6 +161,9 @@ impl RewardsLedger {
         sponsor.require_auth();
         if amount <= 0 {
             return Err(Error::InvalidAmount);
+        }
+        if Self::is_zero_hash(&env, &funding_hash) {
+            return Err(Error::InvalidEvidenceHash);
         }
         let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         if campaign.sponsor != sponsor {
@@ -230,6 +240,12 @@ impl RewardsLedger {
         verifier.require_auth();
         if input.amount <= 0 {
             return Err(Error::InvalidAmount);
+        }
+        if Self::is_zero_hash(&env, &input.spend_ref_hash)
+            || Self::is_zero_hash(&env, &input.card_line_hash)
+            || Self::is_zero_hash(&env, &input.category_policy_hash)
+        {
+            return Err(Error::InvalidEvidenceHash);
         }
         let mut campaign = Self::load_active_campaign(&env, &campaign_id)?;
         if campaign.verifier != verifier {
@@ -343,6 +359,9 @@ impl RewardsLedger {
         finality_hash: BytesN<32>,
     ) -> Result<(), Error> {
         verifier.require_auth();
+        if Self::is_zero_hash(&env, &finality_hash) {
+            return Err(Error::InvalidEvidenceHash);
+        }
         let campaign = Self::load_active_campaign(&env, &campaign_id)?;
         if campaign.verifier != verifier {
             return Err(Error::NotAuthorized);
@@ -382,6 +401,9 @@ impl RewardsLedger {
         reason_hash: BytesN<32>,
     ) -> Result<(), Error> {
         actor.require_auth();
+        if Self::is_zero_hash(&env, &reason_hash) {
+            return Err(Error::InvalidEvidenceHash);
+        }
         let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         let is_bank = Self::is_approved(env.clone(), actor.clone(), Role::Bank);
         if actor != campaign.verifier && actor != campaign.sponsor && !is_bank {
@@ -397,6 +419,7 @@ impl RewardsLedger {
         if accrual.status == RewardStatus::Redeemed
             || accrual.status == RewardStatus::Cancelled
             || accrual.status == RewardStatus::Expired
+            || accrual.status == RewardStatus::Rejected
         {
             return Err(Error::InvalidStatus);
         }
@@ -429,6 +452,9 @@ impl RewardsLedger {
         receipt_bundle_hash: BytesN<32>,
     ) -> Result<(), Error> {
         user.require_auth();
+        if Self::is_zero_hash(&env, &receipt_bundle_hash) {
+            return Err(Error::InvalidEvidenceHash);
+        }
         let accrual = Self::load_accrual(&env, &spend_ref_hash)?;
         if accrual.campaign_id != campaign_id || accrual.user != user {
             return Err(Error::NotAuthorized);
@@ -471,6 +497,11 @@ impl RewardsLedger {
         voucher_hash: BytesN<32>,
     ) -> Result<(), Error> {
         sponsor.require_auth();
+        if Self::is_zero_hash(&env, &sponsor_response_hash)
+            || Self::is_zero_hash(&env, &voucher_hash)
+        {
+            return Err(Error::InvalidEvidenceHash);
+        }
         let campaign = Self::load_campaign(&env, &campaign_id)?;
         if campaign.sponsor != sponsor {
             return Err(Error::NotAuthorized);
@@ -519,6 +550,9 @@ impl RewardsLedger {
         sponsor_response_hash: BytesN<32>,
     ) -> Result<(), Error> {
         sponsor.require_auth();
+        if Self::is_zero_hash(&env, &sponsor_response_hash) {
+            return Err(Error::InvalidEvidenceHash);
+        }
         let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         if campaign.sponsor != sponsor {
             return Err(Error::NotAuthorized);
@@ -574,6 +608,12 @@ impl RewardsLedger {
         }
         if price_per_oz_e7 <= 0 {
             return Err(Error::PriceNotPositive);
+        }
+        if Self::is_zero_hash(&env, &order_hash)
+            || Self::is_zero_hash(&env, &product_hash)
+            || Self::is_zero_hash(&env, &custody_receipt_hash)
+        {
+            return Err(Error::InvalidEvidenceHash);
         }
         let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         if campaign.gold_partner != gold_partner {
@@ -827,6 +867,11 @@ impl RewardsLedger {
             .checked_mul(reward_rate_bps as i128)
             .ok_or(Error::MathOverflow)?;
         Ok(scaled / BPS_DENOM)
+    }
+
+    fn is_zero_hash(env: &Env, hash: &BytesN<32>) -> bool {
+        let zero = BytesN::from_array(env, &[0u8; 32]);
+        hash == &zero
     }
 
     fn bump(env: &Env, key: &DataKey) {

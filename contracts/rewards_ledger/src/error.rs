@@ -38,4 +38,6 @@ pub enum Error {
     /// An arithmetic operation overflowed i128 (guarded, should not occur with
     /// realistic loyalty-scale figures).
     MathOverflow = 29,
+    /// A market-critical evidence or policy hash is all-zero.
+    InvalidEvidenceHash = 30,
 }

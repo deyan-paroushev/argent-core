@@ -1341,11 +1341,13 @@ impl CreditLedger {
         let agent_real = liquidation_agent != bank;
         let route_real = realization_route_hash != zero;
         let asset_real = settlement_asset != bank;
-        if agent_real
-            && route_real
-            && asset_real
-            && valid_until_ledger <= env.ledger().sequence()
-        {
+        let valuation_real = !Self::is_zero_hash(&env, &valuation_source_hash);
+        let waterfall_real = !Self::is_zero_hash(&env, &waterfall_hash);
+        let ready_fields_present = agent_real && route_real && asset_real;
+        if ready_fields_present && (!valuation_real || !waterfall_real) {
+            return Err(Error::InvalidDocumentHash);
+        }
+        if ready_fields_present && valid_until_ledger <= env.ledger().sequence() {
             return Err(Error::ReadinessExpired);
         }
 
@@ -1356,7 +1358,7 @@ impl CreditLedger {
         readiness.waterfall_hash = waterfall_hash;
         readiness.valid_until_ledger = valid_until_ledger;
         readiness.version += 1;
-        readiness.status = if agent_real && route_real && asset_real {
+        readiness.status = if ready_fields_present && valuation_real && waterfall_real {
             ReadinessStatus::Ready
         } else {
             ReadinessStatus::Incomplete

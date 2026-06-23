@@ -411,8 +411,74 @@ fn settlement_refuses_repayment_on_closed_line() {
 
     let res = vault.try_settle_repayment(&line_id, &cardholder, &bank, &id(&env), &1i128);
     assert_eq!(res, Err(Ok(Error::LineNotRepayable)));
-    // The refused settle moved no tokens: cardholder keeps the 1,000 left after
-    // paying 25,000 of their 26,000, and the bank keeps exactly the 25,000.
     assert_eq!(token.balance(&cardholder), 1_000);
     assert_eq!(token.balance(&bank), 25_000);
+}
+
+// ---- G. Idempotency rollback with balance assertions ------------------------
+
+#[test]
+fn duplicate_payment_ref_does_not_move_tokens_twice() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
+
+    token_admin.mint(&cardholder, &25_000i128);
+    let pay = id(&env);
+    vault.settle_repayment(&line_id, &cardholder, &bank, &pay, &10_000i128);
+
+    assert_eq!(token.balance(&cardholder), 15_000);
+    assert_eq!(token.balance(&bank), 10_000);
+    assert_eq!(ledger.get_line(&line_id).drawn_balance, 15_000);
+
+    let res = vault.try_settle_repayment(&line_id, &cardholder, &bank, &pay, &10_000i128);
+    assert!(res.is_err(), "duplicate payment reference must fail");
+
+    assert_eq!(token.balance(&cardholder), 15_000);
+    assert_eq!(token.balance(&bank), 10_000);
+    assert_eq!(ledger.get_line(&line_id).drawn_balance, 15_000);
+}
+
+// ---- H. Snapshot and binding tests for reviewer-grade coverage -------------
+
+#[test]
+fn snapshot_partial_settlement_records_exact_balances_and_debt() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
+
+    token_admin.mint(&cardholder, &25_000i128);
+    vault.settle_repayment(&line_id, &cardholder, &bank, &id(&env), &7_500i128);
+
+    let line = ledger.get_line(&line_id);
+    assert_eq!(token.balance(&cardholder), 17_500);
+    assert_eq!(token.balance(&bank), 7_500);
+    assert_eq!(line.drawn_balance, 17_500);
+    assert_eq!(line.available_limit, 701_500);
+    assert_eq!(line.status, credit_ledger::LineStatus::Active);
+}
+
+#[test]
+fn settlement_bound_to_configured_ledger_only() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (ledger, _ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
+    let (_other_ledger, other_ledger_id, _other_pledge, _other_line, _other_bank, _other_cardholder) = setup_drawn_line(&env);
+
+    let issuer = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(issuer);
+    let token_addr = sac.address();
+    let token = TokenClient::new(&env, &token_addr);
+    let token_admin = StellarAssetClient::new(&env, &token_addr);
+    let vault_id = env.register(SettlementVault, ());
+    let vault = SettlementVaultClient::new(&env, &vault_id);
+    vault.initialize(&token_addr, &other_ledger_id);
+    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+
+    token_admin.mint(&cardholder, &25_000i128);
+    let res = vault.try_settle_repayment(&line_id, &cardholder, &bank, &id(&env), &10_000i128);
+    assert!(res.is_err(), "a vault bound to the wrong ledger must not settle this line");
+    assert_eq!(token.balance(&cardholder), 25_000);
+    assert_eq!(token.balance(&bank), 0);
+    assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
 }

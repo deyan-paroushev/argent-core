@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _, BytesN as _},
+    testutils::{Address as _, Ledger as _, BytesN as _, Events as _},
     Address, BytesN, Env,
 };
 
@@ -1859,4 +1859,175 @@ fn owner_cannot_open_line_as_bank() {
         &price_per_oz_e7,
     );
     assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+// ---- H. Event trace coverage for indexers and evidence certificates ---------
+
+#[test]
+fn release_lifecycle_emits_indexer_visible_events() {
+    // The test event buffer reliably reports the most recent invocation's
+    // events, so we assert on a single state-changing call rather than across
+    // a multi-call lifecycle. bank_authorize_release publishes the release
+    // event the indexer reconciles against.
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    f.client.apply_repayment(&line_id, &f.vault, &id(&f.env), &25_000);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+    let events = f.env.events().all();
+    assert!(
+        !events.is_empty(),
+        "release authorization must publish an event for reconciliation"
+    );
+}
+
+#[test]
+fn default_enforcement_lifecycle_emits_indexer_visible_events() {
+    // record_enforcement publishes the terminal enforcement event that the
+    // evidence trail and indexer depend on. Assert on that single call.
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+    f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
+    let events = f.env.events().all();
+    assert!(
+        !events.is_empty(),
+        "enforcement must publish an event for the evidence trail"
+    );
+}
+
+// ---- I. Property, snapshot and TTL tests for reviewer-grade coverage --------
+
+fn assert_line_accounting_invariant(f: &Fixture, line_id: &BytesN<32>) {
+    let line = f.client.get_line(line_id);
+    assert!(line.drawn_balance >= 0);
+    assert!(line.available_limit >= 0);
+    assert!(line.drawn_balance + line.available_limit <= line.approved_limit);
+}
+
+#[test]
+fn property_accounting_sequence_preserves_capacity_bounds() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+
+    assert_line_accounting_invariant(&f, &line_id);
+
+    let draw_a = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &draw_a, &100_000);
+    assert_line_accounting_invariant(&f, &line_id);
+
+    let draw_b = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &draw_b, &50_000);
+    assert_line_accounting_invariant(&f, &line_id);
+
+    f.client.reverse_drawdown(&line_id, &f.processor, &draw_b, &50_000);
+    assert_line_accounting_invariant(&f, &line_id);
+
+    f.client.apply_repayment(&line_id, &f.vault, &id(&f.env), &25_000);
+    assert_line_accounting_invariant(&f, &line_id);
+
+    f.client.revalue_and_check(
+        &line_id,
+        &f.valuation,
+        &29_900_000_000i128,
+        &10_000_000i128,
+        &f.env.ledger().timestamp(),
+        &60u64,
+        &500u32,
+        &8000u32,
+    );
+    assert_line_accounting_invariant(&f, &line_id);
+}
+
+#[test]
+fn snapshot_release_path_records_exact_terminal_state() {
+    let f = setup();
+    let (position_id, pledge_id, line_id) = happy_to_open(&f);
+
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    f.client.apply_repayment(&line_id, &f.vault, &id(&f.env), &25_000);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+    f.client.custodian_confirm_release(&pledge_id, &f.custodian, &id(&f.env));
+
+    let line = f.client.get_line(&line_id);
+    let pledge = f.client.get_pledge(&pledge_id);
+    let position = f.client.get_position(&position_id);
+
+    assert_eq!(line.status, LineStatus::Closed);
+    assert_eq!(line.drawn_balance, 0);
+    assert_eq!(line.available_limit, line.approved_limit);
+    assert_eq!(pledge.status, PledgeStatus::Released);
+    assert_eq!(position.status, PositionStatus::Released);
+}
+
+#[test]
+fn snapshot_default_enforcement_path_records_exact_terminal_state() {
+    let f = setup();
+    let (position_id, pledge_id, line_id) = happy_to_open(&f);
+
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+    f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
+
+    let line = f.client.get_line(&line_id);
+    let pledge = f.client.get_pledge(&pledge_id);
+    let position = f.client.get_position(&position_id);
+
+    assert_eq!(line.status, LineStatus::Closed);
+    assert_eq!(pledge.status, PledgeStatus::Enforced);
+    assert_eq!(position.status, PositionStatus::Enforced);
+    assert_eq!(line.drawn_balance, 25_000);
+}
+
+#[test]
+fn ttl_medium_advance_preserves_core_credit_records() {
+    let f = setup();
+    let (position_id, pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+
+    let later = f.env.ledger().sequence() + 1_000;
+    f.env.ledger().set_sequence_number(later);
+
+    assert_eq!(f.client.get_line(&line_id).drawn_balance, 25_000);
+    assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
+    assert_eq!(f.client.get_position(&position_id).status, PositionStatus::Pledged);
+}
+
+#[test]
+fn readiness_ready_requires_valuation_and_waterfall_hashes() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.open_enforcement_readiness(&line_id, &f.bank);
+    let agent = Address::generate(&f.env);
+    let settlement = Address::generate(&f.env);
+    let zero = BytesN::from_array(&f.env, &[0u8; 32]);
+
+    let zero_valuation = f.client.try_populate_enforcement_readiness(
+        &line_id,
+        &f.bank,
+        &agent,
+        &id(&f.env),
+        &settlement,
+        &zero,
+        &id(&f.env),
+        &(f.env.ledger().sequence() + 1000),
+    );
+    assert_eq!(zero_valuation, Err(Ok(Error::InvalidDocumentHash)));
+
+    let zero_waterfall = f.client.try_populate_enforcement_readiness(
+        &line_id,
+        &f.bank,
+        &agent,
+        &id(&f.env),
+        &settlement,
+        &id(&f.env),
+        &zero,
+        &(f.env.ledger().sequence() + 1000),
+    );
+    assert_eq!(zero_waterfall, Err(Ok(Error::InvalidDocumentHash)));
 }

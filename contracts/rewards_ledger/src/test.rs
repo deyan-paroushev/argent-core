@@ -563,3 +563,285 @@ fn revoked_sponsor_can_still_close_existing_campaign() {
     client.close_campaign(&a.campaign_id, &a.sponsor);
     assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Closed);
 }
+
+// ---- F. Evidence hash integrity and terminal accounting ---------------------
+
+#[test]
+fn refuses_campaign_with_zero_policy_hashes() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let mut c = cfg(&env, &a.mcc, 100, CAP, BUDGET);
+
+    c.eligible_mcc_policy_hash = h(&env, 0);
+    assert_eq!(
+        client.try_create_campaign(&h(&env, 201), &a.sponsor, &a.verifier, &a.gold_partner, &c),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+
+    let mut c = cfg(&env, &a.mcc, 100, CAP, BUDGET);
+    c.redemption_terms_hash = h(&env, 0);
+    assert_eq!(
+        client.try_create_campaign(&h(&env, 202), &a.sponsor, &a.verifier, &a.gold_partner, &c),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+
+    let mut c = cfg(&env, &a.mcc, 100, CAP, BUDGET);
+    c.sponsor_product_scope_hash = h(&env, 0);
+    assert_eq!(
+        client.try_create_campaign(&h(&env, 203), &a.sponsor, &a.verifier, &a.gold_partner, &c),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+
+    let mut c = cfg(&env, &a.mcc, 100, CAP, BUDGET);
+    c.funding_commitment_hash = h(&env, 0);
+    assert_eq!(
+        client.try_create_campaign(&h(&env, 204), &a.sponsor, &a.verifier, &a.gold_partner, &c),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+}
+
+#[test]
+fn refuses_add_budget_with_zero_funding_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let before = client.get_campaign(&a.campaign_id).total_budget;
+    let r = client.try_add_campaign_budget(&a.campaign_id, &a.sponsor, &50_000_00, &h(&env, 0));
+    assert_eq!(r, Err(Ok(Error::InvalidEvidenceHash)));
+    assert_eq!(client.get_campaign(&a.campaign_id).total_budget, before);
+}
+
+#[test]
+fn refuses_spend_with_zero_reference_hashes() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+
+    let mut s = spend(&env, &h(&env, 0), 1_000_000, &a.mcc);
+    assert_eq!(
+        client.try_record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &s),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+
+    s = spend(&env, &h(&env, 205), 1_000_000, &a.mcc);
+    s.card_line_hash = h(&env, 0);
+    assert_eq!(
+        client.try_record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &s),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+
+    s = spend(&env, &h(&env, 206), 1_000_000, &a.mcc);
+    s.category_policy_hash = h(&env, 0);
+    assert_eq!(
+        client.try_record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &s),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+}
+
+#[test]
+fn refuses_confirm_final_with_zero_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    let r = client.try_confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 0));
+    assert_eq!(r, Err(Ok(Error::InvalidEvidenceHash)));
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::Pending);
+}
+
+#[test]
+fn refuses_claim_with_zero_receipt_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 31));
+    let r = client.try_submit_claim(&a.campaign_id, &a.spend_ref, &a.user, &h(&env, 0));
+    assert_eq!(r, Err(Ok(Error::InvalidEvidenceHash)));
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::Claimable);
+}
+
+#[test]
+fn refuses_approve_claim_with_zero_response_or_voucher_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 31));
+    client.submit_claim(&a.campaign_id, &a.spend_ref, &a.user, &h(&env, 32));
+
+    assert_eq!(
+        client.try_sponsor_approve_claim(&a.campaign_id, &a.spend_ref, &a.sponsor, &h(&env, 0), &h(&env, 34)),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+    assert_eq!(
+        client.try_sponsor_approve_claim(&a.campaign_id, &a.spend_ref, &a.sponsor, &h(&env, 33), &h(&env, 0)),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::ClaimSubmitted);
+}
+
+#[test]
+fn refuses_reject_claim_with_zero_response_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 31));
+    client.submit_claim(&a.campaign_id, &a.spend_ref, &a.user, &h(&env, 32));
+
+    let r = client.try_sponsor_reject_claim(&a.campaign_id, &a.spend_ref, &a.sponsor, &h(&env, 0));
+    assert_eq!(r, Err(Ok(Error::InvalidEvidenceHash)));
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::ClaimSubmitted);
+}
+
+#[test]
+fn refuses_redemption_with_zero_order_product_or_custody_hash() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let reward = to_voucher(&client, &a, &env);
+    let price = 3_000_000_000_000i128;
+
+    assert_eq!(
+        client.try_confirm_redemption(&a.campaign_id, &a.spend_ref, &a.gold_partner, &h(&env, 0), &h(&env, 41), &reward, &price, &h(&env, 42)),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+    assert_eq!(
+        client.try_confirm_redemption(&a.campaign_id, &a.spend_ref, &a.gold_partner, &h(&env, 40), &h(&env, 0), &reward, &price, &h(&env, 42)),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+    assert_eq!(
+        client.try_confirm_redemption(&a.campaign_id, &a.spend_ref, &a.gold_partner, &h(&env, 40), &h(&env, 41), &reward, &price, &h(&env, 0)),
+        Err(Ok(Error::InvalidEvidenceHash))
+    );
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::VoucherIssued);
+}
+
+#[test]
+fn rejected_reward_cannot_be_cancelled_again_and_budget_not_double_counted() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 31));
+    client.submit_claim(&a.campaign_id, &a.spend_ref, &a.user, &h(&env, 32));
+    client.sponsor_reject_claim(&a.campaign_id, &a.spend_ref, &a.sponsor, &h(&env, 33));
+
+    let after_reject = client.get_campaign(&a.campaign_id);
+    assert_eq!(after_reject.reserved_reward_value, 0);
+    assert_eq!(after_reject.cancelled_reward_value, 10_000);
+
+    let r = client.try_cancel_reward(&a.campaign_id, &a.spend_ref, &a.bank, &h(&env, 60));
+    assert_eq!(r, Err(Ok(Error::InvalidStatus)));
+
+    let after_cancel_attempt = client.get_campaign(&a.campaign_id);
+    assert_eq!(after_cancel_attempt.reserved_reward_value, 0);
+    assert_eq!(after_cancel_attempt.cancelled_reward_value, 10_000);
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::Rejected);
+}
+
+#[test]
+fn budget_buckets_remain_consistent_across_cancel_expire_reject_redeem() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let cid = h(&env, 210);
+    let mut c = cfg(&env, &a.mcc, 100, CAP, BUDGET);
+    c.claim_window_ledgers = 5_000;
+    client.create_campaign(&cid, &a.sponsor, &a.verifier, &a.gold_partner, &c);
+
+    let cancel_ref = h(&env, 211);
+    client.record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &cancel_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&cid, &cancel_ref, &a.verifier, &h(&env, 212));
+    client.cancel_reward(&cid, &cancel_ref, &a.bank, &h(&env, 213));
+
+    let reject_ref = h(&env, 214);
+    client.record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &reject_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&cid, &reject_ref, &a.verifier, &h(&env, 215));
+    client.submit_claim(&cid, &reject_ref, &a.user, &h(&env, 216));
+    client.sponsor_reject_claim(&cid, &reject_ref, &a.sponsor, &h(&env, 217));
+
+    let expire_ref = h(&env, 218);
+    client.record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &expire_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&cid, &expire_ref, &a.verifier, &h(&env, 219));
+    env.ledger().with_mut(|l| l.sequence_number = 1_000 + 5_001);
+    client.expire_reward(&cid, &expire_ref);
+
+    let redeem_ref = h(&env, 220);
+    client.record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &redeem_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&cid, &redeem_ref, &a.verifier, &h(&env, 221));
+    client.submit_claim(&cid, &redeem_ref, &a.user, &h(&env, 222));
+    client.sponsor_approve_claim(&cid, &redeem_ref, &a.sponsor, &h(&env, 223), &h(&env, 224));
+    client.confirm_redemption(&cid, &redeem_ref, &a.gold_partner, &h(&env, 225), &h(&env, 226), &10_000i128, &3_000_000_000_000i128, &h(&env, 227));
+
+    let campaign = client.get_campaign(&cid);
+    assert_eq!(campaign.reserved_reward_value, 0);
+    assert_eq!(campaign.cancelled_reward_value, 20_000);
+    assert_eq!(campaign.expired_reward_value, 10_000);
+    assert_eq!(campaign.redeemed_reward_value, 10_000);
+    assert!(campaign.reserved_reward_value + campaign.redeemed_reward_value <= campaign.total_budget);
+}
+
+// ---- I. Property, snapshot and TTL tests for reviewer-grade coverage --------
+
+#[test]
+fn property_many_spends_respect_user_cap_and_budget_bounds() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let cid = h(&env, 230);
+    client.create_campaign(&cid, &a.sponsor, &a.verifier, &a.gold_partner, &cfg(&env, &a.mcc, 100, CAP, BUDGET));
+
+    let mut expected_reserved = 0i128;
+    for n in 0u8..10u8 {
+        let spend_ref = h(&env, 231 + n);
+        let reward = client.record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &spend_ref, 1_000_000, &a.mcc));
+        client.confirm_spend_final(&cid, &spend_ref, &a.verifier, &h(&env, 245 + n));
+        expected_reserved += reward;
+        let campaign = client.get_campaign(&cid);
+        assert_eq!(campaign.reserved_reward_value, expected_reserved);
+        assert!(campaign.reserved_reward_value + campaign.redeemed_reward_value <= campaign.total_budget);
+        assert!(client.get_user_usage(&cid, &a.user).eligible_spend_total <= CAP);
+    }
+
+    let over_cap = client.try_record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &h(&env, 253), 1_000_000, &a.mcc));
+    assert_eq!(over_cap, Err(Ok(Error::UserCapExceeded)));
+}
+
+#[test]
+fn snapshot_voucher_redemption_records_exact_gold_weight_and_buckets() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let reward = to_voucher(&client, &a, &env);
+    let price_e7 = 3_000_000_000_000i128;
+
+    client.confirm_redemption(
+        &a.campaign_id,
+        &a.spend_ref,
+        &a.gold_partner,
+        &h(&env, 240),
+        &h(&env, 241),
+        &reward,
+        &price_e7,
+        &h(&env, 242),
+    );
+
+    let redemption = client.get_redemption(&a.spend_ref);
+    let campaign = client.get_campaign(&a.campaign_id);
+    let accrual = client.get_accrual(&a.spend_ref);
+    let usage = client.get_user_usage(&a.campaign_id, &a.user);
+
+    assert_eq!(redemption.redeemed_value, reward);
+    assert_eq!(redemption.price_per_oz_e7, price_e7);
+    assert_eq!(redemption.fine_weight_oz_e7, 333_333);
+    assert_eq!(campaign.reserved_reward_value, 0);
+    assert_eq!(campaign.redeemed_reward_value, reward);
+    assert_eq!(campaign.redeemed_fine_weight_oz_e7, 333_333);
+    assert_eq!(accrual.status, RewardStatus::Redeemed);
+    assert_eq!(usage.fine_weight_oz_e7_total, 333_333);
+}
+
+#[test]
+fn ttl_medium_advance_preserves_reward_records() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.record_eligible_spend(&a.campaign_id, &a.user, &a.verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc));
+    client.confirm_spend_final(&a.campaign_id, &a.spend_ref, &a.verifier, &h(&env, 244));
+
+    env.ledger().with_mut(|l| l.sequence_number += 1_000);
+
+    assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Active);
+    assert_eq!(client.get_spend(&a.spend_ref).status, SpendStatus::Final);
+    assert_eq!(client.get_accrual(&a.spend_ref).status, RewardStatus::Claimable);
+}
