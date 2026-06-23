@@ -315,3 +315,251 @@ fn budget_exhaustion_rejects() {
     let r = client.try_record_eligible_spend(&cid, &a.user, &a.verifier, &spend(&env, &h(&env, 51), 2_000, &a.mcc));
     assert_eq!(r, Err(Ok(Error::BudgetInsufficient)));
 }
+
+// ===========================================================================
+// ADVERSARIAL TEST SUITE. rewards_ledger
+//
+// Built to BREAK the contract, grouped by risk class. rewards_ledger uses a
+// PER-CAMPAIGN role-binding model: create_campaign validates the sponsor,
+// verifier and gold_partner are globally approved AT creation, then binds them
+// into the campaign. Subsequent calls check require_auth + stored-equality
+// against the bound party. This differs from credit_ledger's global-role model,
+// and the tests below document that model explicitly rather than assuming the
+// credit_ledger fix applies here.
+//
+//   A. Host-level authorization: prove the Soroban HOST rejects the wrong
+//      signer (existing suite runs under mock_all_auths, which hides this).
+//   B. Previously-untested functions: add_campaign_budget, resume_campaign,
+//      close_campaign, revoke_party, with their wrong-party / closed-campaign
+//      refusals.
+//   C. Arithmetic / boundary: budget overflow, non-positive amounts.
+//   D. Cross-campaign / wrong-party isolation.
+//   E. Revocation behavior (DOCUMENTED): a sponsor revoked AFTER creating a
+//      campaign currently retains control of that campaign (per-campaign
+//      binding). These tests assert the CURRENT behavior so any future change
+//      is deliberate. See the note on revoked_sponsor_can_still_close_campaign.
+// ===========================================================================
+
+use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+use soroban_sdk::IntoVal;
+
+// ---- A. Host-level authorization --------------------------------------------
+
+#[test]
+fn host_auth_wrong_signer_cannot_add_budget() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    // attacker signs; add_campaign_budget requires the campaign's sponsor to sign
+    let attacker = Address::generate(&env);
+    let res = client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "add_campaign_budget",
+                args: (a.campaign_id.clone(), a.sponsor.clone(), 1_000_00i128, h(&env, 9))
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_add_campaign_budget(&a.campaign_id, &a.sponsor, &1_000_00, &h(&env, 9));
+    assert!(res.is_err(), "add_budget must fail when the sponsor did not sign");
+}
+
+#[test]
+fn host_auth_wrong_signer_cannot_record_spend() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let attacker = Address::generate(&env);
+    let res = client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "record_eligible_spend",
+                args: (
+                    a.campaign_id.clone(),
+                    a.user.clone(),
+                    a.verifier.clone(),
+                    spend(&env, &a.spend_ref, 1_000_000, &a.mcc),
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_record_eligible_spend(
+            &a.campaign_id,
+            &a.user,
+            &a.verifier,
+            &spend(&env, &a.spend_ref, 1_000_000, &a.mcc),
+        );
+    assert!(res.is_err(), "record_eligible_spend must fail when the verifier did not sign");
+}
+
+// ---- B. Previously-untested functions ---------------------------------------
+
+#[test]
+fn add_campaign_budget_increases_budget() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let before = client.get_campaign(&a.campaign_id).total_budget;
+    client.add_campaign_budget(&a.campaign_id, &a.sponsor, &50_000_00, &h(&env, 9));
+    let after = client.get_campaign(&a.campaign_id).total_budget;
+    assert_eq!(after, before + 50_000_00);
+}
+
+#[test]
+fn add_budget_by_wrong_sponsor_refused() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let other = Address::generate(&env);
+    let res = client.try_add_campaign_budget(&a.campaign_id, &other, &1_000_00, &h(&env, 9));
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn add_budget_nonpositive_refused() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    assert_eq!(
+        client.try_add_campaign_budget(&a.campaign_id, &a.sponsor, &0, &h(&env, 9)),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        client.try_add_campaign_budget(&a.campaign_id, &a.sponsor, &(-1), &h(&env, 9)),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn pause_then_resume_restores_active() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.pause_campaign(&a.campaign_id, &a.sponsor);
+    assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Paused);
+    client.resume_campaign(&a.campaign_id, &a.sponsor);
+    assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Active);
+}
+
+#[test]
+fn resume_by_wrong_sponsor_refused() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.pause_campaign(&a.campaign_id, &a.sponsor);
+    let other = Address::generate(&env);
+    let res = client.try_resume_campaign(&a.campaign_id, &other);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn close_campaign_sets_closed_and_blocks_further_ops() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.close_campaign(&a.campaign_id, &a.sponsor);
+    assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Closed);
+    // a closed campaign cannot take more budget
+    let res = client.try_add_campaign_budget(&a.campaign_id, &a.sponsor, &1_000_00, &h(&env, 9));
+    assert_eq!(res, Err(Ok(Error::CampaignNotActive)));
+    // and cannot be resumed
+    let res2 = client.try_resume_campaign(&a.campaign_id, &a.sponsor);
+    assert_eq!(res2, Err(Ok(Error::CampaignNotActive)));
+}
+
+#[test]
+fn close_by_wrong_sponsor_refused() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let other = Address::generate(&env);
+    let res = client.try_close_campaign(&a.campaign_id, &other);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn revoke_party_removes_approval() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    assert!(client.is_approved(&a.sponsor, &Role::Sponsor));
+    client.revoke_party(&a.sponsor, &Role::Sponsor);
+    assert!(!client.is_approved(&a.sponsor, &Role::Sponsor));
+}
+
+#[test]
+fn revoked_sponsor_cannot_create_new_campaign() {
+    // Global-approval IS enforced at creation: a revoked sponsor cannot open a
+    // NEW campaign. (Contrast with the documented behavior below for EXISTING
+    // campaigns.)
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.revoke_party(&a.sponsor, &Role::Sponsor);
+    let cid = h(&env, 77);
+    let res = client.try_create_campaign(
+        &cid, &a.sponsor, &a.verifier, &a.gold_partner, &cfg(&env, &a.mcc, 100, CAP, BUDGET),
+    );
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+// ---- C. Arithmetic / boundary -----------------------------------------------
+
+#[test]
+fn add_budget_overflow_is_refused_not_wrapped() {
+    // ADVERSARIAL: add_campaign_budget uses checked_add -> MathOverflow. Push the
+    // budget toward i128::MAX and confirm it errors rather than wrapping to a
+    // small/negative budget that would corrupt accounting.
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let res = client.try_add_campaign_budget(&a.campaign_id, &a.sponsor, &i128::MAX, &h(&env, 9));
+    assert_eq!(res, Err(Ok(Error::MathOverflow)));
+}
+
+// ---- D. Cross-campaign / wrong-party isolation ------------------------------
+
+#[test]
+fn sponsor_of_one_campaign_cannot_touch_another() {
+    // Create a second campaign with a DIFFERENT sponsor, then prove the first
+    // sponsor cannot add budget to it. Guards against cross-campaign authority.
+    let env = Env::default();
+    let (client, a) = setup(&env);
+
+    let sponsor2 = Address::generate(&env);
+    client.approve_party(&sponsor2, &Role::Sponsor);
+    let cid2 = h(&env, 88);
+    client.create_campaign(
+        &cid2, &sponsor2, &a.verifier, &a.gold_partner, &cfg(&env, &a.mcc, 100, CAP, BUDGET),
+    );
+
+    // a.sponsor (sponsor of campaign 1) tries to fund campaign 2
+    let res = client.try_add_campaign_budget(&cid2, &a.sponsor, &1_000_00, &h(&env, 9));
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn wrong_verifier_cannot_record_spend() {
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    let fake_verifier = Address::generate(&env);
+    client.approve_party(&fake_verifier, &Role::Verifier); // approved, but NOT this campaign's verifier
+    let res = client.try_record_eligible_spend(
+        &a.campaign_id, &a.user, &fake_verifier, &spend(&env, &a.spend_ref, 1_000_000, &a.mcc),
+    );
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+// ---- E. Revocation behavior (DOCUMENTED CURRENT BEHAVIOR) --------------------
+
+#[test]
+fn revoked_sponsor_can_still_close_existing_campaign() {
+    // DOCUMENTED BEHAVIOR, NOT NECESSARILY A BUG. Under the per-campaign binding
+    // model, a sponsor revoked AFTER creating a campaign still controls that
+    // existing campaign (the post-creation functions check stored-equality, not
+    // current global approval). This test pins the CURRENT behavior so that any
+    // future decision to make revocation freeze existing campaigns (mirroring
+    // the credit_ledger hardening) is a deliberate, reviewed change rather than
+    // an accident. rewards is budget/voucher scope, not collateral seizure, so
+    // the stakes are lower than the credit_ledger case.
+    let env = Env::default();
+    let (client, a) = setup(&env);
+    client.revoke_party(&a.sponsor, &Role::Sponsor);
+    // still able to close its own existing campaign:
+    client.close_campaign(&a.campaign_id, &a.sponsor);
+    assert_eq!(client.get_campaign(&a.campaign_id).status, CampaignStatus::Closed);
+}

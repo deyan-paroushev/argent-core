@@ -405,6 +405,9 @@ pub enum DataKey {
     Selection(BytesN<32>),
     Pledge(BytesN<32>),
     Line(BytesN<32>),
+    /// pledge-to-line uniqueness guard: pledge_id -> credit_line_id.
+    /// Prevents one pledged collateral set from supporting multiple lines.
+    LineForPledge(BytesN<32>),
     /// tri-party control framework: position_id -> CustodyControl
     Control(BytesN<32>),
     /// revaluation side-record: line_id -> LineValuation

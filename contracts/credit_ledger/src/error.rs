@@ -70,6 +70,10 @@ pub enum Error {
     NotDefaulted = 50,
     CurePeriodNotExpired = 51,
     AlreadyEnforced = 52,
+    /// issue_default_notice was given a cure deadline at or before the current
+    /// ledger. A default notice must grant a real, forward-looking cure window;
+    /// a past deadline is a malformed notice.
+    CureDeadlineNotFuture = 53,
 
     /// The submitted price is older than the allowed freshness window.
     PriceStale = 60,
@@ -85,4 +89,19 @@ pub enum Error {
     /// A required readiness field (agent / route / settlement asset) is unset,
     /// so the record cannot be promoted to Ready.
     ReadinessIncompleteFields = 72,
+
+    /// A credit line with this id already exists.
+    LineExists = 73,
+    /// This pledge already has a bound credit line.
+    PledgeAlreadyHasLine = 74,
+    /// Repayment amount exceeds the outstanding drawn balance.
+    RepaymentExceedsOutstandingBalance = 75,
+    /// Oracle price timestamp is later than the current ledger timestamp.
+    PriceFromFuture = 76,
+    /// Revaluation thresholds or freshness parameters are malformed.
+    InvalidRevaluationParams = 77,
+    /// A legally critical evidence/document hash is all-zero.
+    InvalidDocumentHash = 78,
+    /// Enforcement readiness cannot be promoted because its validity window has expired.
+    ReadinessExpired = 79,
 }

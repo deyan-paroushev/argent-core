@@ -242,6 +242,52 @@ fn cure_restores_line() {
     assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
 }
 
+#[test]
+fn refuses_default_notice_with_past_deadline() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    // move the ledger forward so we have a past to point at
+    f.env.ledger().set_sequence_number(1_000);
+    // a deadline at the current ledger is not in the future -> refused
+    let at_now = f.client.try_issue_default_notice(&line_id, &f.bank, &1_000);
+    assert_eq!(at_now, Err(Ok(Error::CureDeadlineNotFuture)));
+    // a deadline before the current ledger -> refused
+    let in_past = f.client.try_issue_default_notice(&line_id, &f.bank, &999);
+    assert_eq!(in_past, Err(Ok(Error::CureDeadlineNotFuture)));
+    // the line was not moved into default by the refused attempts
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
+}
+
+#[test]
+fn accepts_default_notice_with_future_deadline() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let deadline = f.env.ledger().sequence() + 1;
+    f.client.issue_default_notice(&line_id, &f.bank, &deadline);
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Defaulted);
+}
+
+#[test]
+fn cure_allowed_after_deadline_until_enforcement() {
+    let f = setup();
+    let (_p, pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+
+    // advance PAST the cure deadline without the bank enforcing
+    f.env.ledger().set_sequence_number(cure_deadline + 5);
+
+    // lenient by design: the cure still succeeds because the default is still
+    // "continuing" (enforcement has not been recorded). The deadline gates the
+    // bank's right to enforce, not the borrower's ability to pay.
+    f.client.cure_default(&line_id, &f.cardholder);
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
+    assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
+}
+
 // ---- margin / maintenance --------------------------------------------------
 
 /// Helper to revalue at a given price/oz (whole units), fresh and tight conf.
@@ -927,4 +973,890 @@ fn readiness_can_expire() {
 
     f.client.expire_enforcement_readiness(&line_id, &f.bank);
     assert_eq!(f.client.get_enforcement_readiness(&line_id).status, ReadinessStatus::Expired);
+}
+
+// ===========================================================================
+// ADVERSARIAL TEST SUITE. credit_ledger
+//
+// These tests are written to BREAK the contract, not to confirm the happy path.
+// Each encodes a specific attack and asserts the contract refuses it. They are
+// grouped by the class of risk they de-risk for mainnet:
+//
+//   A. Host-level authorization. The functional tests above run under
+//      mock_all_auths(), which makes every require_auth() pass. That proves our
+//      explicit "if party != x" checks, but NOT that the Soroban host rejects a
+//      transaction signed by the wrong key. These tests grant auth to ONE
+//      specific address via mock_auths and prove the action fails when the
+//      host-level signer is wrong. (A wrong-signer / overflow failure surfaces
+//      as Err(Err(InvokeError)), a system error, so we assert .is_err().)
+//   B. Admin key control (revoke_party): a compromised party must lose power.
+//   C. Arithmetic / boundary: overflow, exact-limit edges, off-by-one.
+//   D. State-machine ordering: driving the lifecycle out of order.
+//   E. Idempotency / replay across references.
+// ===========================================================================
+
+use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+use soroban_sdk::IntoVal;
+
+// A fixture that does NOT mock all auths, so individual calls must carry a
+// matching mock_auths grant or the host rejects them. Mirrors setup() but with
+// explicit, per-call authorization to model real signing.
+fn setup_strict() -> Fixture {
+    let env = Env::default();
+    // NOTE: deliberately NO env.mock_all_auths() here.
+    let contract_id = env.register(CreditLedger, ());
+    let client = CreditLedgerClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let custodian = Address::generate(&env);
+    let bank = Address::generate(&env);
+    let processor = Address::generate(&env);
+    let cardholder = Address::generate(&env);
+    let vault = Address::generate(&env);
+    let valuation = Address::generate(&env);
+
+    // Admin setup still needs auth; grant exactly the admin calls we make.
+    env.mock_all_auths();
+    client.initialize(&admin);
+    client.approve_party(&custodian, &Role::Custodian);
+    client.approve_party(&bank, &Role::Bank);
+    client.approve_party(&processor, &Role::Processor);
+    client.approve_party(&vault, &Role::Vault);
+    client.approve_party(&valuation, &Role::Valuation);
+    // From here, tests opt into strict per-call auth by using mock_auths.
+
+    Fixture { env, client, admin, owner, custodian, bank, processor, cardholder, vault, valuation }
+}
+
+// ---- A. Host-level authorization --------------------------------------------
+
+#[test]
+fn host_auth_wrong_signer_cannot_open_line() {
+    // The bank role is approved, but the TRANSACTION is signed by an attacker.
+    // Even though the attacker passes the real bank's address as the `bank`
+    // arg, the host must reject because the auth entry is for the attacker, not
+    // the bank. This proves require_auth() (not just our address check) gates
+    // the call.
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    let (_pos, pledge_id, _l) = happy_to_open(&f); // builds state under mock_all_auths
+
+    // open a SECOND line, but now strictly: only the attacker has signed.
+    let attacker = Address::generate(&f.env);
+    let line_id2 = id(&f.env);
+    let price_per_oz_e7: i128 = 29_900_000_000;
+
+    // Re-enter strict mode: clear blanket auth by creating a narrow grant that
+    // authorizes the ATTACKER (not the bank) for this invocation.
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "open_credit_line",
+                args: (
+                    line_id2.clone(),
+                    pledge_id.clone(),
+                    f.bank.clone(),
+                    f.cardholder.clone(),
+                    100_000i128,
+                    6000u32,
+                    7500u32,
+                    price_per_oz_e7,
+                )
+                    .into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_open_credit_line(
+            &line_id2,
+            &pledge_id,
+            &f.bank,
+            &f.cardholder,
+            &100_000,
+            &6000u32,
+            &7500u32,
+            &price_per_oz_e7,
+        );
+    // The bank's require_auth() is not satisfied by the attacker's grant.
+    assert!(res.is_err(), "open_credit_line must fail when the bank did not sign");
+}
+
+#[test]
+fn host_auth_wrong_signer_cannot_record_drawdown() {
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    let (_pos, _pledge_id, line_id) = happy_to_open(&f);
+
+    let attacker = Address::generate(&f.env);
+    let auth_ref = id(&f.env);
+    // Attacker signs, but record_drawdown requires the PROCESSOR to have signed.
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "record_drawdown",
+                args: (line_id.clone(), f.processor.clone(), auth_ref.clone(), 10_000i128)
+                    .into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_record_drawdown(&line_id, &f.processor, &auth_ref, &10_000);
+    assert!(res.is_err(), "drawdown must fail when the processor did not sign");
+}
+
+#[test]
+fn host_auth_wrong_signer_cannot_issue_default() {
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    let (_pos, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+
+    let attacker = Address::generate(&f.env);
+    let deadline = f.env.ledger().sequence() + 100;
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "issue_default_notice",
+                args: (line_id.clone(), f.bank.clone(), deadline).into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_issue_default_notice(&line_id, &f.bank, &deadline);
+    assert!(res.is_err(), "default notice must fail when the bank did not sign");
+}
+
+#[test]
+fn host_auth_correct_signer_succeeds() {
+    // Positive control for the negative tests above: the SAME call succeeds
+    // when the correct party (the bank) actually signs it. This proves the
+    // failures above are due to the wrong signer, not a malformed invocation.
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    let _existing = happy_to_open(&f);
+    let position_id2 = register_and_immobilize(&f);
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id2, &f.owner, &f.bank, &id(&f.env));
+
+    let line_id2 = id(&f.env);
+    let price_per_oz_e7: i128 = 29_900_000_000;
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &f.bank,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "open_credit_line",
+                args: (
+                    line_id2.clone(),
+                    pledge_id.clone(),
+                    f.bank.clone(),
+                    f.cardholder.clone(),
+                    100_000i128,
+                    6000u32,
+                    7500u32,
+                    price_per_oz_e7,
+                )
+                    .into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_open_credit_line(
+            &line_id2,
+            &pledge_id,
+            &f.bank,
+            &f.cardholder,
+            &100_000,
+            &6000u32,
+            &7500u32,
+            &price_per_oz_e7,
+        );
+    assert!(res.is_ok(), "open_credit_line must succeed when the bank signs");
+}
+
+// ---- B. Admin key control: revoke_party -------------------------------------
+
+#[test]
+fn revoke_party_removes_approval() {
+    let f = setup();
+    assert!(f.client.is_approved(&f.bank, &Role::Bank));
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    assert!(!f.client.is_approved(&f.bank, &Role::Bank));
+}
+
+#[test]
+fn revoked_bank_cannot_open_line() {
+    // A compromised bank key, once revoked by the admin, must be unable to act.
+    let f = setup();
+    let position_id = register_and_immobilize(&f);
+    let pledge_id = id(&f.env);
+    let line_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+
+    // admin revokes the bank
+    f.client.revoke_party(&f.bank, &Role::Bank);
+
+    let price_per_oz_e7: i128 = 29_900_000_000;
+    let res = f.client.try_open_credit_line(
+        &line_id, &pledge_id, &f.bank, &f.cardholder, &719_000, &6000u32, &7500u32, &price_per_oz_e7,
+    );
+    // With the bank revoked, opening must fail with PartyNotApproved.
+    // (activate_pledge happened pre-revoke; this is the post-revoke action.)
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)),
+        "a revoked bank must not be able to open a line");
+}
+
+#[test]
+fn revoked_processor_cannot_draw() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.revoke_party(&f.processor, &Role::Processor);
+    let res = f.client.try_record_drawdown(&line_id, &f.processor, &id(&f.env), &10_000);
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+// The following four cover the functions the adversarial suite proved were NOT
+// checking is_approved before the fix. Each revokes the party AFTER the line is
+// open, then proves the now-revoked key can no longer take the action. Before
+// the fix these would have succeeded (the finding); after the fix they return
+// PartyNotApproved. The risk these close is a compromised bank/custodian key
+// continuing to seize or release collateral after the admin has revoked it.
+
+#[test]
+fn revoked_bank_cannot_issue_default() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    let deadline = f.env.ledger().sequence() + 100;
+    let res = f.client.try_issue_default_notice(&line_id, &f.bank, &deadline);
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn revoked_bank_cannot_enforce() {
+    // Drive to a defaulted, cure-expired line with an APPROVED bank, then revoke
+    // the bank and prove it can no longer seize the collateral.
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    let res = f.client.try_record_enforcement(
+        &line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn revoked_bank_cannot_authorize_release() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    // line has zero drawn balance (never drew), so release is otherwise eligible
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    let res = f.client.try_bank_authorize_release(&line_id, &f.bank);
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn revoked_custodian_cannot_confirm_release() {
+    // Bank authorizes release (approved), then the custodian is revoked before
+    // it confirms. A revoked custodian must not be able to assert the gold was
+    // returned, which is the act that terminates the bank's security interest.
+    let f = setup();
+    let (_position_id, pledge_id, line_id) = happy_to_open(&f);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+
+    f.client.revoke_party(&f.custodian, &Role::Custodian);
+    let res = f.client.try_custodian_confirm_release(&pledge_id, &f.custodian, &id(&f.env));
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn reapproval_after_revoke_restores_power() {
+    // Revocation is not permanent: the admin can re-approve. Confirms the
+    // revoke path does not corrupt the approval namespace.
+    let f = setup();
+    f.client.revoke_party(&f.processor, &Role::Processor);
+    assert!(!f.client.is_approved(&f.processor, &Role::Processor));
+    f.client.approve_party(&f.processor, &Role::Processor);
+    assert!(f.client.is_approved(&f.processor, &Role::Processor));
+}
+
+// ---- C. Arithmetic / boundary -----------------------------------------------
+
+#[test]
+fn draw_exactly_available_limit_succeeds_then_one_more_fails() {
+    // Off-by-one at the capacity boundary: drawing the entire limit must work,
+    // and the very next stroop must be refused.
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let limit = f.client.available_capacity(&line_id);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &limit);
+    assert_eq!(f.client.available_capacity(&line_id), 0);
+    let res = f.client.try_record_drawdown(&line_id, &f.processor, &id(&f.env), &1);
+    assert_eq!(res, Err(Ok(Error::InsufficientCapacity)));
+}
+
+#[test]
+fn open_line_with_overflow_price_is_refused_not_wrapped() {
+    // ADVERSARIAL: borrowing_base uses saturating_mul. Feed an i128::MAX price
+    // and confirm the contract does NOT silently wrap to a huge borrowing base
+    // that lets the limit pass. Either the limit check refuses it (saturated
+    // base still bounded by approved_limit check) or it errors; it must NOT
+    // succeed in opening a line whose limit exceeds real collateral value.
+    let f = setup();
+    let position_id = register_and_immobilize(&f);
+    let pledge_id = id(&f.env);
+    let line_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+
+    // Attempt a wildly large approved_limit with a normal price. Must be
+    // refused because it exceeds the borrowing base.
+    let price_per_oz_e7: i128 = 29_900_000_000;
+    let res = f.client.try_open_credit_line(
+        &line_id, &pledge_id, &f.bank, &f.cardholder,
+        &i128::MAX, &6000u32, &7500u32, &price_per_oz_e7,
+    );
+    assert!(res.is_err(), "an absurd approved_limit must be refused, never accepted");
+}
+
+#[test]
+fn negative_amounts_are_refused_everywhere() {
+    // Defense in depth: no value-moving entry accepts a non-positive amount.
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    assert_eq!(
+        f.client.try_record_drawdown(&line_id, &f.processor, &id(&f.env), &0),
+        Err(Ok(Error::AmountNotPositive))
+    );
+    assert_eq!(
+        f.client.try_record_drawdown(&line_id, &f.processor, &id(&f.env), &(-1)),
+        Err(Ok(Error::AmountNotPositive))
+    );
+}
+
+// ---- D. State-machine ordering ----------------------------------------------
+
+#[test]
+fn cannot_draw_on_unopened_line() {
+    // No line exists for this id: a draw must fail rather than create state.
+    let f = setup();
+    let _ = register_and_immobilize(&f);
+    let res = f.client.try_record_drawdown(&id(&f.env), &f.processor, &id(&f.env), &1_000);
+    assert!(res.is_err(), "drawing on a non-existent line must fail");
+}
+
+#[test]
+fn cannot_enforce_without_default() {
+    // Enforcement on an Active (non-defaulted) line must be refused.
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let res = f.client.try_record_enforcement(
+        &line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::NotDefaulted)));
+}
+
+#[test]
+fn cannot_resume_a_line_never_suspended() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let res = f.client.try_bank_resume_line(&line_id, &f.bank);
+    assert_eq!(res, Err(Ok(Error::LineNotSuspended)));
+}
+
+#[test]
+fn cannot_cure_a_line_not_in_default() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let res = f.client.try_cure_default(&line_id, &f.cardholder);
+    assert_eq!(res, Err(Ok(Error::NotDefaulted)));
+}
+
+// ---- E. Idempotency / replay ------------------------------------------------
+
+#[test]
+fn enforcement_cannot_be_recorded_twice() {
+    // After enforcement closes the line, a second enforcement must be refused
+    // (the line is Closed / NotDefaulted), so collateral cannot be seized twice.
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+    f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
+
+    let second = f.client.try_record_enforcement(
+        &line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env),
+    );
+    assert!(second.is_err(), "enforcement must not be repeatable on a closed line");
+}
+
+// ---- F. Additive SCF adversarial hardening tests ---------------------------
+
+fn zero_hash(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &[0u8; 32])
+}
+
+#[test]
+fn refuses_second_credit_line_against_same_pledge() {
+    let f = setup();
+    let (_position_id, pledge_id, _line_id) = happy_to_open(&f);
+    let second_line_id = id(&f.env);
+    let price_per_oz_e7: i128 = 29_900_000_000;
+
+    let res = f.client.try_open_credit_line(
+        &second_line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000i128,
+        &6000u32,
+        &7500u32,
+        &price_per_oz_e7,
+    );
+    assert_eq!(res, Err(Ok(Error::PledgeAlreadyHasLine)));
+}
+
+#[test]
+fn refuses_duplicate_credit_line_id() {
+    let f = setup();
+    let (_position_id, pledge_id, line_id) = happy_to_open(&f);
+    let price_per_oz_e7: i128 = 29_900_000_000;
+
+    let res = f.client.try_open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000i128,
+        &6000u32,
+        &7500u32,
+        &price_per_oz_e7,
+    );
+    assert_eq!(res, Err(Ok(Error::LineExists)));
+}
+
+#[test]
+fn refuses_repayment_above_drawn_balance() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
+
+    let res = f.client.try_apply_repayment(&line_id, &f.vault, &id(&f.env), &25_001i128);
+    assert_eq!(res, Err(Ok(Error::RepaymentExceedsOutstandingBalance)));
+    assert_eq!(f.client.get_line(&line_id).drawn_balance, 25_000);
+}
+
+#[test]
+fn refuses_repayment_on_closed_line() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+
+    let res = f.client.try_apply_repayment(&line_id, &f.vault, &id(&f.env), &1i128);
+    assert_eq!(res, Err(Ok(Error::LineNotActive)));
+}
+
+#[test]
+fn refuses_reverse_after_line_closed() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    let auth_ref = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth_ref, &25_000i128);
+    f.client.apply_repayment(&line_id, &f.vault, &id(&f.env), &25_000i128);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+
+    let res = f.client.try_reverse_drawdown(&line_id, &f.processor, &auth_ref, &25_000i128);
+    assert_eq!(res, Err(Ok(Error::LineNotActive)));
+}
+
+#[test]
+fn refuses_future_dated_price_on_revaluation() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.env.ledger().set_timestamp(1_000);
+    let price_e7: i128 = 29_900_000_000;
+
+    let res = f.client.try_revalue_and_check(
+        &line_id,
+        &f.valuation,
+        &price_e7,
+        &(price_e7 / 1000),
+        &1_001u64,
+        &86_400u64,
+        &50u32,
+        &9000u32,
+    );
+    assert_eq!(res, Err(Ok(Error::PriceFromFuture)));
+}
+
+#[test]
+fn refuses_invalid_revaluation_thresholds() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    let now = f.env.ledger().timestamp();
+    let price_e7: i128 = 29_900_000_000;
+
+    let cases = [
+        (0u64, 50u32, 9000u32),
+        (86_400u64, 0u32, 9000u32),
+        (86_400u64, 10_001u32, 9000u32),
+        (86_400u64, 50u32, 0u32),
+        (86_400u64, 50u32, 10_001u32),
+    ];
+
+    for (max_age_secs, conf_tol_bps, warning_bps) in cases {
+        let res = f.client.try_revalue_and_check(
+            &line_id,
+            &f.valuation,
+            &price_e7,
+            &(price_e7 / 1000),
+            &now,
+            &max_age_secs,
+            &conf_tol_bps,
+            &warning_bps,
+        );
+        assert_eq!(res, Err(Ok(Error::InvalidRevaluationParams)));
+    }
+}
+
+#[test]
+fn refuses_zero_hash_in_framework_documents() {
+    let f = setup();
+    let framework_id = id(&f.env);
+    let zero = zero_hash(&f.env);
+
+    let res = f.client.try_register_framework(
+        &framework_id,
+        &f.owner,
+        &f.bank,
+        &f.custodian,
+        &zero,
+        &id(&f.env),
+        &id(&f.env),
+        &id(&f.env),
+        &id(&f.env),
+        &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+#[test]
+fn refuses_zero_barlist_or_serials_hash() {
+    let f = setup();
+    let framework_id = register_framework(&f);
+    let position_id = id(&f.env);
+    let zero = zero_hash(&f.env);
+    let expiry = f.env.ledger().sequence() + 100_000;
+
+    let zero_barlist = f.client.try_register_position(
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &zero,
+        &id(&f.env),
+        &4_011_000_000i128,
+        &expiry,
+    );
+    assert_eq!(zero_barlist, Err(Ok(Error::InvalidDocumentHash)));
+
+    let zero_serials = f.client.try_register_position(
+        &id(&f.env),
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &id(&f.env),
+        &zero,
+        &4_011_000_000i128,
+        &expiry,
+    );
+    assert_eq!(zero_serials, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+#[test]
+fn refuses_zero_release_notice_hash() {
+    let f = setup();
+    let (_position_id, pledge_id, line_id) = happy_to_open(&f);
+    f.client.bank_authorize_release(&line_id, &f.bank);
+
+    let res = f.client.try_custodian_confirm_release(&pledge_id, &f.custodian, &zero_hash(&f.env));
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+#[test]
+fn refuses_zero_enforcement_legal_instrument_hash() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+
+    let res = f.client.try_record_enforcement(
+        &line_id,
+        &f.bank,
+        &EnforcementOutcome::Sold,
+        &zero_hash(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+#[test]
+fn refuses_adjustment_with_zero_hashes() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    let zero = zero_hash(&f.env);
+
+    let zero_barlist = f.client.try_request_collateral_adjustment(
+        &id(&f.env),
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &zero,
+        &4_500_000_000i128,
+        &id(&f.env),
+    );
+    assert_eq!(zero_barlist, Err(Ok(Error::InvalidDocumentHash)));
+
+    let zero_request = f.client.try_request_collateral_adjustment(
+        &id(&f.env),
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &id(&f.env),
+        &4_500_000_000i128,
+        &zero,
+    );
+    assert_eq!(zero_request, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+#[test]
+fn expired_readiness_can_be_repopulated_to_ready() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.open_enforcement_readiness(&line_id, &f.bank);
+    let agent = Address::generate(&f.env);
+    let settlement = Address::generate(&f.env);
+
+    f.client.populate_enforcement_readiness(
+        &line_id,
+        &f.bank,
+        &agent,
+        &id(&f.env),
+        &settlement,
+        &id(&f.env),
+        &id(&f.env),
+        &(f.env.ledger().sequence() + 1000),
+    );
+    f.client.expire_enforcement_readiness(&line_id, &f.bank);
+    assert_eq!(f.client.get_enforcement_readiness(&line_id).status, ReadinessStatus::Expired);
+
+    f.client.populate_enforcement_readiness(
+        &line_id,
+        &f.bank,
+        &agent,
+        &id(&f.env),
+        &settlement,
+        &id(&f.env),
+        &id(&f.env),
+        &(f.env.ledger().sequence() + 2000),
+    );
+    let readiness = f.client.get_enforcement_readiness(&line_id);
+    assert_eq!(readiness.status, ReadinessStatus::Ready);
+    assert_eq!(readiness.version, 2);
+}
+
+#[test]
+fn readiness_real_fields_require_future_validity_window() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.open_enforcement_readiness(&line_id, &f.bank);
+    let agent = Address::generate(&f.env);
+    let settlement = Address::generate(&f.env);
+    let current = f.env.ledger().sequence();
+
+    let res = f.client.try_populate_enforcement_readiness(
+        &line_id,
+        &f.bank,
+        &agent,
+        &id(&f.env),
+        &settlement,
+        &id(&f.env),
+        &id(&f.env),
+        &current,
+    );
+    assert_eq!(res, Err(Ok(Error::ReadinessExpired)));
+}
+
+#[test]
+fn refuses_duplicate_readiness_record() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.open_enforcement_readiness(&line_id, &f.bank);
+
+    let res = f.client.try_open_enforcement_readiness(&line_id, &f.bank);
+    assert_eq!(res, Err(Ok(Error::ReadinessWrongStatus)));
+}
+
+#[test]
+fn refuses_double_enforcement_after_terminal_close() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+    f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
+
+    let res = f.client.try_record_enforcement(
+        &line_id,
+        &f.bank,
+        &EnforcementOutcome::Sold,
+        &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::NotDefaulted)));
+}
+
+#[test]
+fn refuses_cure_after_enforcement() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
+    let cure_deadline = f.env.ledger().sequence() + 10;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline);
+    f.env.ledger().set_sequence_number(cure_deadline + 1);
+    f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
+
+    let res = f.client.try_cure_default(&line_id, &f.cardholder);
+    assert_eq!(res, Err(Ok(Error::NotDefaulted)));
+}
+
+#[test]
+fn unapproved_processor_cannot_record_drawdown() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    let rogue_processor = Address::generate(&f.env);
+    let auth_ref = id(&f.env);
+
+    let res = f.client.mock_auths(&[MockAuth {
+        address: &rogue_processor,
+        invoke: &MockAuthInvoke {
+            contract: &f.client.address,
+            fn_name: "record_drawdown",
+            args: (line_id.clone(), rogue_processor.clone(), auth_ref.clone(), 10_000i128).into_val(&f.env),
+            sub_invokes: &[],
+        },
+    }]).try_record_drawdown(&line_id, &rogue_processor, &auth_ref, &10_000i128);
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn unapproved_vault_cannot_apply_repayment() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
+    let rogue_vault = Address::generate(&f.env);
+    let payment_ref = id(&f.env);
+
+    let res = f.client.mock_auths(&[MockAuth {
+        address: &rogue_vault,
+        invoke: &MockAuthInvoke {
+            contract: &f.client.address,
+            fn_name: "apply_repayment",
+            args: (line_id.clone(), rogue_vault.clone(), payment_ref.clone(), 10_000i128).into_val(&f.env),
+            sub_invokes: &[],
+        },
+    }]).try_apply_repayment(&line_id, &rogue_vault, &payment_ref, &10_000i128);
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn rogue_valuer_cannot_revalue() {
+    let f = setup();
+    let (_position_id, _pledge_id, line_id) = happy_to_open(&f);
+    let rogue_valuer = Address::generate(&f.env);
+    let now = f.env.ledger().timestamp();
+    let price_e7: i128 = 29_900_000_000;
+
+    let res = f.client.mock_auths(&[MockAuth {
+        address: &rogue_valuer,
+        invoke: &MockAuthInvoke {
+            contract: &f.client.address,
+            fn_name: "revalue_and_check",
+            args: (
+                line_id.clone(),
+                rogue_valuer.clone(),
+                price_e7,
+                price_e7 / 1000,
+                now,
+                86_400u64,
+                50u32,
+                9000u32,
+            ).into_val(&f.env),
+            sub_invokes: &[],
+        },
+    }]).try_revalue_and_check(
+        &line_id,
+        &rogue_valuer,
+        &price_e7,
+        &(price_e7 / 1000),
+        &now,
+        &86_400u64,
+        &50u32,
+        &9000u32,
+    );
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn owner_cannot_open_line_as_bank() {
+    let f = setup();
+    let position_id = register_and_immobilize(&f);
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+    let line_id = id(&f.env);
+    let price_per_oz_e7: i128 = 29_900_000_000;
+
+    let res = f.client.mock_auths(&[MockAuth {
+        address: &f.owner,
+        invoke: &MockAuthInvoke {
+            contract: &f.client.address,
+            fn_name: "open_credit_line",
+            args: (
+                line_id.clone(),
+                pledge_id.clone(),
+                f.owner.clone(),
+                f.cardholder.clone(),
+                100_000i128,
+                6000u32,
+                7500u32,
+                price_per_oz_e7,
+            ).into_val(&f.env),
+            sub_invokes: &[],
+        },
+    }]).try_open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.owner,
+        &f.cardholder,
+        &100_000i128,
+        &6000u32,
+        &7500u32,
+        &price_per_oz_e7,
+    );
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
 }

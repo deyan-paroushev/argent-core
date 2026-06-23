@@ -26,6 +26,8 @@ pub enum Error {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     AmountNotPositive = 3,
+    LineNotRepayable = 4,
+    RepaymentExceedsOutstandingBalance = 5,
 }
 
 #[contracttype]
@@ -96,6 +98,15 @@ impl SettlementVault {
             .get(&DataKey::CreditLedger)
             .ok_or(Error::NotInitialized)?;
 
+        let ledger = credit_ledger::Client::new(&env, &ledger_addr);
+        let line = ledger.get_line(&credit_line_id);
+        if line.status == credit_ledger::LineStatus::Closed || line.drawn_balance <= 0 {
+            return Err(Error::LineNotRepayable);
+        }
+        if amount > line.drawn_balance {
+            return Err(Error::RepaymentExceedsOutstandingBalance);
+        }
+
         // 1. Move the settlement asset: cardholder -> bank (SEP-41 transfer).
         let token_client = token::TokenClient::new(&env, &token_addr);
         token_client.transfer(&cardholder, &bank, &amount);
@@ -107,7 +118,6 @@ impl SettlementVault {
         //    the line, which protects the bank's interest. The payment_ref makes
         //    the repayment idempotent on the ledger side.
         let vault = env.current_contract_address();
-        let ledger = credit_ledger::Client::new(&env, &ledger_addr);
         ledger.apply_repayment(&credit_line_id, &vault, &payment_ref, &amount);
 
         env.events().publish(

@@ -112,6 +112,15 @@ impl CreditLedger {
         if env.storage().persistent().has(&DataKey::Framework(framework_id.clone())) {
             return Err(Error::FrameworkExists);
         }
+        if Self::is_zero_hash(&env, &facility_agreement_hash)
+            || Self::is_zero_hash(&env, &pledge_agreement_hash)
+            || Self::is_zero_hash(&env, &custody_agreement_hash)
+            || Self::is_zero_hash(&env, &eligible_schedule_hash)
+            || Self::is_zero_hash(&env, &margin_policy_hash)
+            || Self::is_zero_hash(&env, &enforcement_waterfall_hash)
+        {
+            return Err(Error::InvalidDocumentHash);
+        }
 
         let framework = ControlFramework {
             owner,
@@ -181,6 +190,9 @@ impl CreditLedger {
         if env.storage().persistent().has(&DataKey::Position(position_id.clone())) {
             return Err(Error::PositionExists);
         }
+        if Self::is_zero_hash(&env, &barlist_hash) || Self::is_zero_hash(&env, &serials_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
         // Bar-set uniqueness: these exact serials must not already be active
         // under another position. This enforces no-double-pledge at the
         // collateral-set level, which is the core promise of the instrument.
@@ -240,6 +252,9 @@ impl CreditLedger {
         }
         if pos.attestation_expiry <= env.ledger().sequence() {
             return Err(Error::AttestationStale);
+        }
+        if Self::is_zero_hash(&env, &request_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
 
         pos.status = PositionStatus::Selected;
@@ -308,6 +323,9 @@ impl CreditLedger {
         }
         if pos.attestation_expiry <= env.ledger().sequence() {
             return Err(Error::AttestationStale);
+        }
+        if Self::is_zero_hash(&env, &control_agreement_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
 
         pos.status = PositionStatus::Earmarked;
@@ -413,6 +431,15 @@ impl CreditLedger {
         price_per_oz_e7: i128,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
+        if env.storage().persistent().has(&DataKey::Line(credit_line_id.clone())) {
+            return Err(Error::LineExists);
+        }
+        if env.storage().persistent().has(&DataKey::LineForPledge(pledge_id.clone())) {
+            return Err(Error::PledgeAlreadyHasLine);
+        }
 
         let pledge = Self::load_pledge(&env, &pledge_id)?;
         if pledge.status != PledgeStatus::Active {
@@ -453,6 +480,11 @@ impl CreditLedger {
             status: LineStatus::Active,
         };
         Self::save_line(&env, &credit_line_id, &line);
+        let pledge_line_key = DataKey::LineForPledge(line.pledge_id.clone());
+        env.storage().persistent().set(&pledge_line_key, &credit_line_id);
+        env.storage()
+            .persistent()
+            .extend_ttl(&pledge_line_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
             .publish((symbol_short!("line"), symbol_short!("opened")), credit_line_id);
         Ok(())
@@ -549,6 +581,9 @@ impl CreditLedger {
         }
 
         let mut line = Self::load_line(&env, &credit_line_id)?;
+        if line.status == LineStatus::Closed {
+            return Err(Error::LineNotActive);
+        }
         line.drawn_balance -= amount;
         line.available_limit += amount;
         Self::save_line(&env, &credit_line_id, &line);
@@ -606,11 +641,13 @@ impl CreditLedger {
             return Err(Error::DuplicatePaymentRef);
         }
         let mut line = Self::load_line(&env, &credit_line_id)?;
-        let applied = if amount > line.drawn_balance {
-            line.drawn_balance
-        } else {
-            amount
-        };
+        if line.status == LineStatus::Closed {
+            return Err(Error::LineNotActive);
+        }
+        if amount > line.drawn_balance {
+            return Err(Error::RepaymentExceedsOutstandingBalance);
+        }
+        let applied = amount;
         line.drawn_balance -= applied;
         line.available_limit += applied;
         Self::save_line(&env, &credit_line_id, &line);
@@ -681,6 +718,9 @@ impl CreditLedger {
         }
         if new_weight_oz_e7 <= 0 {
             return Err(Error::AmountNotPositive);
+        }
+        if Self::is_zero_hash(&env, &new_barlist_hash) || Self::is_zero_hash(&env, &request_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
 
         let adjustment = CollateralAdjustment {
@@ -803,6 +843,9 @@ impl CreditLedger {
         bank: Address,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -841,6 +884,9 @@ impl CreditLedger {
         release_notice_hash: BytesN<32>,
     ) -> Result<(), Error> {
         custodian.require_auth();
+        if !Self::is_approved(env.clone(), custodian.clone(), Role::Custodian) {
+            return Err(Error::PartyNotApproved);
+        }
         let mut pledge = Self::load_pledge(&env, &pledge_id)?;
         if pledge.status != PledgeStatus::ReleaseAuthorized {
             return Err(Error::PledgeNotActive);
@@ -851,6 +897,9 @@ impl CreditLedger {
         }
         if pos.status != PositionStatus::ReleasePending {
             return Err(Error::PositionNotReleasePending);
+        }
+        if Self::is_zero_hash(&env, &release_notice_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
 
         pos.status = PositionStatus::Released;
@@ -871,7 +920,12 @@ impl CreditLedger {
 
     // ---- lifecycle: default & enforcement (records; does not bypass law) --
 
-    /// Bank issues a default notice and sets the cure deadline.
+    /// Bank issues a default notice and sets the cure deadline. The deadline
+    /// must be in the future: a default notice exists to grant the borrower a
+    /// real cure window, so a deadline at or before the current ledger is a
+    /// malformed notice and is refused. A bank that wants to proceed without a
+    /// cure period does not issue a zero-window notice; it lets the existing
+    /// window run and then enforces.
     pub fn issue_default_notice(
         env: Env,
         credit_line_id: BytesN<32>,
@@ -879,6 +933,12 @@ impl CreditLedger {
         cure_deadline_ledger: u32,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
+        if cure_deadline_ledger <= env.ledger().sequence() {
+            return Err(Error::CureDeadlineNotFuture);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -896,7 +956,17 @@ impl CreditLedger {
         Ok(())
     }
 
-    /// Cardholder cures a default before the deadline, restoring the line.
+    /// Cardholder cures a default, restoring the line. Deliberately lenient on
+    /// timing: a cure is accepted as long as the line is still Defaulted, even
+    /// after the cure deadline has passed, right up until the bank records
+    /// enforcement (which closes the line and makes a cure impossible via the
+    /// status check below). This mirrors real secured-lending practice, where a
+    /// default may be acted on only while it "is continuing": the deadline
+    /// unlocks the bank's right to enforce, but the borrower can still cure by
+    /// paying until the bank actually enforces, because enforcing collateral is
+    /// the costly last resort and repayment is the preferred outcome. The
+    /// enforcement gate lives in record_enforcement (cure period must have
+    /// expired); this side stays open until enforcement lands.
     pub fn cure_default(
         env: Env,
         credit_line_id: BytesN<32>,
@@ -936,6 +1006,9 @@ impl CreditLedger {
         reason_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -964,6 +1037,9 @@ impl CreditLedger {
         bank: Address,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -1015,6 +1091,14 @@ impl CreditLedger {
         warning_bps: u32,
     ) -> Result<(), Error> {
         valuer.require_auth();
+        if max_age_secs == 0
+            || conf_tol_bps == 0
+            || conf_tol_bps > 10_000
+            || warning_bps == 0
+            || warning_bps > 10_000
+        {
+            return Err(Error::InvalidRevaluationParams);
+        }
         // Either the valuation role or the line's own bank may submit a price.
         let is_valuer = Self::is_approved(env.clone(), valuer.clone(), Role::Valuation);
 
@@ -1032,6 +1116,9 @@ impl CreditLedger {
 
         // Freshness: the price must not be older than the allowed window.
         let now = env.ledger().timestamp();
+        if priced_at > now {
+            return Err(Error::PriceFromFuture);
+        }
         if now > priced_at && now - priced_at > max_age_secs {
             return Err(Error::PriceStale);
         }
@@ -1138,6 +1225,9 @@ impl CreditLedger {
         legal_instrument_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -1147,6 +1237,9 @@ impl CreditLedger {
         }
         if env.ledger().sequence() < line.cure_expiry_ledger {
             return Err(Error::CurePeriodNotExpired);
+        }
+        if Self::is_zero_hash(&env, &legal_instrument_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         let mut pledge = Self::load_pledge(&env, &line.pledge_id)?;
         if pledge.status == PledgeStatus::Enforced {
@@ -1194,6 +1287,9 @@ impl CreditLedger {
         if line.bank != bank {
             return Err(Error::NotAuthorized);
         }
+        if env.storage().persistent().has(&DataKey::Readiness(credit_line_id.clone())) {
+            return Err(Error::ReadinessWrongStatus);
+        }
         let zero = BytesN::from_array(&env, &[0u8; 32]);
         let readiness = EnforcementReadiness {
             credit_line_id: credit_line_id.clone(),
@@ -1238,9 +1334,6 @@ impl CreditLedger {
             return Err(Error::NotAuthorized);
         }
         let mut readiness = Self::load_readiness(&env, &credit_line_id)?;
-        if readiness.status == ReadinessStatus::Expired {
-            return Err(Error::ReadinessWrongStatus);
-        }
 
         let zero = BytesN::from_array(&env, &[0u8; 32]);
         // Required-for-Ready: a real agent (not the bank itself, not unset), a
@@ -1248,6 +1341,13 @@ impl CreditLedger {
         let agent_real = liquidation_agent != bank;
         let route_real = realization_route_hash != zero;
         let asset_real = settlement_asset != bank;
+        if agent_real
+            && route_real
+            && asset_real
+            && valid_until_ledger <= env.ledger().sequence()
+        {
+            return Err(Error::ReadinessExpired);
+        }
 
         readiness.liquidation_agent = liquidation_agent;
         readiness.realization_route_hash = realization_route_hash;
@@ -1407,6 +1507,11 @@ impl CreditLedger {
             .persistent()
             .get(&DataKey::Adjustment(id.clone()))
             .ok_or(Error::LineNotFound)
+    }
+
+    fn is_zero_hash(env: &Env, hash: &BytesN<32>) -> bool {
+        let zero = BytesN::from_array(env, &[0u8; 32]);
+        hash == &zero
     }
 
     fn load_readiness(env: &Env, id: &BytesN<32>) -> Result<EnforcementReadiness, Error> {
