@@ -59,6 +59,13 @@ pub enum Error {
     /// Approving the adjustment would leave the line under-covered at the
     /// advance rate (released collateral must still cover the drawn balance).
     AdjustmentUndercovered = 45,
+    /// reverse_drawdown referenced an auth_ref that has no recorded drawdown
+    /// (or one that was already reversed). There is nothing to unwind.
+    NothingToReverse = 46,
+    /// reverse_drawdown was called with an amount that does not equal the
+    /// amount originally drawn under this auth_ref. A reversal must unwind
+    /// exactly what was drawn; partial reversals are not supported.
+    ReversalAmountMismatch = 47,
 
     NotDefaulted = 50,
     CurePeriodNotExpired = 51,

@@ -495,9 +495,17 @@ impl CreditLedger {
         line.drawn_balance += amount;
         line.available_limit -= amount;
         Self::save_line(&env, &credit_line_id, &line);
+        let record = DrawdownRecord {
+            credit_line_id: credit_line_id.clone(),
+            amount,
+            drawn_at_ledger: env.ledger().sequence(),
+            reversed: false,
+        };
+        let key = DataKey::Draw(auth_ref.clone());
+        env.storage().persistent().set(&key, &record);
         env.storage()
             .persistent()
-            .set(&DataKey::Draw(auth_ref.clone()), &true);
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events().publish(
             (symbol_short!("card"), symbol_short!("draw")),
             (credit_line_id, auth_ref, amount),
@@ -517,19 +525,60 @@ impl CreditLedger {
         if !Self::is_approved(env.clone(), processor.clone(), Role::Processor) {
             return Err(Error::PartyNotApproved);
         }
-        if !env.storage().persistent().has(&DataKey::Draw(auth_ref.clone())) {
-            return Err(Error::DuplicateAuthRef); // nothing to reverse
+        if amount <= 0 {
+            return Err(Error::AmountNotPositive);
         }
+        // The drawdown must exist and not have been reversed already.
+        let key = DataKey::Draw(auth_ref.clone());
+        let mut record: DrawdownRecord = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::NothingToReverse)?;
+        if record.reversed {
+            return Err(Error::NothingToReverse);
+        }
+        // A reversal must unwind exactly what was drawn under this auth_ref, on
+        // the same line. This is the accounting guard: without it a processor
+        // could reverse an arbitrary amount and corrupt the drawn balance.
+        if record.credit_line_id != credit_line_id {
+            return Err(Error::LineNotFound);
+        }
+        if amount != record.amount {
+            return Err(Error::ReversalAmountMismatch);
+        }
+
         let mut line = Self::load_line(&env, &credit_line_id)?;
         line.drawn_balance -= amount;
         line.available_limit += amount;
         Self::save_line(&env, &credit_line_id, &line);
-        env.storage().persistent().remove(&DataKey::Draw(auth_ref.clone()));
+
+        // Keep the record for audit, marked reversed, so the same auth_ref can
+        // be neither drawn again nor reversed again.
+        record.reversed = true;
+        env.storage().persistent().set(&key, &record);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events().publish(
             (symbol_short!("card"), symbol_short!("reverse")),
             (credit_line_id, auth_ref, amount),
         );
         Ok(())
+    }
+
+    /// Read a drawdown record by its authorization reference. Returns the stored
+    /// amount, line, ledger, and whether it has been reversed. Lets the
+    /// off-chain layer and evidence certificates reconcile a reversal against the
+    /// exact drawdown it unwound.
+    pub fn get_drawdown(
+        env: Env,
+        auth_ref: BytesN<32>,
+    ) -> Result<DrawdownRecord, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Draw(auth_ref))
+            .ok_or(Error::NothingToReverse)
     }
 
     /// Apply a repayment to a line, reducing the drawn balance and restoring

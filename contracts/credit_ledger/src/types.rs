@@ -82,6 +82,23 @@ pub struct RepaymentRecord {
     pub applied_at_ledger: u32,
 }
 
+/// A recorded card drawdown against a credit line, keyed by the off-chain
+/// authorization reference. Storing the full record (not a bare bool) makes the
+/// drawdown idempotent (the same auth_ref cannot be drawn twice) AND lets a
+/// reversal verify it is unwinding exactly what was drawn: same line, same
+/// amount. Without the stored amount a processor could reverse an arbitrary
+/// figure, corrupting the line's drawn balance. The record carries a `reversed`
+/// flag so a reversed authorization is kept (audit trail) but cannot be
+/// reversed twice.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrawdownRecord {
+    pub credit_line_id: BytesN<32>,
+    pub amount: i128,
+    pub drawn_at_ledger: u32,
+    pub reversed: bool,
+}
+
 /// The kind of collateral adjustment an owner can request on a live facility.
 /// Real collateral facilities are not static: the owner may add collateral,
 /// swap bars, or ask to return excess.
@@ -392,7 +409,7 @@ pub enum DataKey {
     Control(BytesN<32>),
     /// revaluation side-record: line_id -> LineValuation
     Valuation(BytesN<32>),
-    /// idempotency guard for drawdowns: auth_ref -> bool
+    /// drawdown record / idempotency guard: auth_ref -> DrawdownRecord
     Draw(BytesN<32>),
     /// repayment record / idempotency guard: payment_ref -> RepaymentRecord
     Repayment(BytesN<32>),

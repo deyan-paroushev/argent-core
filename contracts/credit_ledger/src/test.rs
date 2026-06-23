@@ -599,6 +599,87 @@ fn refuses_duplicate_auth_ref() {
 }
 
 #[test]
+fn reverse_drawdown_unwinds_exact_amount() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let auth = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    let before = f.client.available_capacity(&line_id);
+    f.client.reverse_drawdown(&line_id, &f.processor, &auth, &10_000);
+    let after = f.client.available_capacity(&line_id);
+    // capacity restored by exactly the drawn amount
+    assert_eq!(after, before + 10_000);
+    // the line's drawn balance is back to zero
+    let line = f.client.get_line(&line_id);
+    assert_eq!(line.drawn_balance, 0);
+    // the record is kept but marked reversed
+    let rec = f.client.get_drawdown(&auth);
+    assert_eq!(rec.amount, 10_000);
+    assert!(rec.reversed);
+}
+
+#[test]
+fn refuses_reverse_with_wrong_amount() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let auth = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    // reversing more than was drawn is refused (this is the bug the record fix closes)
+    let over = f.client.try_reverse_drawdown(&line_id, &f.processor, &auth, &25_000);
+    assert_eq!(over, Err(Ok(Error::ReversalAmountMismatch)));
+    // reversing less than was drawn is also refused (no partial reversals)
+    let under = f.client.try_reverse_drawdown(&line_id, &f.processor, &auth, &5_000);
+    assert_eq!(under, Err(Ok(Error::ReversalAmountMismatch)));
+    // the line is untouched by the refused attempts
+    let line = f.client.get_line(&line_id);
+    assert_eq!(line.drawn_balance, 10_000);
+}
+
+#[test]
+fn refuses_reverse_unknown_auth_ref() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    // never drawn under this auth_ref
+    let res = f.client.try_reverse_drawdown(&line_id, &f.processor, &id(&f.env), &10_000);
+    assert_eq!(res, Err(Ok(Error::NothingToReverse)));
+}
+
+#[test]
+fn refuses_double_reverse() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let auth = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    f.client.reverse_drawdown(&line_id, &f.processor, &auth, &10_000);
+    // second reversal of the same auth_ref is refused
+    let res = f.client.try_reverse_drawdown(&line_id, &f.processor, &auth, &10_000);
+    assert_eq!(res, Err(Ok(Error::NothingToReverse)));
+}
+
+#[test]
+fn refuses_redraw_on_reversed_auth_ref() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let auth = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    f.client.reverse_drawdown(&line_id, &f.processor, &auth, &10_000);
+    // an auth_ref is single-use: it cannot be drawn again after reversal
+    let res = f.client.try_record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    assert_eq!(res, Err(Ok(Error::DuplicateAuthRef)));
+}
+
+#[test]
+fn refuses_reverse_on_wrong_line() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    let auth = id(&f.env);
+    f.client.record_drawdown(&line_id, &f.processor, &auth, &10_000);
+    // a different (random) line id cannot reverse this auth_ref
+    let res = f.client.try_reverse_drawdown(&id(&f.env), &f.processor, &auth, &10_000);
+    assert_eq!(res, Err(Ok(Error::LineNotFound)));
+}
+
+#[test]
 fn refuses_release_with_outstanding_balance() {
     let f = setup();
     let (_p, _pl, line_id) = happy_to_open(&f);
