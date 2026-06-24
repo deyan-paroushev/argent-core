@@ -1,525 +1,270 @@
 # Argent: Technical Architecture
 
-**Gold-backed credit on Stellar.**
+**DFNS-governed physical-collateral control on Stellar.**
 
-A Soroban collateral engine for bank-issued secured credit lines backed by vaulted physical gold. The card transaction stays on card rails. The collateral truth lives on Soroban.
+*Technical Architecture Document for the Stellar x CV Labs Accelerator (SCF Build, Integration Track, DFNS). Submission version 1.0.*
 
-*Version 1.1 · Reference architecture for build and for the Stellar × CV Labs application. v1.1 names the repayment-funding rail (SEP-10/SEP-24) and the SDF building blocks the build reuses.*
-
----
-
-## 0. What this document is
-
-This is the engineering reference for Argent: what it is, what moves where, which parts are genuinely on-chain, and the exact build order. It is written backend-first, because the backend is the spine of the system and the contract is the anchored truth layer beneath it, not the other way around.
-
-Two audiences: the build (you, in Codespaces) and the reviewer (Stellar × CV Labs, and later a partner bank's technical team). Everything here is written to survive scrutiny from both. Where a claim about Stellar or Mastercard is load-bearing, it is stated precisely enough that a sharp reviewer cannot poke it.
-
-The single most important framing, stated once and carried throughout:
-
-> **Argent does not process card payments. It is not a crypto card. It is the collateral-and-credit state layer that an issuing bank relies on when it authorizes, posts, freezes, and, on default, enforces a secured credit line whose security is verified allocated gold.**
+*This document is self-contained. A reviewer should be able to evaluate the Stellar use case, the integration plan, the contract design, the security model, and the build readiness from this document alone, then verify every claim against the open-source contracts in the linked repository. Every contract function named here exists in that repository.*
 
 ---
 
-## 1. The product in one paragraph
+## 1. Executive summary
 
-A person or institution owns allocated physical gold bars in a regulated vault. A partner bank opens a credit line secured by those bars and issues a Mastercard credit card against the line. The gold never moves while the card is used; the card spends the bank's credit. Argent locks the collateral, records the pledge, derives the borrowing base from a live gold price, tracks utilization as the card is used, restores capacity on repayment, and, if the borrower defaults and does not cure, records the enforcement workflow (bank instruction, custodian confirmation, realization outcome) by which the pledged bars are realized for the bank under the security documents. The verifiable state of that secured facility lives on Stellar via Soroban; the sensitive detail (bar serials, KYC, card PAN, legal documents) stays off-chain, referenced by hash.
+Argent is a Soroban-based collateral-control layer for physical assets that remain in professional custody. The first reference implementation uses allocated gold because it is the cleanest proof case: high value, allocated, serialised, custodied, and already financed under pledge and custody structures. The contract core is deliberately asset-agnostic. The same control structure binds any custody-stable physical asset (base metals, critical minerals, warehouse-held commodities, energy inventory) through asset-specific identity, custody, valuation, and document hashes.
 
----
+Argent does not tokenize the physical asset, custody it, issue credit, process card payments, or perform legal enforcement. It records the lifecycle state that a bank, custodian, owner, verifier, and sponsor rely on, collateral identity, eligibility, exclusive pledge, borrowing base, utilization, repayment, release, default, cure, enforcement evidence, and reward claims, and it governs who may authorize each transition.
 
-## 2. The honest boundary: what moves, when, and on which rail
+The current prototype runs with local development signers on Stellar testnet: three deployed Soroban contracts, the full lifecycle, and a clickable demonstrator. The funded work replaces those local signers with DFNS-governed institutional role wallets and a policy-approval workflow, and launches on mainnet. The contracts remain signer-agnostic. **Soroban records what changes. DFNS governs who may change it. Stellar settlement assets move only where value movement is real: repayment through `settlement_vault`.**
 
-The reason most "blockchain card" designs fall apart under questioning is that they conflate two things a real card system keeps strictly separate: **the credit decision** ("is this spend allowed?") and **the money movement** ("who pays the merchant, and when?"). These happen at different times, on different rails, run by different parties. Argent keeps them separate, exactly as the real system does.
+The open-source core (Apache-2.0) contains three contracts: `credit_ledger` (the tri-party control framework and full lifecycle), `settlement_vault` (atomic settlement-asset repayment bound to exposure reduction), and `rewards_ledger` (a sponsor-funded, non-transferable rewards overlay, fully separated from pledged collateral).
 
-### 2.1 The real card lifecycle
+## 2. Product boundary
 
-**Authorization (sub-second; no money moves).** The card is tapped. The acquirer routes the request through Mastercard to the issuer processor, which asks the bank's authorization system "approve this amount?" At authorization, **no funds move**, a *hold* is placed against the credit line. This path is off-chain by physical necessity; you cannot put a blockchain round-trip inside a point-of-sale authorization. Argent's role here is to be the *source of truth the authorization system reads* for available collateral-backed capacity, and to *receive* the resulting hold as an event.
+Argent is a control layer, not an asset issuer. This boundary determines every architectural decision in this document.
 
-**Clearing and settlement (later, batched).** This is where money actually moves, and critically, **none of it touches the gold or the Argent contract**. The issuing bank pays Mastercard; Mastercard pays the acquirer; the acquirer pays the merchant. The cardholder now owes the bank. Settlement between issuers and acquirers has historically run in fiat batches limited by banking hours; as of June 2026 Mastercard also supports on-chain stablecoin settlement (intraday, weekend, holiday) as an *option for issuers and acquirers*, a back-office settlement change, not point-of-sale spending. The thing Argent cares about is only this: the borrower's **drawn balance against the bank rose**.
+**What Argent is.** A shared, role-signed state layer for physical collateral that stays under professional custody. The on-chain record is not a digital commodity token; it is a control record showing which asset is pledged, what credit line it supports, and whether it has been drawn, repaid, released, defaulted, cured, or enforced.
 
-**Repayment (cardholder → bank).** The cardholder pays their statement. The drawn balance falls. Capacity restores. This is the one money-movement leg that Argent can legitimately put on Stellar, see §2.3.
+**What Argent is not.** Not a commodity or gold token; not a custodian; not a bank or credit originator; not a card issuer or processor; not a legal-enforcement engine; not a replacement for security documents, custody agreements, KYC/AML/sanctions checks, insurance, or bank credit judgement.
 
-### 2.2 So what does Argent actually put on-chain?
+**The model, stated once and held throughout:** custody stays with the custodian; ownership stays with the owner; credit exposure stays with the bank; control state moves onto Soroban; signing authority is governed by DFNS. The asset never leaves custody because of Argent, and ownership changes only through an off-chain legal and custody process after default, which Argent records as evidence but never executes.
 
-Not the merchant payment. The on-chain artifact is the thing Argent genuinely governs:
+## 3. Why Stellar, and why this is not a superficial integration
 
-- **The collateral lock**, specific bars pledged to a specific bank, un-pledgeable elsewhere while locked.
-- **The secured-debt position**, approved limit, drawn balance, available capacity, LTV, status.
-- **The state transitions**, pledge → activate → draw → repay → release, and the default → cure → enforce branch.
-- **The enforcement record**, on uncured default, the title-state of the pledged bars flips to the bank, anchored with a hash of the off-chain legal transfer.
+Stellar/Soroban is core to the system, not a storage layer. Three protocol features do work no off-chain database can, which is the test SCF applies:
 
-This is a **secured-debt position ledger**. Real lenders keep exactly this; the novelty is making it verifiable and shareable between the lender, the collateral provider, the custodian, and an auditor, which is precisely what a distributed ledger is good for and a private bank database is not.
+1. **Multi-party authorization (`require_auth`, detached authorization entries).** Each party independently signs the precise action it takes. A bank's authorization and a custodian's confirmation are independently signed authorization acts, each bound to the party that performs it, rather than a single combined signature. This native primitive is what Argent's separation-of-duties model is built on; replicating it in a private database would mean rebuilding non-repudiable multi-party signing from scratch.
+2. **Atomic settlement (Stellar Asset Contract / SEP-41).** Repayment and exposure reduction occur in one atomic transaction: the settlement asset moves and the drawn balance falls together, or neither does. A card rail cannot bind a value transfer to a collateral-state change atomically; Soroban can.
+3. **A shared, append-only, independently verifiable record.** The owner, bank, custodian, and an auditor read the same collateral state from the ledger rather than reconciling four private systems. This is exactly what a distributed ledger provides and a private bank database does not.
 
-### 2.3 The one real value transfer (and why it's the right one)
+Sensitive detail (bar serials, KYC, card PANs, legal documents) stays off-chain and is referenced by hash. The chain holds the minimum shared control record needed to make the lifecycle verifiable. Without Stellar, Argent is another private collateral database; with Stellar, the parties and an auditor share one role-signed, verifiable control state.
 
-For the accelerator's requirement, *moving elements from one party to another over Stellar, processed via a Soroban contract*, the right transaction is **repayment as delivery-versus-payment**, not a fictional escrow drain.
+This is not an incidental use of Stellar. The detachable, independently-signed, multi-party authorization entry is the primitive the Stellar Development Foundation identifies as Stellar's structural advantage over other smart-contract platforms, where the same patterns require bolted-on token standards and parallel transaction pipelines.[1] Argent is a direct institutional application of that model: each party signs only the authorization entry for the action it takes, and the bank's release authorization and the custodian's confirmation are two independent entries on one transition. Where SDF's composable-auth model describes the mechanism, Argent exercises it in the setting that most demands it, multi-party secured credit between parties who do not fully trust each other. The same governance-first direction runs through SDF's recent protocol work, from onchain incident response[2] to the quantum-preparedness plan's separation of account identity from signing keys.[3]
 
-> The cardholder repays in a Stellar-issued cash asset (a regulated stablecoin or tokenized deposit, represented via the Stellar Asset Contract / SEP-41). In a single atomic Soroban transaction: the cash moves cardholder → bank, the drawn balance reduces, and, if the facility is being closed, the pledge releases. Cash in, capacity restored, collateral released, atomically.
+## 4. Actors and responsibilities
 
-This is real, it is useful outside the accelerator, and it does something card rails *cannot* do on their own: bind a repayment and a collateral release into one atomic settlement. That is a genuine Stellar value-add rather than blockchain theatre. It also maps cleanly onto Soroban's atomic-swap / multi-party-authorization pattern, which is a documented, supported primitive.
-
-> **Why not the escrow demo?** An earlier sketch had the bank pre-fund the full credit line into a contract escrow, and the card purchase drained it. That is clean to *watch* but economically fictional, no bank parks its entire credit line inside a smart contract, and a reviewer asks why. We drop it. We keep one honest on-chain value transfer (repayment DvP), and model card draws as debt-position updates (which is what they are). Nothing in the demo describes a system a bank couldn't actually run.
-
-### 2.4 How the cardholder gets the cash to repay with (the funding rail)
-
-The repayment DvP needs the cardholder to hold the settlement asset on Stellar. That "how do they get it" step is not hand-waved, it runs on Stellar's standard anchor flow, the same pattern MoneyGram runs in production for USDC cash-in/out across 170+ countries:
-
-- **SEP-10** authenticates the cardholder's Stellar account (challenge/response; no password).
-- **SEP-24** runs the hosted deposit: the cardholder funds from a bank account / card and receives the settlement stablecoin (USDC to start) into their Stellar account, with KYC handled in the anchor's hosted UI via **SEP-9** fields.
-- The cardholder then signs the **`repay_and_release`** leg with that asset.
-
-Two consequences worth stating in the pitch. First, identity is not bespoke: KYC/auth route through SEP-9/SEP-10, the same standards a regulated anchor uses, which folds cleanly into the `ComplianceGate`. Second, Argent does not have to build anchor plumbing, SDF's **Anchor Platform** is a production service that implements these SEPs, and the **`@stellar/typescript-wallet-sdk`** is the client library for the auth + deposit flow (it is literally the SDK MoneyGram's integration guide prescribes). For the demo, the funding step can be stubbed (fund the cardholder's testnet account with USDC-test from the Circle faucet); for a pilot, it becomes a real SEP-24 deposit.
-
----
-
-## 3. The four layers
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. PHYSICAL COLLATERAL LAYER                                 │
-│     Allocated gold bars · Swiss/regulated vault · custodian   │
-│     Custody attestation (off-chain, signed)                   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │  attestation hash + fine weight
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. ARGENT COLLATERAL SERVICE  (TypeScript · Railway)         │
-│     Bar registry · valuation · LTV · borrowing base           │
-│     Authorization API (read) · indexer (write)                │
-│     PostgreSQL materialized state                             │
-└───────────────┬─────────────────────────────┬───────────────┘
-                │  reads/writes               │  authorization read
-                ▼                             ▼
-┌──────────────────────────────┐  ┌──────────────────────────────┐
-│  3. STELLAR / SOROBAN         │  │  4. BANK + MASTERCARD LAYER   │
-│     CreditLedger contract     │  │     Issuing bank (lender)     │
-│     SettlementVault (DvP)     │  │     BIN sponsor / principal   │
-│     Oracle adapter            │  │     Program manager           │
-│     Anchored truth + events   │  │     Issuer processor          │
-└──────────────────────────────┘  │     Mastercard network        │
-                                   └──────────────────────────────┘
-```
-
-The **Argent Collateral Service (layer 2) is the spine.** It owns the live state in Postgres, exposes the authorization read the bank/processor calls, runs the indexer that mirrors Soroban events, and submits the state-transition transactions to Soroban. Layer 3 is the durable, verifiable anchor beneath it. Layer 4 is the regulated card infrastructure Argent integrates *beside*, never replaces.
-
----
-
-## 4. Where Stellar and Mastercard actually sit (the precise, checkable claims)
-
-This section exists so that nothing in the pitch overstates a relationship. State it exactly like this.
-
-### 4.1 Stellar / Soroban: what is true
-
-- Soroban is Stellar's smart-contract platform: Rust compiled to WASM, live on mainnet since the Protocol 20 upgrade (Feb 2024).
-- The **Stellar Asset Contract (SAC)** implements the **SEP-41 token interface** (CAP-46), so contracts move issued Stellar assets, including regulated stablecoins like USDC/EURC, through a standard `transfer` interface. This is what the repayment DvP leg uses.
-- Soroban's **authorization framework** (`require_auth` / `require_auth_for_args`) provides built-in replay protection and structured multi-party signing; the **atomic-swap example** is the documented pattern for "two parties each sign their leg of one atomic transaction," which is the shape of pledge-acceptance and repayment-DvP.
-- **Three-tier storage** (instance / persistent / temporary) with TTL and state archival. Security invariants and balances go in **persistent** storage (archivable, restorable, never silently lost); short-lived holds can go in **temporary**; global config in **instance**. *Never* put a security-critical value in temporary storage, expired temporary entries are deleted permanently.
-- **Price data**: Reflector is the Stellar-native, SEP-40-compliant decentralized oracle (≈5-minute updates). For the demo, the oracle is stubbed with an admin-pushed price plus an `expiry_ledger`; for production, Reflector (or a comparable SEP-40 feed) supplies the gold price, with staleness gating in the contract.
-
-### 4.2 Mastercard: what is true, and the one thing to *not* claim
-
-- Mastercard runs a **Crypto Partner Program** (announced/active 2026, 85+ participants) explicitly about pairing on-chain programmability with established card rails. **Stellar is a named participant.** So are the card-issuing primitives Argent's stack would actually use: issuer processors (Marqeta, Galileo, Lithic, Highnote, Thredd), BIN sponsors / banks (CBW Bank, Cross River, Lead Bank, WebBank, Peoples Group), and program managers.
-- The issuance stack is layered: **BIN sponsor** (holds the principal Mastercard license; carries scheme-compliance responsibility) → **program manager** (coordinates the parties) → **issuer processor** (connects issuer to the scheme; handles issuance, authorization, clearing, settlement) → the **issuing bank** (extends the credit). Argent is **none** of these. Argent supplies the collateral/credit-decision substrate the issuer relies on.
-- The closest existing card category is the **secured credit card**, except the security is verified allocated gold instead of a cash deposit. That reframing is the whole product, and it requires a bank to accept the collateral model.
-- As of **June 3, 2026**, Mastercard supports **on-chain stablecoin settlement** for issuers/acquirers across a set of chains and six regulated USD stablecoins (USDC, RLUSD, PYUSD, USDG, USDP, SoFiUSD).
-
-> **The one thing not to claim.** Mastercard's June 2026 settlement-chain list (Ethereum, Solana, Polygon, Base, Arbitrum, XRPL, Canton, Tempo) **does not currently include Stellar.** So do **not** say "Mastercard settles on Stellar." The accurate, still-strong claim is: *Stellar is a Mastercard Crypto Partner Program participant; Argent's Stellar settlement leg is for the **borrower↔bank repayment**, which is independent of Mastercard's issuer↔acquirer settlement rail.* If a bank partner later wants card-settlement on-chain, that runs on a Mastercard-supported chain, orthogonal to Argent's collateral logic, which is chain-internal to Stellar.
-
-> **Do not nominate Mastercard as a technology sponsor.** There is no Mastercard relationship, sandbox, or program acceptance. The correct positioning is **"Mastercard-compatible, Mastercard-first reference design"** on a **network-agnostic core**. Stellar's existing Crypto Partner Program / Crypto Credential standing is all the borrowed credibility needed.
-
----
-
-## 5. Actors
-
-| Actor | Role | Touches Argent how |
-|---|---|---|
-| **Cardholder** | Owns the bars; borrows against them; spends; repays or defaults | Signs pledge proposal & repayment (Stellar address / contract account) |
-| **Custodian / vault** | Holds the physical bars; signs custody attestations; confirms lock/release | Approved attestor; signs attestation off-chain, hash anchored on-chain |
-| **Issuing bank** | Extends credit; issues the Mastercard; owns the exposure; receives title on default | Approved party; signs acceptance, default notice, enforcement |
-| **BIN sponsor / program mgr / issuer processor** | Connect the bank to Mastercard; handle issuance, authorization, clearing, settlement | Call Argent's authorization read; post utilization events |
-| **Argent operator** | Runs the collateral service, indexer, APIs, UI | Submits state transitions to Soroban; does **not** lend, custody, or issue |
-| **Valuation provider** | Supplies gold price + haircut | Reflector / SEP-40 feed (prod); admin-pushed (demo) |
-| **Compliance provider** | KYC / sanctions / eligibility | Approved-party gate; credential hash on-chain |
-| **Auditor** | Verifies the secured facility independently | Read-only against Soroban state + events |
-
----
-
-## 6. Domain model
-
-Core entities (shared vocabulary across Postgres schema, the API, and the contract storage keys). On-chain stores the **enforceable state and hashes**; Postgres stores the **full materialized record**; sensitive detail stays off-chain entirely.
-
-```
-VaultPosition       owner, custodian, barlist_hash, fine_weight_oz,
-                    attestation_expiry, status{Free|Pledged|Enforced|Released}
-
-CollateralPledge    position_id, pledgor, secured_bank, locked_fine_weight,
-                    custody_attestation_id, valuation_id, legal_terms_hash,
-                    status{Proposed|Active|Released|Defaulted|Enforced}
-
-CreditLine          pledge_id, bank_id, cardholder_id, currency, approved_limit,
-                    drawn_balance, available_limit, ltv_ratio, review_date,
-                    status{Offered|Active|Suspended|PastDue|Defaulted|Closed}
-
-CardAccountRef      bank_id, processor_card_ref, network=Mastercard,
-                    credit_line_id, status{Active|Frozen|Closed}   (ref only; no PAN)
-
-AuthorizationHold   credit_line_id, auth_ref, amount, currency, expires_at,
-                    status{Approved|Declined|Reversed|Captured}
-
-PostedTransaction   credit_line_id, auth_ref, amount, currency, posted_at, settlement_ref
-
-Repayment           credit_line_id, amount, currency, rail, paid_at,
-                    status{Pending|Confirmed|Failed}
-
-DefaultEvent        credit_line_id, reason, missed_at, cure_deadline,
-                    status{NoticeIssued|CureOpen|Cured|CureExpired|Enforced}
-
-TitleTransfer       default_id, from_owner, to_bank, bar_ids, legal_basis_hash,
-                    executed_at, status{Pending|Executed|Disputed}
-```
-
-### 6.1 What lives where
-
-| Data | Soroban | PostgreSQL | Off-chain only |
+| Actor | Real-world responsibility | Argent responsibility | Signing authority |
 |---|---|---|---|
-| Position hash, fine weight, status | ✅ | ✅ | |
-| Pledge lock, secured party, status | ✅ | ✅ | |
-| Credit line limit / drawn / available / status | ✅ | ✅ | |
-| Utilization (auth holds, postings) | summary | ✅ full | |
-| Repayment event | hash + amount | ✅ | |
-| Default state, cure, enforcement | ✅ | ✅ | |
-| Title-transfer event | hash | ✅ | legal docs |
-| Bar serial numbers | ❌ (only `barlist_hash`) | encrypted | source docs |
-| Card PAN / cardholder PII / KYC files | ❌ | ❌ (ref only) | ✅ |
-| Raw Mastercard auth payload | ❌ | ❌ | ✅ |
+| Owner | Owns the asset; requests liquidity | Selects collateral, requests pledge, repays, may claim rewards | Owner-controlled wallet (delegated; self-signs only its own acts) |
+| Custodian | Holds the asset; controls custody books | Confirms existence, immobilizes collateral, confirms release/enforcement outcome | DFNS custodian wallet |
+| Bank | Extends secured credit; owns exposure | Accepts pledge, opens line, controls release/default/cure/enforcement, sets margin policy | DFNS bank wallet(s), separated into credit, release, and enforcement authorities |
+| Verifier | Confirms eligible utilization / posted spend | Records utilization evidence against secured capacity | DFNS verifier wallet |
+| Sponsor | Funds reward campaigns (separate from collateral) | Creates campaign, approves claims, confirms vouchers/redemptions | DFNS sponsor wallet |
+| Operator (Argent) | Builds transactions, coordinates approvals, indexes, renders evidence | Routes intent to the correct role; never authorizes business actions for others | Fee-sponsor / service account only where explicitly configured |
 
-Rationale: Soroban holds the enforceable state and the hashes that make the off-chain record tamper-evident; it never holds private card, identity, or bar-ownership data.
-
----
-
-## 7. The contract suite (Soroban / Rust)
-
-Two contracts do the real work; a thin oracle adapter and an access registry support them. Keep them as a suite, not a monolith, it isolates the value-moving code (SettlementVault) from the state machine (CreditLedger) and keeps audit surface small.
-
-### 7.1 `CreditLedger`: the secured-debt position ledger
-
-The heart of the system. Holds no money. Holds the pledge, the credit line, and every state transition. Exposes a cheap read (`available_capacity`) for the off-chain authorization path, and write methods that record what the card world reports.
-
-```rust
-// State (persistent storage; keyed by position_id / credit_line_id)
-VaultPosition  { owner, custodian, barlist_hash, fine_weight_oz_e7,
-                 attestation_expiry_ledger, status }
-Pledge         { position_id, pledgor, bank, locked_weight_e7,
-                 valuation_id, legal_terms_hash, status }
-CreditLine     { pledge_id, bank, cardholder, currency,
-                 approved_limit, drawn_balance, available_limit,
-                 ltv_bps, cure_expiry_ledger, status }
-
-// Lifecycle, collateral & facility
-fn register_position(owner, custodian, barlist_hash, fine_weight_e7, expiry_ledger) -> position_id
-        owner.require_auth(); custodian.require_auth();
-        assert is_approved(custodian, Custodian);
-        assert expiry_ledger > ledger.sequence();
-        assert position is new;  status = Free
-
-fn activate_pledge(position_id, owner, bank, legal_terms_hash) -> pledge_id
-        owner.require_auth(); bank.require_auth();
-        assert position.status == Free;
-        assert position.attestation fresh;
-        assert is_approved(bank, Bank);
-        position.status = Pledged;  pledge.status = Active
-
-fn open_credit_line(pledge_id, bank, cardholder, limit, currency, ltv_bps) -> credit_line_id
-        bank.require_auth();
-        assert pledge.status == Active;
-        assert limit <= borrowing_base(pledge, oracle);   // see §7.3
-        status = Active;  drawn = 0;  available = limit
-
-// Lifecycle, utilization (mirrors the card world; moves no money)
-fn record_drawdown(credit_line_id, processor, auth_ref, amount)
-        processor.require_auth();
-        assert line.status == Active && pledge.status == Active;
-        assert amount > 0 && line.available_limit >= amount;
-        assert not already_recorded(auth_ref);
-        line.drawn_balance += amount;  line.available_limit -= amount;
-        events.publish(("card","draw"), (credit_line_id, auth_ref, amount))
-
-fn reverse_drawdown(credit_line_id, processor, auth_ref)   // auth expiry / reversal
-        processor.require_auth();  restore available_limit
-
-// Lifecycle, default & enforcement (records; does not bypass law)
-fn issue_default_notice(credit_line_id, bank, reason, cure_deadline_ledger)
-        bank.require_auth();  line.status = Defaulted;  pledge.status = Defaulted
-fn cure_default(credit_line_id, cardholder, repayment_ref)
-        cardholder.require_auth();  line.status = Active;  pledge.status = Active
-fn enforce_title_transfer(credit_line_id, bank, legal_transfer_hash)
-        bank.require_auth();
-        assert line.status == Defaulted;
-        assert ledger.sequence() >= line.cure_expiry_ledger;
-        pledge.status = Enforced;  position.status = Enforced;  line.status = Closed;
-        events.publish(("title","transfer"), (credit_line_id, legal_transfer_hash))
-
-// Read (for the off-chain authorization path)
-fn available_capacity(credit_line_id) -> i128
-fn line_status(credit_line_id) -> Status
-```
-
-### 7.2 `SettlementVault`: the one value-moving contract (repayment DvP)
-
-The only contract that moves a token. Isolated deliberately. Implements the atomic repayment-and-release.
-
-```rust
-// Holds a reference to the settlement asset (SAC / SEP-41) and the CreditLedger.
-fn repay_and_release(
-        credit_line_id, cardholder, amount, release_if_cleared: bool)
-    cardholder.require_auth();                       // payer signs their leg
-    let line = credit_ledger.get_line(credit_line_id);
-    assert amount > 0 && amount <= line.drawn_balance;
-
-    // 1. Move the settlement asset: cardholder -> bank  (SEP-41 transfer)
-    let token = token::TokenClient::new(&env, &settlement_token);
-    token.transfer(&cardholder, &line.bank, &amount);
-
-    // 2. Reduce the debt atomically (cross-contract call into CreditLedger)
-    credit_ledger.apply_repayment(&credit_line_id, &amount);
-
-    // 3. Optionally release the pledge in the same tx if the line is cleared
-    if release_if_cleared && line.drawn_balance - amount == 0 {
-        credit_ledger.release_pledge(&line.pledge_id);
-    }
-    env.events().publish(("repay","settled"), (credit_line_id, amount));
-```
-
-This is the transaction the demo leads with: a real SEP-41 asset moves cardholder → bank, the debt drops, and the gold is released, one atomic Soroban call. If the transfer fails, nothing commits.
-
-### 7.3 `OracleAdapter` + `borrowing_base`
-
-```rust
-fn price_xau(env) -> (price_e7, ts) {
-    // PROD: Reflector / SEP-40 client; assert (now - ts) < max_staleness
-    // DEMO: admin-pushed price in instance storage + expiry_ledger gate
-}
-fn borrowing_base(pledge, oracle) -> i128 {
-    let (px, ts) = oracle.price_xau();
-    assert fresh(ts);
-    pledge.locked_weight_e7 * px / 1e7 * ltv_bps / 10_000
-}
-```
-
-Gold-price staleness is the single biggest risk in any gold-credit product, name the dependency explicitly and gate on it. Never open or draw a line against a stale valuation.
-
-### 7.4 `AccessControl`
-
-Approved custodians, banks, valuation/compliance providers, keyed by role; admin-gated via `require_auth`. (OpenZeppelin's Soroban RBAC is a reasonable base.) The `ComplianceGate` check, only approved owners/banks/custodians/issuers may participate, folds in here.
-
-### 7.5 Refusal paths (the contract's spine: test these explicitly)
-
-- Refuse pledge if position not `Free`, attestation expired, or bank not approved.
-- Refuse double-pledge of the same bars.
-- Refuse `open_credit_line` if `limit > borrowing_base` or valuation stale.
-- Refuse `record_drawdown` above `available_limit`, or if pledge/line not active, or duplicate `auth_ref`.
-- Refuse `release_pledge` while `drawn_balance > 0`.
-- Refuse `enforce_title_transfer` before `cure_expiry_ledger`, if cured, or if already enforced.
-- Refuse any state-changing call by an unapproved party.
-
----
-
-## 8. The backend (TypeScript · Railway · PostgreSQL): built first
-
-This is where the build starts. The contract is the anchor, but the service is the product surface, and it can be developed and demonstrated against Soroban **testnet** from day one.
-
-### 8.1 Shape
+## 5. High-level architecture
 
 ```
-argent-service/  (TypeScript, Node)
-├── api/            REST: positions, pledges, credit-lines, authorizations,
-│                   repayments, defaults, enforcement   (the bank/processor-facing surface)
-├── chain/          @stellar/stellar-sdk: build/sign/submit Soroban tx; read contract state
-├── anchor/         @stellar/typescript-wallet-sdk: SEP-10 auth + SEP-24 deposit
-│                   (cardholder funds the settlement asset to repay with)
-├── indexer/        subscribe to Soroban events → upsert into Postgres (materialized view)
-├── domain/         the state machine, borrowing-base math, validation
-├── db/             Postgres schema + migrations (the live operational truth)
-└── auth/           party auth, role checks, request signing
+   Owner        Bank        Custodian        Verifier        Sponsor
+     |            |             |                |              |
+     |   business action · approval request · status view      |
+     +------------+-------------+----------------+--------------+
+                                |
+                                v
+                 Argent application and service layer
+        action builder · Soroban simulation · policy decoder
+        approval queue · webhook/polling · Stellar RPC client
+        event indexer · evidence-certificate generator
+                                |
+                                v
+                       DFNS authorization layer
+        role wallets · deny-by-default policies · quorum approval
+        MPC signing (no raw key) · approval-to-transaction trace
+                                |
+                                v
+                          Stellar / Soroban
+        credit_ledger · settlement_vault · rewards_ledger
+        Stellar settlement asset via SAC (SEP-41) · require_auth · events
+                                |
+                                v
+                            Evidence layer
+        transaction hash · contract events · live state · certificate
 ```
 
-### 8.2 The two-speed design (this is the whole trick)
+The contracts are intentionally signer-agnostic: they enforce role authorizations and approved-party checks regardless of who holds the keys, so the same contracts run under development signers today and under DFNS-governed institutional wallets after integration. The owner self-signs through a delegated wallet and does not pass through the policy engine; the five institutional roles are DFNS-governed (see §11).
 
-- **Authorization is fast and off-chain.** When a card is tapped, the issuer processor calls `POST /authorizations/check`. The service answers from the **Postgres materialized view** in milliseconds, never a blockchain round-trip. This is correct, not a shortcut: real card auth has always read a fast issuer-side ledger.
-- **State transitions are durable and on-chain.** Draws, repayments, defaults, enforcement are written to Soroban (via `chain/`), and the **indexer** reflects the resulting events back into Postgres so the fast view stays consistent with the anchored truth. Soroban is the system of record; Postgres is the system of speed.
+## 6. Contract architecture
 
-### 8.3 The authorization read (the Mastercard touchpoint)
+### 6.1 `credit_ledger`
 
-```
-POST /authorizations/check
-{ "cardRef": "card_001", "amount": "12500.00", "currency": "CHF",
-  "merchantCategory": "business_services", "country": "CH" }
+The main collateral-control state machine: the secured-credit lifecycle from framework registration through position registration, pledge activation, line opening, utilization, repayment state, release, default, cure, enforcement, and enforcement-readiness evidence. Responsibilities: register the tri-party framework and bind owner, bank, and custodian; record document hashes for facility, pledge, custody, eligible schedule, margin policy, and enforcement waterfall; register positions through asset-specific identity and valuation fields; prevent the same recorded collateral from being pledged twice; enforce one credit line per pledge and borrowing-base and drawdown limits; record repayment state through the approved settlement vault; keep repayment separate from release; require bank authorization and custodian confirmation for release; record default, cure, and enforcement evidence; support revaluation and margin checks and enforcement-readiness records.
 
-→ service checks the materialized view:
-    card active? · line active? · pledge active? · valuation fresh?
-    available_limit >= amount? · not in default?
+### 6.2 `settlement_vault`
 
-200 { "decision": "APPROVED",
-      "availableBefore": "720000.00", "availableAfter": "707500.00",
-      "reason": "Within active gold-backed credit line" }
-   or { "decision": "DECLINED", "reason": "Exceeds available collateral-backed capacity" }
-```
+The real settlement leg, narrow by design: it transfers a configured Stellar settlement asset (SAC / SEP-41) from the borrower to the bank and calls `credit_ledger.apply_repayment` in the same transaction path. Responsibilities: bind to one configured credit ledger and one settlement token; prevent duplicate payment references; reject repayment on closed or non-repayable lines; reject overpayment above drawn balance; transfer the settlement asset; reduce exposure via `apply_repayment`. Repayment reduces exposure; it does not release collateral.
 
-After the issuer processor confirms the hold, the service records the draw on Soroban (`record_drawdown`) and the indexer updates the view.
+### 6.3 `rewards_ledger`
 
-### 8.4 Why Postgres and not just chain state
+A sponsor-funded, non-transferable rewards overlay tied to eligible posted spend and verified claims. Rewards are not yield, not transferable tokens, and never mixed with pledged collateral unless later re-confirmed as new collateral through the credit-ledger workflow. Responsibilities: create sponsor-funded campaigns with budget and per-user caps; record eligible spend and confirm finality; submit, approve, or reject claims; issue non-transferable voucher records; confirm redemption; keep reward accounting fully separate from pledged collateral.
 
-Card programs need: sub-ms reads, rich query (by merchant, MCC, country, time), reversals/expiries, reconciliation, and reporting. None of that belongs on-chain. Postgres is the operational ledger; Soroban holds the *enforceable* subset and the hashes that make Postgres auditable. This is the same split a regulated issuer would expect to see.
+## 7. Contract function map
 
----
+Every function below exists in the repository. This is the authoritative mapping.
 
-## 9. The frontend (TypeScript)
+| Workflow | Contract function |
+|---|---|
+| Initialize ledger | `initialize` |
+| Grant / revoke / check role | `approve_party` · `revoke_party` · `is_approved` |
+| Register control framework | `register_framework` (read: `get_framework`) |
+| Register physical position | `register_position` (read: `get_position`) |
+| Select collateral set | `select_bars_for_collateral` (read: `get_selection`) |
+| Custodian immobilizes collateral | `confirm_and_immobilize` (read: `get_custody_control`) |
+| Activate pledge | `activate_pledge` (read: `get_pledge`) |
+| Open credit line | `open_credit_line` (read: `get_line`) |
+| Record / reverse utilization | `record_drawdown` · `reverse_drawdown` (read: `get_drawdown`) |
+| Available capacity | `available_capacity` |
+| Apply repayment to line | `apply_repayment` (read: `get_repayment`) |
+| Atomic settlement-asset repayment | `settlement_vault.settle_repayment` |
+| Collateral adjustment | `request_collateral_adjustment` · `bank_approve_adjustment` · `custodian_confirm_adjustment` (read: `get_adjustment`) |
+| Bank authorizes release | `bank_authorize_release` |
+| Custodian confirms release | `custodian_confirm_release` |
+| Suspend / resume line | `bank_suspend_line` · `bank_resume_line` |
+| Revalue and check margin | `revalue_and_check` (read: `get_valuation`) |
+| Issue default notice | `issue_default_notice` |
+| Cure default | `cure_default` |
+| Record enforcement | `record_enforcement` |
+| Enforcement readiness | `open_enforcement_readiness` · `populate_enforcement_readiness` · `expire_enforcement_readiness` (read: `get_enforcement_readiness`) |
+| Reward campaign | `create_campaign` · `add_campaign_budget` · `pause_campaign` · `resume_campaign` · `close_campaign` |
+| Reward spend / finality | `record_eligible_spend` · `confirm_spend_final` · `cancel_reward` · `expire_reward` |
+| Reward claim / voucher | `submit_claim` · `sponsor_approve_claim` · `sponsor_reject_claim` |
+| Reward redemption | `confirm_redemption` |
 
-A role-aware cockpit, wrapped around the live service (which is wrapped around testnet Soroban). Views:
+Two design decisions a reviewer should note, because they are deliberate and they differ from a naive design:
 
-- **Cardholder**, bars, pledge status, line, available capacity, repay button (triggers `repay_and_release`).
-- **Bank**, collateral seen, limit set, utilization, default/enforce controls.
-- **Custodian**, attestation status, lock/release confirmation.
-- **Auditor**, read-only reconciliation of Postgres view against Soroban state + events.
+**Repayment and release are separate.** `apply_repayment` (and the atomic `settle_repayment`) reduce exposure only. Release is a distinct two-step act: `bank_authorize_release` then `custodian_confirm_release`. The bank retains control after repayment until release is signed by both bank and custodian. This is how a real facility closes, and it is stronger for the lender than an automatic release.
 
-The frontend never talks to Soroban directly for writes; it calls the service, which signs and submits. (Repayment can optionally be signed client-side via a Stellar wallet to demonstrate the cardholder's own auth leg.)
+**The chain records enforcement; it does not execute it.** On uncured default, `record_enforcement` records the notice, cure expiry, outcome, and a hash of the off-chain legal instrument. Argent does not flip legal title on-chain or move physical metal. Enforcement happens under the security documents, applicable law, and custody instructions; the contract provides the evidenced, append-only record of it.
 
----
+## 8. Primary lifecycle
 
-## 10. The demonstrable transaction (what the demo shows)
+**Framework setup.** Owner, bank, and custodian enter a control framework; the contract stores the parties and document hashes (facility, pledge, custody, eligible schedule, margin policy, enforcement waterfall). The documents stay off-chain.
 
-Starting state: cardholder owns 3 allocated bars; gold value ≈ CHF 1.2M (live-priced); LTV 60%; line CHF 720k; gold `Free`.
+**Position registration.** A position is registered through asset-specific identity and valuation fields. For gold: bar-set hash, serials hash, refiner/assay references, fine weight, custody-account evidence. For other custody-stable assets: lot ID, batch ID, warehouse-receipt ID, tank ID, grade, quantity, or inspection-certificate hash, the same pattern.
 
-1. **Register**, custodian attests; `register_position` on Soroban → `Free`.
-2. **Pledge**, cardholder + bank sign; `activate_pledge` → gold `Pledged`, line eligible. *(first multi-party Soroban tx)*
-3. **Open line**, bank; `open_credit_line`, limit derived from live `borrowing_base`.
-4. **Card draw**, simulated authorization off-chain → `record_drawdown(25,000)` → available 695k; **gold unmoved**.
-5. **Repay (the headline)**, `repay_and_release(25,000)`: **SEP-41 cash moves cardholder → bank, debt → 0, pledge releases, one atomic tx.** *(the real value movement over Stellar via Soroban)*
-6. **Default branch**, re-run to a missed payment: `issue_default_notice` → card frozen, line `Defaulted`; cure window lapses; `enforce_title_transfer` → bars' title-state → bank. *(the second strong moment)*
+**Selection and immobilization.** The owner selects a specific collateral set; the custodian confirms and immobilizes it. The same recorded collateral cannot enter another active pledge inside Argent.
 
-Two visible movements, both honest: **money moving on repayment**, and **collateral title flipping on enforcement**. Neither pretends Soroban is Mastercard.
+**Pledge and credit line.** The bank accepts the pledge and opens a line against the borrowing base. The contract enforces that the line cannot exceed the approved base and that drawdowns cannot exceed the active limit.
 
----
+**Utilization.** A verifier/processor role records utilization evidence (eligible posted spend or a drawdown reference). Argent does not process card rails; it records the secured utilization state the bank or processor relies on.
 
-## 11. Build order
+**Repayment.** `settlement_vault.settle_repayment` moves the settlement asset from borrower to bank and reduces exposure via `credit_ledger.apply_repayment`. Repayment makes release available if the bank's conditions are met; it does not release automatically.
 
-The vertical slice to a demonstrable transaction is five contract functions plus the two-speed backend, not the full eight-contract design.
+**Release.** Two stages: `bank_authorize_release`, then `custodian_confirm_release`. This preserves the bank's veto and the custodian's operational control.
 
-**Phase 0, Skeleton (Codespaces).** Rust workspace (`CreditLedger`, `SettlementVault`, `OracleAdapter` stub, `AccessControl`); TS service skeleton; Postgres schema + migrations; Railway project; Soroban testnet keys. Reuse, don't reinvent, see the building blocks in the Appendix: scaffold the contract + frontend with **Scaffold Stellar**, build `AccessControl` on **OpenZeppelin Contracts for Soroban**, and stand up `anchor/` and `chain/` with the **`@stellar/typescript-wallet-sdk`** / **`@stellar/stellar-sdk`**.
+**Default, cure, enforcement.** The bank issues a default notice; the borrower may `cure_default` before the deadline; if uncured, the bank records enforcement via `record_enforcement` with the legal/custody evidence hash. The chain records; law and custody enforce.
 
-**Phase 1, Backend spine + happy path.** Service API + Postgres view + `chain/` submit + `indexer`. Contract happy path: `register_position` → `activate_pledge` → `open_credit_line` → `record_drawdown` → `repay_and_release`. Demonstrable end-to-end on testnet.
+**Reward overlay.** Separate from pledged collateral: a sponsor funds a campaign tied to eligible posted spend; claims, approvals, vouchers, and redemptions are recorded in `rewards_ledger`.
 
-**Phase 2, Refusal paths.** Every assertion in §7.5, with tests. This is where the product's credibility lives.
+## 9. On-chain / off-chain boundary
 
-**Phase 3, Default & enforcement branch.** `issue_default_notice` → `cure_default` / `enforce_title_transfer`.
-
-**Phase 4, Cockpit UI.** The four role views over the live service.
-
-**Phase 5, Oracle + polish.** Swap the oracle stub for Reflector/SEP-40 with staleness gating; Soroban event hardening; TTL/archival handling on persistent entries; reconciliation view.
-
-**Phase 6, Pilot-readiness docs.** Bank API spec, processor integration spec, custodian attestation spec, and a one-page legal/enforcement boundary memo.
-
----
-
-## 12. The hard parts (state these plainly: they are features here)
-
-- **The partner bank is the real gating dependency.** Argent makes the collateral clean enough for an issuer to rely on; it does not become the issuer. The accelerator's "regulatory-aware RWA" framing rewards this honesty.
-- **Enforcement is legal, not instantaneous.** `enforce_title_transfer` flips an on-chain status and anchors a hash of the off-chain legal transfer. The bars move through the custody instruction and security agreement, under law. The chain removes *factual* dispute about the secured position; it does not bypass the legal process. Say this out loud.
-- **Oracle risk is the core financial risk.** Stale or manipulated gold prices break LTV. Mitigate with a SEP-40 feed, staleness gating, and conservative haircuts; name it in the pitch rather than hiding it.
-- **Stellar is not (yet) on Mastercard's settlement-chain list.** Argent's Stellar leg is borrower↔bank repayment, independent of Mastercard issuer↔acquirer settlement. Keep the two settlement domains clearly separate in every description.
-- **Soroban constraints.** `no_std`; security-critical state in persistent storage with TTL management (never temporary); keep the value-moving surface (`SettlementVault`) minimal for audit.
-
----
-
-## 13. The sentences to use (positioning, verbatim-safe)
-
-- *"Argent is a Soroban collateral engine for bank-issued secured credit lines backed by vaulted gold. The card transaction stays on card rails. The collateral truth lives on Stellar."*
-- *"Network-agnostic core, Mastercard-first reference implementation."*
-- *"Argent does not process card payments, custody gold, or lend. It makes the gold-backed collateral position clean, locked, visible, and enforceable enough for a regulated issuer to rely on."*
-- *"The one thing that moves over Stellar is the repayment and the collateral release, atomically, which is the part card rails can't do."*
-
-## DFNS integration: institutional signing and approval layer
-
-*This section describes the planned SCF Build Integration-Track work. DFNS is the selected, approved Integration-List building block (Wallets-as-a-Service). The integration replaces the development stand-in signers with policy-governed institutional Stellar wallets, one per market role, and adds the approval workflow that a bank/custodian/refiner-facing product requires. The architecture below already accommodates it: see `service/src/chain/signer.ts`, where the `Signer` interface, the `SignerRegistry`, auth-entry signing, and the `DfnsSigner` placeholder define the exact seam DFNS slots into. No change to the chain layer is required to swap in DFNS, that is the whole point of the interface.*
-
-### Why DFNS
-
-Argent must never let one backend key act for every market participant. The bank, custodian, verifier, and reward sponsor each need separate authority, their own approval rules, and their own audit trail over the Soroban actions assigned to their real-world role. DFNS provides exactly that: a policy-governed Stellar wallet per role, signing/approval policies, pending-approval objects with webhook events, and key management, while the institution retains control (DFNS is infrastructure, not a custodian). This turns Argent's multi-party control model from a claim into an enforced property.
-
-### Role → DFNS wallet mapping
-
-| Market actor | Real-world responsibility | DFNS role in Argent |
+| Domain | On-chain (Soroban) | Off-chain |
 |---|---|---|
-| **Owner / cardholder** | selects gold, accepts pledge, repays, claims rewards | own wallet (Freighter / Stellar Wallets Kit), not DFNS, the value-bearing repayment leg stays with the user |
-| **Bank** | accepts pledge, opens line, suspends, releases, enforces | DFNS bank wallet + credit/enforcement approval policy |
-| **Custodian** | confirms bars, immobilizes, releases, confirms realization | DFNS custodian wallet + custody-control policy |
-| **Verifier** | confirms eligible posted card spend | DFNS verifier wallet + spend-evidence policy |
-| **Sponsor / refiner** | approves reward campaign, claim, voucher, redemption | DFNS sponsor wallet + reward-campaign policy |
-| **Operator** | builds/submits tx, pays fees, indexes events | Argent's own operator key (tx source + fee sponsorship) |
+| Asset identity | hashes, IDs, position status, selected-collateral reference | serials, bar list, receipt, certificate, inspection report |
+| Custody | attestation, immobilization, release confirmation | vault books, warehouse records, physical possession |
+| Legal documents | document hashes | facility, pledge, custody, enforcement documents |
+| Credit policy | LTV, limit, borrowing base, margin status, line state | credit-committee decision, underwriting model, approval file |
+| Valuation | value fields, price timestamp, margin state | external price source, appraiser, approved valuation file |
+| Utilization | drawdown reference, amount, capacity change | card rail, issuer-processor event, internal bank ledger |
+| Repayment | settlement transaction, exposure reduction | bank accounting, statement, reconciliation |
+| Release | bank authorization, custodian confirmation | physical release instruction, custody-book update |
+| Default / cure | notice, cure deadline, cure state | legal notices, borrower communication, bank decision |
+| Enforcement | outcome hash and status | legal enforcement, transfer, realization, recovery |
+| DFNS | signer addresses, signed transaction, tx hash | policies, approvals, activity records, org wallets |
+| Evidence | event log, state, certificate references | rendered certificate, audit file, private document bundle |
 
-### Signing flow
+## 10. Stellar integration detail
 
-```
-Soroban action requested (e.g. bank authorizes release)
-        ↓
-Argent service builds the invocation, simulates, discovers the auth entries
-        ↓
-each entry routed to the role's DFNS wallet (via the DfnsSigner)
-        ↓
-DFNS policy evaluates → approval pending / approved / rejected / expired
-        ↓
-on approval, DFNS signs the Soroban authorization entry
-        ↓
-Argent reassembles and submits the transaction to Stellar
-        ↓
-indexer reflects the resulting events; frontend shows signer/approval state
-```
+**Soroban contracts.** Soroban records shared lifecycle state no single participant can alter unilaterally, using explicit role authorizations and approved-party checks; each actor signs only actions belonging to that actor.
 
-### The one validation item (named honestly)
+**Stellar RPC.** The service uses Soroban RPC for transaction simulation, required-authorization discovery, fee/resource estimation, submission, confirmation, contract-event queries, and live state reads. `simulateTransaction` is central to the DFNS integration: it exposes the authorization requirements of an action before signing, which is what the policy decoder routes on.
 
-The chain layer signs Soroban **authorization entries**, not whole transaction envelopes. The first funded step validates the exact DFNS path for this: either DFNS Stellar transaction signing where applicable, or DFNS generic Ed25519/hash signing of the Soroban auth-entry payload, returning a signature plus the role's public key (the `SigningCallback` shape `authorizeEntry()` accepts). Naming this as a Tranche-1 validation item rather than assuming it is deliberate.
+**Stellar Asset Contract (SEP-41).** The settlement leg moves a Stellar settlement asset (USDC or another bank-approved asset) through the Soroban token interface. `settlement_vault` binds repayment to exposure reduction so payment and debt reduction are provably one workflow.
 
-### Reusable ecosystem output
+**Events and indexing.** Lifecycle transitions emit contract events. Because RPC event retention is not a permanent archive, the service maintains its own indexed event history, links each event to its DFNS approval activity, and renders evidence certificates from the combination.
 
-A by-product of the integration is a **DFNS + Soroban multi-party authorization reference adapter**: a TypeScript module showing how to build a Soroban invocation, discover required authorizations, route each role signature through a DFNS-managed Stellar wallet, handle pending approvals, submit, and expose signer state to a frontend. This is published for the ecosystem, so the work has utility beyond Argent.
+**Current-state verification.** The service reads contract state through RPC to confirm line status, available capacity, pledge state, repayment state, reward state, and enforcement readiness, for both live UI and certificate generation.
 
-### What does *not* change
+## 11. DFNS integration architecture
 
-The Soroban contracts stay signer-agnostic, no DFNS dependency in the contracts. Argent still does not custody gold, lend, or process payments. DFNS governs *who may authorize which action*; Soroban records the shared lifecycle state; the bank, custodian, and sponsor remain the regulated parties. Off-list integrations (price oracle, card processor, refiner) stay simulated/commercial context and are not part of the funded Integration-Track scope.
+DFNS is the institutional authorization layer. The contracts already require distinct role authorizations; the funded integration replaces local development signers with DFNS-governed role wallets and policy approvals. DFNS is not a remote key box Argent calls to sign; it governs the institutional intent lifecycle, permission check, policy evaluation, quorum approval, MPC signing, broadcast, reconciliation, before any Soroban state transition is allowed.
 
-## Appendix A: SDF building blocks the build reuses
+**Where DFNS and Soroban meet (the technical touch points).**
+- **The 32-byte authorization-entry hash.** DFNS signs the exact Soroban authorization-entry payload (a `HashIdPreimageSorobanAuthorization` hash) via its Keys API raw-payload signing, not only pre-built transaction envelopes, and the reassembled transaction verifies on-chain.[8]
+- **Ed25519, the shared scheme.** Stellar uses Ed25519; DFNS signs Ed25519. A DFNS signature is natively valid for a Stellar/Soroban authorization entry.
+- **Quorum maps to `require_auth`.** A two-party approval (e.g. the two-step release) is two independently signed authorization entries; DFNS quorum policy expresses exactly that institutional requirement.
+- **Decode Soroban XDR, then route.** The service decodes the Soroban action on a pending DFNS activity, identifies contract, method, and business reference, and routes it to the correct role under policy.
 
-Argent assembles audited, SDF-maintained, Apache-2.0 primitives rather than hand-rolling infrastructure. This is both faster and a stronger engineering signal for the accelerator: the novel surface is the collateral logic, not the plumbing.
+**Role-wallet topology.** Authority is expressed as a sub-organization wallet topology on org-controlled wallets, mirroring the institutional org chart and isolating each party's authority: an operator org (Argent) at the top; a bank sub-organization split into credit, release, and enforcement authorities (so the wallet that authorizes a release is not the wallet that records enforcement); a custodian sub-organization (custody and release confirmation); a sponsor sub-organization (campaign and redemption); a verifier sub-organization (spend evidence). No backend service key signs as all parties.
 
-| Building block | What it is | Where Argent uses it |
-|---|---|---|
-| **`@stellar/typescript-wallet-sdk`** | TS SDK for Stellar wallet apps; SEP-10 auth + SEP-24 anchor flows | `anchor/`, the cardholder funds the settlement asset to repay with (the exact SDK MoneyGram's integration guide prescribes) |
-| **`@stellar/stellar-sdk` (js-stellar-sdk)** | Main JS/TS client library | `chain/`, build/sign/submit Soroban tx, read contract state |
-| **`stellar-cli` + Scaffold Stellar** | Rust CLI + SDF scaffolding tool | Phase 0, stand up the contract workspace + frontend skeleton |
-| **`rs-soroban-sdk`** | Rust SDK for Soroban contracts | the contract suite (`CreditLedger`, `SettlementVault`, …) |
-| **OpenZeppelin Contracts for Soroban** | Audited RBAC / token / vault primitives | `AccessControl`; token interactions on the SettlementVault |
-| **SDF Anchor Platform** | Production service implementing SEP-10/12/24 etc. | pilot-stage funding rail (replaces the demo's stubbed funding) |
-| **`stellar-rpc` + Stellar Lab** | Soroban RPC + in-browser tx/contract tooling | `indexer/` event subscription; manual testnet ops |
-| **`wallet-backend`** (reference) | SDF-maintained backend for Stellar wallet apps | reference implementation for the `chain/` + `indexer/` service shape |
-| **USDC testnet** (`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) + Circle faucet | Test settlement asset | the repayment-DvP leg on testnet, no self-issued token needed |
+**Deny-by-default policy model, stated precisely.** DFNS policies are not whitelist-by-default: if no policy is configured, activities are allowed, and delegated wallets bypass the policy engine entirely. Argent therefore *constructs* deny-by-default through scoped per-wallet policies: block all signing by default; decode the Soroban action; identify contract, method, reference, and role; require approval where policy demands it; sign only if policy resolves. "Deny-by-default" is a property Argent builds, not one DFNS provides for free, this precision is the difference between an accurate application and an overclaim.
 
-Adjacency worth flagging (not a build dependency): SDF now ships **`x402-stellar`** and **`stellar-mpp-sdk`** for HTTP-native / machine-payment settlement on Stellar, a natural "where this goes next" vector if Argent's credit primitive is ever consumed by agentic spenders.
+**Soroban-aware policy decoder (the reusable output).** A DFNS service-account helper that decodes Soroban XDR on a pending activity, identifies contract/method/reference, maps it to the correct institutional role, and approves, requests approval, or blocks per the deny-by-default model. DFNS already ships this programmable-policy pattern for EVM-style call data; it does not exist for Soroban. This adapter is the genuinely new, reusable contribution any institutional Stellar RWA builder can fork.
+
+This contribution sits directly inside DFNS's own stated direction. DFNS now positions itself not as a wallet provider but as a core banking platform for institutional digital-asset operations,[4] and its recent product line is precisely a governance layer: a Governance Engine described as a zero-trust architecture for institutions,[5] and Policy-Aware Service Accounts built on the premise that institutions do not lack controls but lack a way to apply them to digital-asset flows without rebuilding their stack.[6] That premise is Argent's thesis stated in DFNS's own words. The gap is that this policy-aware model decodes EVM-style call data and does not yet decode Soroban. Argent's policy decoder is the Soroban-shaped extension of DFNS's governance model, and DFNS support for Stellar primitives such as fee sponsorship is already live,[7] so the integration builds on existing surface rather than speculative capability.
+
+**Signing sequence.** Service builds the invocation → simulates via RPC → extracts required authorizations → policy decoder maps action to role → DFNS evaluates permissions and policy → approvers approve or reject → DFNS MPC-signs the approved payload through the role wallet → service assembles and submits → service reconciles DFNS activity status against Stellar transaction status → indexer records events and renders evidence. DFNS activity states (pending, executing, broadcasted, confirmed, failed, rejected) are tracked separately from Stellar transaction state, keyed on an idempotency id, so the lifecycle reflects the true combined state (e.g. "awaiting bank approval" is a DFNS state with no Stellar transaction yet).
+
+**The one validated unknown (committed path, with fallback).** The integration validates, on testnet, that DFNS signs the exact Soroban authorization-entry hash via the Keys API and that the reassembled transaction verifies on-chain. The capability exists in the API surface; validation proves it end to end for Soroban auth entries specifically. If a gap is found, the documented fallback is signing at the transaction-envelope boundary instead, preserving role separation and reviewer-visible authorization evidence.
+
+## 12. Security model
+
+**Contract-level controls (enforced and tested today).** Explicit role authorization via Soroban auth; approved-party checks for bank, custodian, verifier, sponsor, and service roles; no double pledge of the same recorded collateral; one credit line per pledge; no line above borrowing base; no draw above available limit; stale and future-dated valuation refusal; no repayment above outstanding drawn balance; no automatic release after repayment; bank authorization required before release; custodian confirmation required before collateral returns to free state; default-notice and cure-deadline checks; enforcement only after the relevant lifecycle conditions; evidence-hash validation for legally important references; duplicate payment-reference prevention in `settlement_vault`; strict separation between reward records and pledged collateral.
+
+**Operational controls (added by DFNS).** Role-specific wallets; policy approval before signing; pending and rejected states; approval-to-transaction traceability; no shared backend key that can act for every role; MPC signing with no raw private key in existence; an institution-readable audit trail from approval to transaction hash.
+
+**Residual risks (stated honestly).** Argent reduces collateral-control risk; it does not remove all risk. What still requires trust: custodian honesty at the moment of attestation; physical loss, theft, degradation, or operational failure; pledges created entirely outside Argent; legal-enforceability or perfection defects; sanctions/provenance/KYC/AML/insurance failures; price collapse or a stale external valuation source; jurisdictional enforcement delays; bank underwriting error. Argent removes the control and verification risks that were never priceable; it leaves the bank the credit, market, and legal risks it is in business to price.
+
+## 13. Evidence and audit model
+
+Four layers: **intent** (who requested or approved the action), **signature** (which DFNS role wallet signed it), **ledger** (transaction hash, contract event, current state), and **document** (hashes of off-chain documents, custody records, valuations, notices, enforcement files). The evidence certificate combines them, framework/position/pledge/line IDs, current line status, drawn balance and available capacity, collateral status, key lifecycle events, the signer role for each action, the DFNS activity reference, the Stellar transaction hash, relevant document hashes, a ledger timestamp, and an explicit statement of what the certificate proves and does not prove.
+
+## 14. Testing and verification
+
+The open-source core ships 158 tests across the three crates: `credit_ledger` 98, `rewards_ledger` 45, `settlement_vault` 15. Coverage includes lifecycle happy paths; role authorization and party revocation; double-pledge refusal and second-line-against-same-pledge refusal; borrowing-base and drawdown constraints; stale and future-dated price refusal; repayment and overpayment controls; no release with an outstanding balance; repayment does not auto-release; default/cure/enforcement constraints; duplicate payment-reference safety; reward budget, claim, and redemption lifecycle; zero-hash evidence refusal; terminal-state snapshot checks; and TTL / ledger-advance persistence checks. A reviewer can reproduce the result from the contracts workspace with `cargo test --workspace` (the build script compiles the `credit_ledger` WASM before the settlement-vault tests, which import it), and can exercise the live testnet demonstrator and its on-chain transactions.
+
+## 15. Build readiness and milestone path
+
+Capability stages (the tranche budget and dates are in the application form; this section establishes technical readiness, not cost).
+
+**Implemented today (this repository / live testnet).** Three deployed Soroban contracts; the full lifecycle of §8 including the two-step release and the default/cure/enforcement branch; atomic SEP-41 settlement via `settle_repayment`; event emission; evidence-certificate output in the live app; 158 passing tests; a signer interface with a clean `signAuthEntry(payloadHash)` seam currently served by development signers.
+
+**MVP, the DFNS signing foundation.** DFNS role wallets configured; the signer adapter connected behind the existing interface; the first governed lifecycle action executed end to end through the DFNS path; the first approval-to-transaction trace produced.
+
+**Testnet, the full governed lifecycle.** Deny-by-default policy templates on all role wallets; the approval queue with pending/approved/rejected/expired/submitted/confirmed states; webhook handling; the two-step release and the default/enforcement flow demonstrated through real DFNS quorum approvals; the event indexer and reconciliation; the evidence pack.
+
+**Mainnet, the launch.** Deployed mainnet contracts with contract IDs, transaction examples, and a runbook; the reusable Soroban-aware DFNS authorization adapter and policy decoder published open-source; the evidence-certificate pack; a pilot package for bank, custodian, and sponsor review.
+
+The team is ready to begin on award: the contracts, lifecycle, and test suite exist now, so the funded work is integration and hardening, not design or research.
+
+## 16. Open source and non-goals
+
+The contract core is open-sourced under Apache-2.0. The funded DFNS-and-Soroban authorization adapter and policy decoder will be published open-source as the ecosystem deliverable, so any institutional Stellar RWA builder facing the same multi-party-signing problem can fork them rather than start from a blank page.
+
+**Non-goals (explicit).** The funded build does not become a bank, issue credit, custody assets, tokenize collateral, issue consumer cards, integrate directly with card networks, automate legal enforcement, replace bank underwriting or custodian onboarding, or attempt a general SDK for every Soroban application. It is focused on one reference workflow, DFNS-governed physical-collateral control on Stellar, proven first on gold and made reusable through the open contract core and the authorization adapter.
+
+## 17. Reviewer summary
+
+Argent is a tested Soroban collateral-control application for physical assets that stay in custody. The contracts prove the core lifecycle today: identity, exclusive pledge, borrowing base, utilization, repayment, the two-step release, default, cure, enforcement evidence, and a separated rewards overlay, with 158 passing tests and a live testnet demonstrator. The funded work brings this from a local-signer prototype to a DFNS-governed institutional workflow and a mainnet reference deployment, and publishes the Soroban-aware DFNS authorization adapter as a reusable ecosystem contribution. The bank receives no token and takes no custody; it receives control evidence, exact collateral identity, exclusive pledge state, contract-enforced borrowing base, a signed release path, default and enforcement evidence, and a transaction-backed audit trail. DFNS governs who signs. Soroban records what changes. Stellar settlement assets move where repayment is real.
 
 ---
 
-## Appendix B: The partner-decomposition pattern (MoneyGram / MGUSD as precedent)
+## References
 
-Argent's posture, own the product and orchestration, outsource every regulated function to the licensed party, is not novel; it is exactly how MoneyGram structured MGUSD on Stellar (June 2026). Presenting Argent in this template borrows credibility a Stellar reviewer recognizes instantly:
+[1] L. McCulloch, "Stellar's composable auth model," Stellar Development Foundation, May 5, 2026. https://stellar.org/blog/foundation-news/stellars-composable-auth-model
 
-| Role | MGUSD party | Argent equivalent |
-|---|---|---|
-| Brand / network owner | MoneyGram | **Argent** (orchestration; lends/custodies/issues nothing) |
-| Regulated issuer | Bridge (Stripe) | **Partner bank** (extends credit, issues the card) |
-| Smart-contract supply/state layer | M0 | **Argent's Soroban suite** (`CreditLedger` + `SettlementVault`) |
-| Custody / float | Fireblocks | **Gold custodian** (bars) + digital-asset custodian (settlement float) |
-| Settlement chain | Stellar | **Stellar** |
+[2] Stellar Development Foundation, "Quorum Freeze (CAP-77): A Governed, Onchain Incident Response on Stellar," May 5, 2026. https://stellar.org/blog/foundation-news/quorum-freeze-cap-77-governed-onchain-incident-response
 
-The narrative arc also transfers: MoneyGram ran on Circle's USDC before graduating to its own issuance. Argent starts on USDC for the settlement leg and can graduate later to a purpose-built settlement asset via the Bridge/M0 issuance-as-a-service path, a Phase-7 expansion vector, not MVP. (Borrow MoneyGram's *structure*, not its remittance *market*: Argent's user owns allocated gold bars, not a cash-kiosk balance.)
+[3] N. Barry, "Introducing the Quantum Preparedness Plan," Stellar Development Foundation, June 9, 2026. https://stellar.org/blog/foundation-news/introducing-the-quantum-preparedness-plan
+
+[4] C. Hagège and C. Grilhault des Fontaines, "We're Not a Wallet Company Anymore," DFNS, June 3, 2026. https://dfns.co/article/were-not-a-wallet-company-anymore
+
+[5] T. de Lachèze-Murel, "Introducing Governance Engine," DFNS, June 10, 2026. https://dfns.co/article/introducing-governance-engine
+
+[6] H. Tross, "Introducing Policy-Aware Service Accounts," DFNS, April 27, 2026. https://dfns.co/article/introducing-policy-aware-service-accounts
+
+[7] A. Moreau, "Fee Sponsors on Stellar," DFNS, June 12, 2025. https://dfns.co/article/fee-sponsor-on-stellar
+
+[8] "Signing Soroban contract invocations," Stellar Developer Documentation. https://developers.stellar.org/docs/build/guides/transactions/signing-soroban-invocations
 
 ---
 
-*Naming: this is **Argent**. The earlier "VaultLine" working name is retired. Repo, Railway service, and the application all read Argent. Aurum stays untouched for Axelra (Canton/Daml).*
+*Companion document: `argent-dfns-signing-sequence.md` in this repository details the DFNS intent lifecycle, approval flow, webhook transitions, role-wallet topology, and policy model at implementation depth.*
