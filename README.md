@@ -18,8 +18,9 @@ Soroban as **role-signed state transitions** between parties who do not fully
 trust each other, owner, bank, custodian.
 
 The contracts are **asset-agnostic by design**. The governing structure carries
-no commodity. Argent runs on allocated gold; the same core binds copper, iron,
-or lead at the leaf fields, with no change to the structure.
+no commodity. Argent runs on allocated gold; the same core binds other
+custody-stable assets (base metals, critical minerals, warehouse-held
+commodities) at the leaf fields, with no change to the structure.
 
 ## Contracts
 
