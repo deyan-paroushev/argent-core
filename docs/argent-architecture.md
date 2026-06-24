@@ -2,7 +2,7 @@
 
 **DFNS-governed physical-collateral control on Stellar.**
 
-*Technical Architecture Document for the Stellar x CV Labs Accelerator (SCF Build, Integration Track, DFNS). Submission version 1.0.*
+*Technical Architecture Document for the Stellar x CV Labs Accelerator (SCF Build, Integration Track, DFNS). Submission version 1.1.*
 
 *This document is self-contained. A reviewer should be able to evaluate the Stellar use case, the integration plan, the contract design, the security model, and the build readiness from this document alone, then verify every claim against the open-source contracts in the linked repository. Every contract function named here exists in that repository.*
 
@@ -225,17 +225,23 @@ The open-source core ships 158 tests across the three crates: `credit_ledger` 98
 
 ## 15. Build readiness and milestone path
 
-Capability stages (the tranche budget and dates are in the application form; this section establishes technical readiness, not cost).
+The technical architecture is complete and the contracts exist now, so the funded work is integration and hardening, not design or research. This section states what is built in each funded tranche as clear, measurable, verifiable deliverables. The dollar split across tranches is in the application form; this section establishes the technical content and the success signal a reviewer can test for each.
 
-**Implemented today (this repository / live testnet).** Three deployed Soroban contracts; the full lifecycle of §8 including the two-step release and the default/cure/enforcement branch; atomic SEP-41 settlement via `settle_repayment`; event emission; evidence-certificate output in the live app; 158 passing tests; a signer interface with a clean `signAuthEntry(payloadHash)` seam currently served by development signers.
+**Already implemented (this repository, live testnet).** Three deployed Soroban contracts; the full lifecycle of §8 including the two-step release and the default/cure/enforcement branch; atomic SEP-41 settlement via `settle_repayment`; event emission; evidence-certificate output in the live app; 158 passing tests; and a signer interface with a clean `signAuthEntry(payloadHash)` seam currently served by development signers. This is the baseline the funded build starts from, not part of the funded scope.
 
-**MVP, the DFNS signing foundation.** DFNS role wallets configured; the signer adapter connected behind the existing interface; the first governed lifecycle action executed end to end through the DFNS path; the first approval-to-transaction trace produced.
+**Tranche 1, MVP: the DFNS signing foundation.** Replace development signers with DFNS-governed role wallets behind the existing `signAuthEntry(payloadHash)` seam, and prove one governed action end to end.
+- Deliverables: DFNS sub-organization role wallets provisioned for the bank, custodian, sponsor, and verifier roles; the signer adapter connected behind the existing interface; DFNS raw-payload signing of the exact 32-byte Soroban authorization-entry hash validated on testnet (the one validated unknown of §11, with the transaction-envelope fallback documented if a gap is found); the first complete lifecycle action (a drawdown or a repayment) executed through the DFNS path; the first approval-to-transaction trace captured.
+- Success signal (verifiable): a recorded testnet transaction whose Soroban authorization entry was signed by a DFNS role wallet, with the matching DFNS activity id and Stellar transaction hash shown side by side.
 
-**Testnet, the full governed lifecycle.** Deny-by-default policy templates on all role wallets; the approval queue with pending/approved/rejected/expired/submitted/confirmed states; webhook handling; the two-step release and the default/enforcement flow demonstrated through real DFNS quorum approvals; the event indexer and reconciliation; the evidence pack.
+**Tranche 2, Testnet: the full governed lifecycle.** Bring the entire §8 lifecycle under DFNS quorum governance, with deny-by-default policy and reconciliation.
+- Deliverables: the Soroban-aware policy decoder that decodes the action on a pending DFNS activity and identifies contract, method, and business reference; deny-by-default policy templates constructed per role wallet (per §11, a property Argent builds, since unconfigured DFNS policy allows by default); the approval queue with pending, approved, rejected, expired, submitted, and confirmed states; webhook handling; the two-step release (`bank_authorize_release` then `custodian_confirm_release`) and the default and enforcement flow demonstrated through real DFNS quorum approvals by separate role wallets; the event indexer and the reconciliation that keys DFNS activity state against Stellar transaction state on an idempotency id.
+- Success signal (verifiable): a recorded testnet run of the full lifecycle in which a release requires two distinct role-wallet approvals, a wrong-role approval is refused by policy, and the evidence pack reconstructs every state from its approval to its transaction hash.
 
-**Mainnet, the launch.** Deployed mainnet contracts with contract IDs, transaction examples, and a runbook; the reusable Soroban-aware DFNS authorization adapter and policy decoder published open-source; the evidence-certificate pack; a pilot package for bank, custodian, and sponsor review.
+**Tranche 3, Mainnet: the launch and the reusable output.** Deploy to mainnet and publish the ecosystem contribution.
+- Deliverables: mainnet-deployed contracts with published contract IDs, worked transaction examples, and an operations runbook; the reusable Soroban-aware DFNS authorization adapter and policy decoder published open-source under Apache-2.0, with the standard message-purpose vocabulary of §16; the evidence-certificate pack (current-state, release, enforcement, and rewards certificates); and a pilot package for a bank, custodian, and sponsor to review.
+- Success signal (verifiable): live mainnet contract IDs a reviewer can inspect on a block explorer, a public repository containing the forkable adapter and decoder, and a governed lifecycle action executed on mainnet with its approval-to-transaction trace.
 
-The team is ready to begin on award: the contracts, lifecycle, and test suite exist now, so the funded work is integration and hardening, not design or research.
+Each tranche ships something testable on its own, and the destination is fixed: a functional, DFNS-governed reference facility live on Stellar mainnet with the authorization adapter open-sourced. None of the pool, scheduled-revaluation, margin-call, or substitution work described in the separate post-grant roadmap is in this funded scope.
 
 ## 16. Open source and non-goals
 
