@@ -12,6 +12,8 @@ The SCF Build grant funds one thing: a working, DFNS-governed, single-facility c
 
 This roadmap describes the institutional product that the funded build makes possible. It is written so that a reviewer can confirm two things at a glance: that the team understands where this goes, and that none of it is being smuggled into the funded period. Every item here is post-mainnet, post-traction, and contingent on the core shipping first.
 
+The detail is deliberate. Where the funded application is kept narrow on purpose, this document is specific on purpose: it shows the later layers as concrete extensions of the types and functions that already exist in the open-source core, with real signatures and fields, so a reviewer can see that the long-term direction is engineered rather than aspirational. Specificity here is evidence of competence, not a claim on the grant.
+
 The guiding principle is unchanged from the architecture document. Argent is a collateral book of record for physical assets under custody. The funded build proves that book for a single facility. The roadmap extends it to the way a bank actually runs a collateral operation: pools, positions, scheduled revaluation, and safe substitution.
 
 ## 2. Completion gate: what must be true before this roadmap starts
@@ -33,54 +35,147 @@ Only after those conditions hold should anything below become active.
 
 ## 3. What already exists to build on
 
-The roadmap is not a fresh design. Several of its foundations are already present as shipped, tested contract functions in the open-source core, in primitive single-facility form:
+The roadmap is not a fresh design. Its foundations are already present as shipped, tested contract types and functions in the open-source core, in primitive single-facility form. The post-grant work extends these exact types; it does not replace them.
 
-- **Revaluation and margin.** `revalue_and_check` already revalues a position and evaluates margin state against policy. The roadmap schedules and scales this, it does not invent it.
-- **Adjustment and substitution.** `request_collateral_adjustment`, `bank_approve_adjustment`, and `custodian_confirm_adjustment` already model a three-party collateral change. The roadmap hardens this into a no-unsecured-gap substitution flow.
-- **Borrowing base and exclusivity.** The contract already enforces one credit line per pledge, a borrowing base, and refusal of double-pledge. The roadmap generalizes these from one facility to a pool.
+- **Revaluation and margin.** `revalue_and_check` already writes a `LineValuation` and evaluates `MarginState` (`Covered`, `Warning`, `Called`) against the bank's policy, validating price freshness and confidence before a margin decision. The roadmap schedules and scales this across a pool; it does not invent it.
+- **Adjustment and substitution.** The `CollateralAdjustment` state machine already exists with `AdjustmentType::Substitution` and an `AdjustmentStatus` flow (`Requested`, `CustodianConfirmed`, `Approved`, `Rejected`) cleared by all three parties through `request_collateral_adjustment`, `bank_approve_adjustment`, and `custodian_confirm_adjustment`. The roadmap hardens this into a strict no-unsecured-gap ordering.
+- **Borrowing base and exclusivity.** `CreditLine` already carries `ltv_bps` and `maintenance_bps`, and the contract enforces `ltv_bps < maintenance_bps <= 10000` so a line can never be configured to lend past the value of its collateral. It already refuses a second line against the same pledge. The roadmap generalizes these from one facility to a pool.
 
-In other words, the roadmap turns primitives that are proven at the single-facility level into the operating model a bank uses across many positions. That is product maturation, not new research.
+In other words, the roadmap turns types and invariants that are proven at the single-facility level into the operating model a bank uses across many positions. That is product maturation, not new research, and it is why a reviewer should weigh the long-term direction: the funded build is not a dead-end demo but the first working layer of a system whose later layers are already designed against real instruments.
 
 ## 4. Collateral-pool and position model
 
 The first reference implementation binds one specific collateral set to one specific credit line. The natural institutional extension is a pool model, where a bank manages many positions against shared eligibility and policy. This mirrors how a mature collateral operation is actually run, through asset accounts, collateral pools, and mobilisation against shared eligibility, rather than as isolated single pledges [1].
 
-Candidate state, for a future major version (illustrative, not committed): a pool identifier and collateral account a position belongs to; collateral earmarked against a line but not yet pledged; the live composition of the pool across free, pledged, pending-release, and pending-substitution value; and the shortfall when revaluation puts a position below its margin threshold.
+The extension is a new `CollateralPool` record plus pool references on the existing position types. Illustrative, not committed for the funded build:
 
-The deliverable that matters here is not the fields. It is the output: a **collateral position report** a bank can read as a current control view, what exists, what is pledged, what is free, what is pending release, what is under margin call, what is in default, and the evidence behind each state. That report is the book-of-record idea taken from a single facility to a portfolio, the same decision-ready, current-state record that institutions build because accounting and custody books alone are too slow or fragmented [2].
+```rust
+#[contracttype]
+pub struct CollateralPool {
+    pub pool_id: BytesN<32>,
+    pub bank: Address,
+    pub custodian: Address,
+    pub collateral_account_id: BytesN<32>,
+    pub eligible_schedule_hash: BytesN<32>,   // shared eligibility for the pool
+    pub free_value: i128,                      // unencumbered, available to pledge
+    pub reserved_value: i128,                  // earmarked to a line, not yet pledged
+    pub pledged_value: i128,                   // actively securing drawn credit
+    pub pending_release_value: i128,           // release authorized, not yet confirmed
+    pub pending_substitution_value: i128,      // mid-substitution, in transition
+    pub margin_deficit: i128,                  // shortfall across called positions
+    pub valued_at_ledger: u32,
+}
+```
+
+```rust
+// added to the existing VaultPosition
+pub pool_id: BytesN<32>,        // the pool this position belongs to
+pub reserved_for: BytesN<32>,   // credit_line_id it is earmarked to, or zero
+```
+
+The deliverable that matters here is not the fields. It is the output: a **collateral position report**, a bank-readable current control view assembled from pool and position state and the event log, what exists, what is pledged, what is free, what is pending release, what is under margin call, what is in default, and the evidence behind each state. That report is the book-of-record idea taken from a single facility to a portfolio, the same decision-ready, current-state record institutions build because accounting and custody books alone are too slow or fragmented [2].
 
 ## 5. Scheduled revaluation and margin operations
 
 `revalue_and_check` exists today as an on-demand function. The operational model a bank expects is a scheduled process: a daily, or policy-defined, revaluation pass across a pool, a margin check against threshold, and an auditable margin-call record when a position falls short. Daily valuation, risk control measures, and margin calls are standard components of how central-bank-grade collateral operations are run [1], and a sound margin and haircut policy depends on liquidation horizon, market risk, and confidence level rather than a single static ratio [3].
 
-Roadmap scope: a scheduled revaluation pass over all live positions in a pool, each writing a timestamped valuation and margin state; a margin-call lifecycle (issue, cure window, cure or escalate) expressed as role-signed events in the same style as the existing default and enforcement flow; and stale-price and data-quality refusal at the pool level, extending the per-position stale-price rule already enforced today.
+The roadmap adds a scheduled pass and a first-class margin-call object, reusing the existing `LineValuation` and `MarginState`:
 
-This stays inside the product boundary. Argent records and enforces the margin state the bank's policy defines. It does not compute the bank's risk model, and it never moves the asset.
+```rust
+// Scheduled revaluation: iterate live positions in a pool, write a
+// LineValuation for each, and open a MarginCall where MarginState::Called.
+pub fn revalue_pool(env: Env, pool_id: BytesN<32>, prices_hash: BytesN<32>) -> u32;
+
+// Margin-call lifecycle, role-signed, in the same style as default/cure/enforce.
+pub fn issue_margin_call(env: Env, credit_line_id: BytesN<32>) -> BytesN<32>;
+pub fn record_margin_cure(env: Env, margin_call_id: BytesN<32>, cure_hash: BytesN<32>);
+pub fn escalate_margin_call(env: Env, margin_call_id: BytesN<32>);
+```
+
+```rust
+#[contracttype]
+pub enum MarginCallStatus { Open, Cured, Escalated, Expired }
+
+#[contracttype]
+pub struct MarginCall {
+    pub margin_call_id: BytesN<32>,
+    pub credit_line_id: BytesN<32>,
+    pub deficit: i128,                 // shortfall at the acted-on price
+    pub opened_at_ledger: u32,
+    pub cure_by_ledger: u32,           // cure window, policy-defined
+    pub status: MarginCallStatus,
+}
+```
+
+This stays inside the product boundary. Argent records and enforces the margin state the bank's policy defines. It does not compute the bank's risk model, and it never moves the asset. A stale or low-confidence price is refused at the pool level exactly as it is per-position today.
 
 ## 6. Safe collateral substitution
 
 The architecture document and the DTCC, Clearstream, Euroclear, and BCG interoperability framework both point at the same hard requirement: a borrower may need to swap pledged collateral without unwinding the facility, and the swap must never leave a moment of unsecured exposure [4].
 
-The invariant: **the new collateral is secured before the old collateral is released.** The roadmap flow, building on the existing adjustment functions:
+The invariant: **the new collateral is secured before the old collateral is released.** This hardens the existing `CollateralAdjustment` machine (`AdjustmentType::Substitution`) into a strictly ordered, gap-free flow:
 
-1. Owner proposes substitute collateral.
-2. Custodian attests the substitute exists and is held.
-3. Bank approves the substitute against eligibility and borrowing base.
-4. The new collateral locks.
-5. Only then does the old collateral release.
-6. The event sequence proves no unsecured gap existed at any point.
+```rust
+// Each step advances AdjustmentStatus; the contract refuses release of the
+// old set until the new set is locked, so no unsecured window can exist.
+pub fn request_substitution(env: Env, credit_line_id: BytesN<32>, new_barlist_hash: BytesN<32>, new_weight_oz_e7: i128, request_hash: BytesN<32>) -> BytesN<32>;
+pub fn attest_substitute_collateral(env: Env, adjustment_id: BytesN<32>);  // custodian: exists and held
+pub fn bank_approve_substitution(env: Env, adjustment_id: BytesN<32>);     // coverage holds at current price
+pub fn lock_substitute_collateral(env: Env, adjustment_id: BytesN<32>);    // new set immobilized FIRST
+pub fn release_replaced_collateral(env: Env, adjustment_id: BytesN<32>);   // only callable after lock
+pub fn confirm_substitution_complete(env: Env, adjustment_id: BytesN<32>); // evidence: no gap
+```
 
-This is a direct extension of `request_collateral_adjustment`, `bank_approve_adjustment`, and `custodian_confirm_adjustment`, ordered so that release can never precede the new lock.
+Ordering is the safety property: `release_replaced_collateral` reverts unless `lock_substitute_collateral` has succeeded for the same adjustment, so release can never precede the new lock. The event sequence is the proof of continuous secured coverage.
 
 ## 7. Haircut and valuation policy metadata
 
-Argent enforces the bank's approved haircut output today: valuation, borrowing base, maximum LTV, margin threshold, stale-price rule, and cure trigger. The boundary is firm and stays firm: Argent does not determine the haircut model; the bank supplies the approved policy and Argent enforces its result.
+Argent enforces the bank's approved haircut output today: valuation, borrowing base, maximum LTV (`ltv_bps`), maintenance threshold (`maintenance_bps`), stale-price rule, and cure trigger. The boundary is firm and stays firm: Argent does not determine the haircut model; the bank supplies the approved policy and Argent enforces its result.
 
-A future version may store additional policy metadata as hashes and typed fields so that the enforced result is fully attributable to a named, versioned policy, for example a liquidation-horizon assumption, a confidence level, a marketability class, a data-quality class, and a stress-scenario reference [3]. These would be recorded as policy inputs the contract enforces against, never as a risk engine the contract runs. The distinction is the whole point: enforcement is in scope; risk modelling is the bank's, permanently. This matters because collateral is not safe merely by existing: its own value is volatile, and heavily collateralized loans can carry more risk when that value drifts, which is exactly the drift a live borrowing base and margin state make visible [5].
+A future version stores the policy as a versioned, hash-anchored record so the enforced result is fully attributable to a named policy, and stores typed risk inputs the contract checks against [3]:
+
+```rust
+#[contracttype]
+pub struct HaircutPolicy {
+    pub policy_id: BytesN<32>,
+    pub policy_hash: BytesN<32>,        // anchors the off-chain approved policy doc
+    pub haircut_bps: u32,               // applied discount to market value
+    pub max_ltv_bps: u32,               // advance rate ceiling
+    pub maintenance_bps: u32,           // margin-call threshold
+    pub liquidation_horizon_days: u32,  // assumed time to realize
+    pub confidence_level_bps: u32,      // VaR-style confidence used by the bank
+    pub marketability_class: u32,       // liquidity bucket of the asset
+    pub data_quality_class: u32,        // valuation-source reliability bucket
+    pub valuation_source_hash: BytesN<32>,
+    pub stress_scenario_hash: BytesN<32>,
+    pub version: u32,
+}
+```
+
+These are policy inputs the contract enforces against, never a risk engine the contract runs. The distinction is the whole point: enforcement is in scope; risk modelling is the bank's, permanently. This matters because collateral is not safe merely by existing: its own value is volatile, and heavily collateralized loans can carry more risk when that value drifts, which is exactly the drift a live borrowing base and margin state make visible [5].
 
 ## 8. Asset categories beyond gold
 
 The contract core is already asset-agnostic; gold is the first proof, not the limit. Post-grant, the same control structure binds other custody-stable physical assets through asset-specific identity, custody, valuation, and document hashes: base metals and critical minerals, agricultural warehouse receipts, energy inventory, and serialised industrial collateral. Each new category binds through a narrow identity-and-valuation adapter on an unchanged control core, so a new asset adds an adapter, not a new contract product and not a new set of legal assumptions. The bank still controls eligibility, borrowing base, release, and enforcement; the custodian still signs existence and custody state. Banks already classify collateral and credit-risk mitigation by type, including physical and other funded protection, so each category maps onto a framework the bank already uses rather than a new one Argent invents [6].
+
+The adapter is a thin per-asset binding, not a fork of the core:
+
+```rust
+#[contracttype]
+pub struct AssetAdapter {
+    pub asset_type: u32,                  // metal, warehouse receipt, energy, industrial
+    pub asset_identity_hash: BytesN<32>,  // serial / lot / receipt / batch reference
+    pub custody_location_hash: BytesN<32>,
+    pub quantity_e7: i128,
+    pub quality_or_grade_hash: BytesN<32>,
+    pub valuation_source_hash: BytesN<32>,
+    pub inspection_certificate_hash: BytesN<32>,
+    pub insurance_hash: BytesN<32>,
+    pub eligibility_schedule_hash: BytesN<32>,
+}
+```
+
+The lifecycle, roles, pledge exclusivity, borrowing base, release, and enforcement are unchanged; only identity and valuation are asset-specific. That is what lets one tested core serve many asset classes, and it is the long-term reason this is infrastructure rather than a single-asset app, the point a reviewer weighing durability should register.
 
 ## 9. Alignment with the Stellar growth path
 
