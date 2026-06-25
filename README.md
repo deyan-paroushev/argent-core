@@ -9,6 +9,12 @@ The asset stays in the vault. Only the **control and authorization** over it
 become programmable on Soroban. Nothing here tokenizes, custodies, or moves the
 physical asset.
 
+These contracts are the first reference implementation of the
+[Argent Protocol](docs/protocol.md), an open specification for expressing
+physical-collateral control as a signed, ordered, verifiable event chain. The
+durable contribution is the protocol; this Soroban implementation is the first
+proof of it.
+
 ## What this is
 
 A holder pledges a custodied physical asset; a bank opens a secured credit line
@@ -65,10 +71,18 @@ contracts target `soroban-sdk` 22.
 
 ## Documentation
 
+- [`docs/protocol.md`](docs/protocol.md): the Argent Protocol public draft, the
+  open, event-sourced specification for controlling and proving the lifecycle of
+  physical collateral that remains in custody. These contracts are its first
+  reference implementation. Start here for the conceptual model, the event and
+  evidence design, the state machines, and the allocated-gold adapter.
 - [`docs/argent-architecture.md`](docs/argent-architecture.md): the full system
   architecture, contracts, lifecycle, the tri-party model, and why Soroban.
 - [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md):
   the planned DFNS authorization layer and the Soroban signing sequence.
+- [`docs/post-grant-roadmap.md`](docs/post-grant-roadmap.md): the direction
+  beyond the funded build, framed so the open core points further than any single
+  application without enlarging the current scope.
 
 ## What is not here
 
