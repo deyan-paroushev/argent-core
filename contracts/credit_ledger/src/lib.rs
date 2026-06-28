@@ -2,20 +2,29 @@
 
 mod error;
 mod types;
+mod event;
 
 #[cfg(test)]
 mod test;
 
 pub use error::Error;
 pub use types::*;
-
+pub use event::*;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env,
+    contract, contractimpl, contractmeta, symbol_short, Address, BytesN, Env,
 };
 
 const DAY_IN_LEDGERS: u32 = 17_280; // ~5s ledgers
 const BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const LIFETIME_THRESHOLD: u32 = BUMP_AMOUNT - DAY_IN_LEDGERS;
+
+// Self-identifying protocol metadata, written into the WASM custom section
+// `contractmetav0` and visible via `stellar contract inspect`. Marks this as a
+// deliberate, versioned protocol artifact rather than an anonymous contract.
+contractmeta!(key = "name", val = "Argent CreditLedger");
+contractmeta!(key = "proto", val = "argent.collateral.v1");
+contractmeta!(key = "events", val = "CollateralEventV1");
+contractmeta!(key = "sdk", val = "soroban-sdk-23.5.3");
 
 #[contract]
 pub struct CreditLedger;
@@ -25,12 +34,20 @@ impl CreditLedger {
     // ---- lifecycle: admin & access control -------------------------------
 
     /// One-time initialization. Sets the admin who can manage the role registry.
-    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+    /// Initialize the ledger. The settlement vault is bound here so a deployment
+    /// cannot leave a ledger that silently refuses every repayment (apply_repayment
+    /// requires the bound vault). The vault contract only needs to be DEPLOYED, not
+    /// initialized, before this call, since binding stores its address without
+    /// cross-calling it.
+    pub fn initialize(env: Env, admin: Address, settlement_vault: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::SettlementVault, &settlement_vault);
         env.storage()
             .instance()
             .extend_ttl(LIFETIME_THRESHOLD, BUMP_AMOUNT);
@@ -45,9 +62,12 @@ impl CreditLedger {
     ) -> Result<(), Error> {
         let admin = Self::admin(&env)?;
         admin.require_auth();
+        Self::assert_approvable_role(role)?;
+        let key = DataKey::Approved(party.clone(), role);
+        env.storage().persistent().set(&key, &true);
         env.storage()
             .persistent()
-            .set(&DataKey::Approved(party.clone(), role), &true);
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
             .publish((symbol_short!("party"), symbol_short!("approved")), (party, role));
         Ok(())
@@ -76,6 +96,33 @@ impl CreditLedger {
             .unwrap_or(false)
     }
 
+    /// Refresh the TTL on a party's approval entry. Admin only. Lets a long-lived
+    /// credit facility keep its approved bank / custodian / processor entries from
+    /// archiving over a multi-year term.
+    pub fn bump_approval_ttl(env: Env, party: Address, role: Role) -> Result<(), Error> {
+        let admin = Self::admin(&env)?;
+        admin.require_auth();
+        let key = DataKey::Approved(party, role);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::PartyNotApproved);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        Ok(())
+    }
+
+    /// Bind the single SettlementVault contract authorized to apply repayments.
+    /// Admin only. apply_repayment rejects any other caller, even one that holds
+    /// Role::Vault in the registry.
+    /// Read the bound settlement vault (provisioning/verification aid).
+    pub fn get_settlement_vault(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::SettlementVault)
+            .ok_or(Error::NotInitialized)
+    }
+
     // ---- lifecycle: control framework ------------------------------------
 
     /// Establish the tri-party control framework. Owner, bank, and custodian all
@@ -86,6 +133,120 @@ impl CreditLedger {
     /// pledge. The bank and custodian must be approved in the registry. The
     /// chain records the framework and which documents govern it; it does not
     /// replace the signed off-chain agreements.
+    // ---- canonical event layer (CollateralEventV1) -----------------------
+    // The contract keeps stored state as the enforcement guard AND emits a
+    // canonical, replayable event so an off-chain indexer can rebuild the full
+    // collateral record from the event stream alone. The sequence is
+    // framework-scoped and gap-free: bumped inside the same call that writes
+    // state, so a failed call reverts the bump with the state.
+
+    /// The all-zero hash, used for "unset" id / evidence fields on an event.
+    fn zero_hash(env: &Env) -> BytesN<32> {
+        BytesN::from_array(env, &[0u8; 32])
+    }
+
+    /// Read-and-increment the framework-scoped sequence. Returns the sequence to
+    /// stamp on the event being emitted (1 for the first event under a framework).
+    fn next_framework_sequence(env: &Env, framework_id: &BytesN<32>) -> u64 {
+        let key = DataKey::FrameworkSeq(framework_id.clone());
+        let last: u64 = env.storage().persistent().get(&key).unwrap_or(0);
+        let next = last + 1;
+        env.storage().persistent().set(&key, &next);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        next
+    }
+
+    /// Public read of the current last-emitted sequence for a framework (0 if
+    /// none), so an indexer can check completeness against the chain.
+    pub fn framework_sequence(env: Env, framework_id: BytesN<32>) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::FrameworkSeq(framework_id))
+            .unwrap_or(0)
+    }
+
+    /// Resolve the framework id for a line-scoped event via ContextForLine,
+    /// falling back to walking line -> pledge -> position if the context map is
+    /// somehow absent. Returns (framework_id, position_id, pledge_id).
+    fn line_context(
+        env: &Env,
+        credit_line_id: &BytesN<32>,
+    ) -> Result<(BytesN<32>, BytesN<32>, BytesN<32>), Error> {
+        if let Some(ctx) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, FacilityContext>(&DataKey::ContextForLine(credit_line_id.clone()))
+        {
+            return Ok((ctx.framework_id, ctx.position_id, ctx.pledge_id));
+        }
+        // Fallback: derive from stored records. A canonical event must never be
+        // emitted under a zero framework id, so if the line/pledge/position chain
+        // cannot be resolved we fail loudly instead of tagging the event to a
+        // fake framework.
+        let line = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CreditLine>(&DataKey::Line(credit_line_id.clone()))
+            .ok_or(Error::LineNotFound)?;
+        let pledge = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Pledge>(&DataKey::Pledge(line.pledge_id.clone()))
+            .ok_or(Error::PledgeNotFound)?;
+        let pos = env
+            .storage()
+            .persistent()
+            .get::<DataKey, VaultPosition>(&DataKey::Position(pledge.position_id.clone()))
+            .ok_or(Error::PositionNotFound)?;
+        Ok((pos.framework_id, pledge.position_id, line.pledge_id))
+    }
+
+    /// Construct and publish a CollateralEventV1. Bumps the framework sequence,
+    /// stamps the current ledger, and publishes via the generated .publish().
+    #[allow(clippy::too_many_arguments)]
+    fn emit_event(
+        env: &Env,
+        framework_id: &BytesN<32>,
+        entity: EntityKind,
+        action: CollateralAction,
+        actor: Address,
+        role: Role,
+        position_id: BytesN<32>,
+        pledge_id: BytesN<32>,
+        credit_line_id: BytesN<32>,
+        adjustment_id: BytesN<32>,
+        previous_state: StateLabel,
+        new_state: StateLabel,
+        evidence_hash: BytesN<32>,
+        condition_hash: BytesN<32>,
+        valuation_ref: BytesN<32>,
+        payload: CollateralPayloadV1,
+    ) {
+        let sequence = Self::next_framework_sequence(env, framework_id);
+        let event = CollateralEventV1 {
+            framework_id: framework_id.clone(),
+            entity,
+            action,
+            sequence,
+            actor,
+            role,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            adjustment_id,
+            previous_state,
+            new_state,
+            evidence_hash,
+            condition_hash,
+            valuation_ref,
+            occurred_ledger: env.ledger().sequence(),
+            payload,
+        };
+        event.publish(env);
+    }
+
     pub fn register_framework(
         env: Env,
         framework_id: BytesN<32>,
@@ -123,15 +284,15 @@ impl CreditLedger {
         }
 
         let framework = ControlFramework {
-            owner,
-            bank,
-            custodian,
-            facility_agreement_hash,
-            pledge_agreement_hash,
-            custody_agreement_hash,
-            eligible_schedule_hash,
-            margin_policy_hash,
-            enforcement_waterfall_hash,
+            owner: owner.clone(),
+            bank: bank.clone(),
+            custodian: custodian.clone(),
+            facility_agreement_hash: facility_agreement_hash.clone(),
+            pledge_agreement_hash: pledge_agreement_hash.clone(),
+            custody_agreement_hash: custody_agreement_hash.clone(),
+            eligible_schedule_hash: eligible_schedule_hash.clone(),
+            margin_policy_hash: margin_policy_hash.clone(),
+            enforcement_waterfall_hash: enforcement_waterfall_hash.clone(),
             status: FrameworkStatus::Active,
         };
         let key = DataKey::Framework(framework_id.clone());
@@ -140,7 +301,38 @@ impl CreditLedger {
             .persistent()
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
-            .publish((symbol_short!("framework"), symbol_short!("active")), framework_id);
+            .publish((symbol_short!("framework"), symbol_short!("active")), framework_id.clone());
+
+        // canonical event: the framework projection is born here.
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Framework,
+            CollateralAction::FrameworkRegistered,
+            owner.clone(),
+            Role::Owner,
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            StateLabel::Null,
+            StateLabel::FrameworkActive,
+            facility_agreement_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::FrameworkRegistered(FrameworkRegisteredData {
+                owner,
+                bank,
+                custodian,
+                facility_agreement_hash,
+                pledge_agreement_hash,
+                custody_agreement_hash,
+                eligible_schedule_hash,
+                margin_policy_hash,
+                enforcement_waterfall_hash,
+            }),
+        );
         Ok(())
     }
 
@@ -207,10 +399,10 @@ impl CreditLedger {
         }
 
         let pos = VaultPosition {
-            owner,
-            custodian,
-            framework_id,
-            barlist_hash,
+            owner: owner.clone(),
+            custodian: custodian.clone(),
+            framework_id: framework_id.clone(),
+            barlist_hash: barlist_hash.clone(),
             serials_hash: serials_hash.clone(),
             fine_weight_oz_e7,
             attestation_expiry,
@@ -218,13 +410,46 @@ impl CreditLedger {
         };
         Self::save_position(&env, &position_id, &pos);
         // Lock the bar set to this position until it reaches a terminal state.
-        let bar_key = DataKey::BarSet(serials_hash);
+        let bar_key = DataKey::BarSet(serials_hash.clone());
         env.storage().persistent().set(&bar_key, &position_id);
         env.storage()
             .persistent()
             .extend_ttl(&bar_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        // context map: position_id -> framework_id, for cheap event tagging.
+        let ctx_key = DataKey::ContextForPosition(position_id.clone());
+        env.storage().persistent().set(&ctx_key, &framework_id);
+        env.storage()
+            .persistent()
+            .extend_ttl(&ctx_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
-            .publish((symbol_short!("position"), symbol_short!("created")), position_id);
+            .publish((symbol_short!("position"), symbol_short!("created")), position_id.clone());
+
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Position,
+            CollateralAction::PositionRegistered,
+            custodian.clone(),
+            Role::Custodian,
+            position_id,
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            StateLabel::Null,
+            StateLabel::PositionFree,
+            barlist_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::PositionRegistered(PositionRegisteredData {
+                owner,
+                custodian,
+                barlist_hash,
+                serials_hash,
+                fine_weight_oz_e7,
+                attestation_expiry,
+            }),
+        );
         Ok(())
     }
 
@@ -262,8 +487,8 @@ impl CreditLedger {
 
         let selection = CollateralSelection {
             position_id: position_id.clone(),
-            owner,
-            request_hash,
+            owner: owner.clone(),
+            request_hash: request_hash.clone(),
         };
         let key = DataKey::Selection(position_id.clone());
         env.storage().persistent().set(&key, &selection);
@@ -271,7 +496,32 @@ impl CreditLedger {
             .persistent()
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
-            .publish((symbol_short!("position"), symbol_short!("selected")), position_id);
+            .publish((symbol_short!("position"), symbol_short!("selected")), position_id.clone());
+
+        let framework_id = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ContextForPosition(position_id.clone()))
+            .unwrap_or_else(|| pos.framework_id.clone());
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Position,
+            CollateralAction::CollateralSelected,
+            owner,
+            Role::Owner,
+            position_id,
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            StateLabel::PositionFree,
+            StateLabel::PositionSelected,
+            request_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Hash(HashData { hash: request_hash }),
+        );
         Ok(())
     }
 
@@ -334,8 +584,8 @@ impl CreditLedger {
         // Record the tri-party control framework the custodian is acting under.
         let control = CustodyControl {
             position_id: position_id.clone(),
-            custodian,
-            control_agreement_hash,
+            custodian: custodian.clone(),
+            control_agreement_hash: control_agreement_hash.clone(),
             status: PositionStatus::Earmarked,
         };
         let key = DataKey::Control(position_id.clone());
@@ -345,7 +595,32 @@ impl CreditLedger {
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
 
         env.events()
-            .publish((symbol_short!("position"), symbol_short!("earmarkd")), position_id);
+            .publish((symbol_short!("position"), symbol_short!("earmarkd")), position_id.clone());
+
+        let framework_id = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ContextForPosition(position_id.clone()))
+            .unwrap_or_else(|| pos.framework_id.clone());
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Position,
+            CollateralAction::CollateralImmobilized,
+            custodian,
+            Role::Custodian,
+            position_id,
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            StateLabel::PositionSelected,
+            StateLabel::PositionEarmarked,
+            control_agreement_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Hash(HashData { hash: control_agreement_hash }),
+        );
         Ok(())
     }
 
@@ -374,6 +649,13 @@ impl CreditLedger {
         owner.require_auth();
         bank.require_auth();
 
+        // A pledge id is single-use. Re-activating an existing id would overwrite
+        // a live pledge record; the position-state checks below narrow but do not
+        // close this, so guard it explicitly.
+        if env.storage().persistent().has(&DataKey::Pledge(pledge_id.clone())) {
+            return Err(Error::PledgeExists);
+        }
+
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
         }
@@ -401,16 +683,50 @@ impl CreditLedger {
         pos.status = PositionStatus::Pledged;
         Self::save_position(&env, &position_id, &pos);
 
+        let framework_id = pos.framework_id.clone();
         let pledge = Pledge {
-            position_id,
+            position_id: position_id.clone(),
             pledgor: owner,
-            bank,
-            legal_terms_hash,
+            bank: bank.clone(),
+            legal_terms_hash: legal_terms_hash.clone(),
             status: PledgeStatus::Active,
         };
         Self::save_pledge(&env, &pledge_id, &pledge);
+
+        // context map: pledge_id -> (framework, position) for later pledge/line events.
+        let ctx_key = DataKey::ContextForPledge(pledge_id.clone());
+        let ctx = FacilityContext {
+            framework_id: framework_id.clone(),
+            position_id: position_id.clone(),
+            pledge_id: pledge_id.clone(),
+        };
+        env.storage().persistent().set(&ctx_key, &ctx);
+        env.storage()
+            .persistent()
+            .extend_ttl(&ctx_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
         env.events()
-            .publish((symbol_short!("pledge"), symbol_short!("active")), pledge_id);
+            .publish((symbol_short!("pledge"), symbol_short!("active")), pledge_id.clone());
+
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Pledge,
+            CollateralAction::PledgeActivated,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            zero.clone(),
+            zero.clone(),
+            StateLabel::PositionEarmarked,
+            StateLabel::PledgeActive,
+            legal_terms_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Hash(HashData { hash: legal_terms_hash }),
+        );
         Ok(())
     }
 
@@ -448,6 +764,17 @@ impl CreditLedger {
         if pledge.bank != bank {
             return Err(Error::NotAuthorized);
         }
+        // The cardholder (borrower) must be the pledgor: the entity whose gold is
+        // pledged is the entity that may draw against it. Argent does not support
+        // a bank unilaterally designating a third-party borrower against someone
+        // else's collateral; that would require an explicit third-party-collateral
+        // consent model, which is deliberately out of scope. The cardholder also
+        // signs the opening, so the line terms carry the borrower's own consent in
+        // the authorization tree, not just the bank's.
+        if cardholder != pledge.pledgor {
+            return Err(Error::NotAuthorized);
+        }
+        cardholder.require_auth();
         if approved_limit <= 0 || price_per_oz_e7 <= 0 {
             return Err(Error::AmountNotPositive);
         }
@@ -461,14 +788,14 @@ impl CreditLedger {
         }
 
         let pos = Self::load_position(&env, &pledge.position_id)?;
-        let base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, ltv_bps);
+        let base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, ltv_bps)?;
         if approved_limit > base {
             return Err(Error::LimitExceedsBorrowingBase);
         }
 
         let line = CreditLine {
-            pledge_id,
-            bank,
+            pledge_id: pledge_id.clone(),
+            bank: bank.clone(),
             cardholder,
             approved_limit,
             drawn_balance: 0,
@@ -485,8 +812,52 @@ impl CreditLedger {
         env.storage()
             .persistent()
             .extend_ttl(&pledge_line_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
+        // Resolve the facility context from the pledge, then re-key it to the
+        // line so every later line-scoped event resolves in one read.
+        let ctx = env
+            .storage()
+            .persistent()
+            .get::<DataKey, FacilityContext>(&DataKey::ContextForPledge(pledge_id.clone()))
+            .unwrap_or_else(|| FacilityContext {
+                framework_id: pos.framework_id.clone(),
+                position_id: pledge.position_id.clone(),
+                pledge_id: pledge_id.clone(),
+            });
+        let framework_id = ctx.framework_id.clone();
+        let line_ctx_key = DataKey::ContextForLine(credit_line_id.clone());
+        env.storage().persistent().set(&line_ctx_key, &ctx);
+        env.storage()
+            .persistent()
+            .extend_ttl(&line_ctx_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
         env.events()
-            .publish((symbol_short!("line"), symbol_short!("opened")), credit_line_id);
+            .publish((symbol_short!("line"), symbol_short!("opened")), credit_line_id.clone());
+
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Line,
+            CollateralAction::LineOpened,
+            bank,
+            Role::Bank,
+            ctx.position_id.clone(),
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::Null,
+            StateLabel::LineActive,
+            zero.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::LineOpened(LineOpenedData {
+                approved_limit,
+                ltv_bps,
+                maintenance_bps,
+                price_per_oz_e7,
+            }),
+        );
         Ok(())
     }
 
@@ -540,7 +911,32 @@ impl CreditLedger {
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events().publish(
             (symbol_short!("card"), symbol_short!("draw")),
-            (credit_line_id, auth_ref, amount),
+            (credit_line_id.clone(), auth_ref.clone(), amount),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Drawdown,
+            CollateralAction::DrawdownRecorded,
+            processor,
+            Role::Processor,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::LineActive,
+            StateLabel::LineActive,
+            auth_ref,
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::BalanceMove(BalanceMoveData {
+                amount,
+                drawn_after: line.drawn_balance,
+                available_after: line.available_limit,
+            }),
         );
         Ok(())
     }
@@ -597,7 +993,32 @@ impl CreditLedger {
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events().publish(
             (symbol_short!("card"), symbol_short!("reverse")),
-            (credit_line_id, auth_ref, amount),
+            (credit_line_id.clone(), auth_ref.clone(), amount),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Drawdown,
+            CollateralAction::DrawdownReversed,
+            processor,
+            Role::Processor,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(line.status),
+            StateLabel::from_line(line.status),
+            auth_ref,
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::BalanceMove(BalanceMoveData {
+                amount,
+                drawn_after: line.drawn_balance,
+                available_after: line.available_limit,
+            }),
         );
         Ok(())
     }
@@ -630,6 +1051,14 @@ impl CreditLedger {
         amount: i128,
     ) -> Result<(), Error> {
         vault.require_auth();
+        // The repayment may only be applied by the single SettlementVault
+        // contract bound at initialize. Holding Role::Vault in the
+        // registry is necessary but not sufficient: a debt reduction must come
+        // from the bound vault that proved a real settlement transfer, not from
+        // any address that was ever approved as a Vault.
+        if vault != Self::settlement_vault(&env)? {
+            return Err(Error::PartyNotApproved);
+        }
         if !Self::is_approved(env.clone(), vault.clone(), Role::Vault) {
             return Err(Error::PartyNotApproved);
         }
@@ -667,7 +1096,32 @@ impl CreditLedger {
 
         env.events().publish(
             (symbol_short!("repay"), symbol_short!("applied")),
-            (credit_line_id, applied),
+            (credit_line_id.clone(), applied),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Repayment,
+            CollateralAction::RepaymentApplied,
+            vault,
+            Role::Vault,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(line.status),
+            StateLabel::from_line(line.status),
+            payment_ref,
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::BalanceMove(BalanceMoveData {
+                amount: applied,
+                drawn_after: line.drawn_balance,
+                available_after: line.available_limit,
+            }),
         );
         Ok(())
     }
@@ -700,6 +1154,7 @@ impl CreditLedger {
         owner: Address,
         adjustment_type: AdjustmentType,
         new_barlist_hash: BytesN<32>,
+        new_serials_hash: BytesN<32>,
         new_weight_oz_e7: i128,
         request_hash: BytesN<32>,
     ) -> Result<(), Error> {
@@ -719,16 +1174,20 @@ impl CreditLedger {
         if new_weight_oz_e7 <= 0 {
             return Err(Error::AmountNotPositive);
         }
-        if Self::is_zero_hash(&env, &new_barlist_hash) || Self::is_zero_hash(&env, &request_hash) {
+        if Self::is_zero_hash(&env, &new_barlist_hash)
+            || Self::is_zero_hash(&env, &new_serials_hash)
+            || Self::is_zero_hash(&env, &request_hash)
+        {
             return Err(Error::InvalidDocumentHash);
         }
 
         let adjustment = CollateralAdjustment {
-            credit_line_id,
+            credit_line_id: credit_line_id.clone(),
             adjustment_type,
             new_barlist_hash,
+            new_serials_hash,
             new_weight_oz_e7,
-            request_hash,
+            request_hash: request_hash.clone(),
             status: AdjustmentStatus::Requested,
         };
         let key = DataKey::Adjustment(adjustment_id.clone());
@@ -736,8 +1195,43 @@ impl CreditLedger {
         env.storage()
             .persistent()
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
+        // context map: adjustment_id -> facility context, so the custodian and
+        // bank clearing legs resolve framework in one read.
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let adj_ctx_key = DataKey::ContextForAdjustment(adjustment_id.clone());
+        let adj_ctx = FacilityContext {
+            framework_id: framework_id.clone(),
+            position_id: position_id.clone(),
+            pledge_id: pledge_id.clone(),
+        };
+        env.storage().persistent().set(&adj_ctx_key, &adj_ctx);
+        env.storage()
+            .persistent()
+            .extend_ttl(&adj_ctx_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+
         env.events()
-            .publish((symbol_short!("adjust"), symbol_short!("requestd")), adjustment_id);
+            .publish((symbol_short!("adjust"), symbol_short!("requestd")), adjustment_id.clone());
+
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Adjustment,
+            CollateralAction::AdjustmentRequested,
+            owner,
+            Role::Owner,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            adjustment_id,
+            StateLabel::Null,
+            StateLabel::AdjustmentRequested,
+            request_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Hash(HashData { hash: request_hash }),
+        );
         Ok(())
     }
 
@@ -761,8 +1255,12 @@ impl CreditLedger {
         env: Env,
         adjustment_id: BytesN<32>,
         custodian: Address,
+        custody_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         custodian.require_auth();
+        if Self::is_zero_hash(&env, &custody_evidence_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
         let mut adj = Self::load_adjustment(&env, &adjustment_id)?;
         if adj.status != AdjustmentStatus::Requested {
             return Err(Error::AdjustmentWrongStatus);
@@ -773,11 +1271,35 @@ impl CreditLedger {
         if pos.custodian != custodian {
             return Err(Error::NotAuthorized);
         }
+        if !Self::is_approved(env.clone(), custodian.clone(), Role::Custodian) {
+            return Err(Error::PartyNotApproved);
+        }
 
         adj.status = AdjustmentStatus::CustodianConfirmed;
         Self::save_adjustment(&env, &adjustment_id, &adj);
         env.events()
-            .publish((symbol_short!("adjust"), symbol_short!("custconf")), adjustment_id);
+            .publish((symbol_short!("adjust"), symbol_short!("custconf")), adjustment_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &adj.credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Adjustment,
+            CollateralAction::AdjustmentCustodianConfirmed,
+            custodian,
+            Role::Custodian,
+            position_id,
+            pledge_id,
+            adj.credit_line_id.clone(),
+            adjustment_id,
+            StateLabel::AdjustmentRequested,
+            StateLabel::AdjustmentCustodianConfirmed,
+            custody_evidence_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::Hash(HashData { hash: custody_evidence_hash }),
+        );
         Ok(())
     }
 
@@ -808,10 +1330,13 @@ impl CreditLedger {
         if line.bank != bank {
             return Err(Error::NotAuthorized);
         }
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
 
         // Coverage test at the advance rate: the proposed new collateral's
         // lendable value must still cover the drawn balance.
-        let new_base = Self::borrowing_base(adj.new_weight_oz_e7, price_per_oz_e7, line.ltv_bps);
+        let new_base = Self::borrowing_base(adj.new_weight_oz_e7, price_per_oz_e7, line.ltv_bps)?;
         if new_base < line.drawn_balance {
             return Err(Error::AdjustmentUndercovered);
         }
@@ -819,6 +1344,28 @@ impl CreditLedger {
         // Approved: update the position's collateral schedule to the new set.
         let pledge = Self::load_pledge(&env, &line.pledge_id)?;
         let mut pos = Self::load_position(&env, &pledge.position_id)?;
+
+        // Maintain the bar-set uniqueness lock in lockstep with the collateral
+        // identity. If the serials change (substitution / top-up / partial
+        // release), the new serial set must not already be active under another
+        // position, the old lock must be released, and the new lock taken. Without
+        // this, an adjustment could swap in bars that are pledged elsewhere, or
+        // leave the old serials phantom-locked forever.
+        if adj.new_serials_hash != pos.serials_hash {
+            let new_bar_key = DataKey::BarSet(adj.new_serials_hash.clone());
+            if env.storage().persistent().has(&new_bar_key) {
+                return Err(Error::BarSetAlreadyActive);
+            }
+            env.storage()
+                .persistent()
+                .remove(&DataKey::BarSet(pos.serials_hash.clone()));
+            env.storage().persistent().set(&new_bar_key, &pledge.position_id);
+            env.storage()
+                .persistent()
+                .extend_ttl(&new_bar_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+            pos.serials_hash = adj.new_serials_hash.clone();
+        }
+
         pos.barlist_hash = adj.new_barlist_hash.clone();
         pos.fine_weight_oz_e7 = adj.new_weight_oz_e7;
         Self::save_position(&env, &pledge.position_id, &pos);
@@ -826,7 +1373,34 @@ impl CreditLedger {
         adj.status = AdjustmentStatus::Approved;
         Self::save_adjustment(&env, &adjustment_id, &adj);
         env.events()
-            .publish((symbol_short!("adjust"), symbol_short!("approved")), adjustment_id);
+            .publish((symbol_short!("adjust"), symbol_short!("approved")), adjustment_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &adj.credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Adjustment,
+            CollateralAction::AdjustmentApproved,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            adj.credit_line_id.clone(),
+            adjustment_id,
+            StateLabel::AdjustmentCustodianConfirmed,
+            StateLabel::AdjustmentApproved,
+            adj.new_barlist_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::AdjustmentApproved(AdjustmentApprovedData {
+                adjustment_type: adj.adjustment_type.clone(),
+                new_barlist_hash: adj.new_barlist_hash.clone(),
+                new_serials_hash: adj.new_serials_hash.clone(),
+                new_weight_oz_e7: adj.new_weight_oz_e7,
+                price_per_oz_e7,
+            }),
+        );
         Ok(())
     }
 
@@ -841,10 +1415,14 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         bank: Address,
+        payoff_letter_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
+        }
+        if Self::is_zero_hash(&env, &payoff_letter_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
@@ -867,7 +1445,28 @@ impl CreditLedger {
         Self::save_pledge(&env, &line.pledge_id, &pledge);
         Self::save_line(&env, &credit_line_id, &line);
         env.events()
-            .publish((symbol_short!("release"), symbol_short!("authd")), credit_line_id);
+            .publish((symbol_short!("release"), symbol_short!("authd")), credit_line_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Release,
+            CollateralAction::ReleaseAuthorized,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::PledgeActive,
+            StateLabel::PledgeReleaseAuthorized,
+            payoff_letter_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::Hash(HashData { hash: payoff_letter_hash }),
+        );
         Ok(())
     }
 
@@ -913,7 +1512,35 @@ impl CreditLedger {
         // The release_notice_hash records the custodian's return notice.
         env.events().publish(
             (symbol_short!("release"), symbol_short!("confirmd")),
-            (pledge_id, release_notice_hash),
+            (pledge_id.clone(), release_notice_hash.clone()),
+        );
+
+        // Resolve framework via the pledge context map, falling back to the
+        // position record already loaded above.
+        let framework_id = env
+            .storage()
+            .persistent()
+            .get::<DataKey, FacilityContext>(&DataKey::ContextForPledge(pledge_id.clone()))
+            .map(|c| c.framework_id)
+            .unwrap_or_else(|| pos.framework_id.clone());
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Release,
+            CollateralAction::ReleaseConfirmed,
+            custodian,
+            Role::Custodian,
+            pledge.position_id.clone(),
+            pledge_id,
+            zero.clone(),
+            zero.clone(),
+            StateLabel::PledgeReleaseAuthorized,
+            StateLabel::PledgeReleased,
+            release_notice_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Hash(HashData { hash: release_notice_hash }),
         );
         Ok(())
     }
@@ -931,10 +1558,14 @@ impl CreditLedger {
         credit_line_id: BytesN<32>,
         bank: Address,
         cure_deadline_ledger: u32,
+        notice_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
+        }
+        if Self::is_zero_hash(&env, &notice_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         if cure_deadline_ledger <= env.ledger().sequence() {
             return Err(Error::CureDeadlineNotFuture);
@@ -943,7 +1574,19 @@ impl CreditLedger {
         if line.bank != bank {
             return Err(Error::NotAuthorized);
         }
+        // Only a live facility can be defaulted. A closed or already-defaulted
+        // line is not defaultable; defaulting it again would be a meaningless or
+        // misleading state transition.
+        if line.status != LineStatus::Active && line.status != LineStatus::Suspended {
+            return Err(Error::LineNotActive);
+        }
         let mut pledge = Self::load_pledge(&env, &line.pledge_id)?;
+        // The pledge must still be active (not released/already-defaulted) for the
+        // collateral to be enforceable under this default.
+        if pledge.status != PledgeStatus::Active {
+            return Err(Error::PledgeNotActive);
+        }
+        let prev_line_status = line.status;
 
         line.status = LineStatus::Defaulted;
         line.cure_expiry_ledger = cure_deadline_ledger;
@@ -952,7 +1595,31 @@ impl CreditLedger {
         Self::save_line(&env, &credit_line_id, &line);
         Self::save_pledge(&env, &line.pledge_id, &pledge);
         env.events()
-            .publish((symbol_short!("default"), symbol_short!("notice")), credit_line_id);
+            .publish((symbol_short!("default"), symbol_short!("notice")), credit_line_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Default,
+            CollateralAction::DefaultNoticeIssued,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(prev_line_status),
+            StateLabel::LineDefaulted,
+            notice_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::DefaultNotice(DefaultNoticeData {
+                cure_deadline_ledger,
+                notice_hash,
+            }),
+        );
         Ok(())
     }
 
@@ -971,8 +1638,12 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         cardholder: Address,
+        cure_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         cardholder.require_auth();
+        if Self::is_zero_hash(&env, &cure_evidence_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.cardholder != cardholder {
             return Err(Error::NotAuthorized);
@@ -989,7 +1660,28 @@ impl CreditLedger {
         Self::save_line(&env, &credit_line_id, &line);
         Self::save_pledge(&env, &line.pledge_id, &pledge);
         env.events()
-            .publish((symbol_short!("default"), symbol_short!("cured")), credit_line_id);
+            .publish((symbol_short!("default"), symbol_short!("cured")), credit_line_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Default,
+            CollateralAction::DefaultCured,
+            cardholder,
+            Role::Owner,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::LineDefaulted,
+            StateLabel::LineActive,
+            cure_evidence_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::Hash(HashData { hash: cure_evidence_hash }),
+        );
         Ok(())
     }
 
@@ -1009,6 +1701,9 @@ impl CreditLedger {
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
         }
+        if Self::is_zero_hash(&env, &reason_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
@@ -1016,13 +1711,40 @@ impl CreditLedger {
         if line.status == LineStatus::Closed || line.status == LineStatus::Defaulted {
             return Err(Error::LineNotActive);
         }
+        let prev_status = line.status;
         line.manual_bank_suspension = true;
         line.status = LineStatus::Suspended;
         line.available_limit = 0;
+        let drawn_after = line.drawn_balance;
         Self::save_line(&env, &credit_line_id, &line);
         env.events().publish(
             (symbol_short!("line"), symbol_short!("bksuspnd")),
-            (credit_line_id, reason_hash),
+            (credit_line_id.clone(), reason_hash.clone()),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Line,
+            CollateralAction::LineSuspendedByBank,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(prev_status),
+            StateLabel::LineSuspended,
+            reason_hash,
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::BalanceMove(BalanceMoveData {
+                amount: 0,
+                drawn_after,
+                available_after: 0,
+            }),
         );
         Ok(())
     }
@@ -1035,10 +1757,14 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         bank: Address,
+        resume_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
+        }
+        if Self::is_zero_hash(&env, &resume_evidence_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
@@ -1047,11 +1773,55 @@ impl CreditLedger {
         if !line.manual_bank_suspension {
             return Err(Error::LineNotSuspended);
         }
+        let prev_status = line.status;
         line.manual_bank_suspension = false;
+        // Restore capacity. Suspension zeroed available_limit; resume must put it
+        // back, or the line is Active-but-unusable until the next revaluation.
+        // Use the latest stored valuation's advance base (held in borrowing_base),
+        // capped at the approved limit, less drawn. Fall back to the approved
+        // limit if no valuation has been recorded yet.
+        let cover = match Self::get_valuation(env.clone(), credit_line_id.clone()) {
+            Ok(v) => {
+                if v.borrowing_base < line.approved_limit {
+                    v.borrowing_base
+                } else {
+                    line.approved_limit
+                }
+            }
+            Err(_) => line.approved_limit,
+        };
+        line.available_limit = (cover - line.drawn_balance).max(0);
         line.status = LineStatus::Active;
+        let available_after = line.available_limit;
+        let drawn_after = line.drawn_balance;
         Self::save_line(&env, &credit_line_id, &line);
         env.events()
-            .publish((symbol_short!("line"), symbol_short!("bkresume")), credit_line_id);
+            .publish((symbol_short!("line"), symbol_short!("bkresume")), credit_line_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Line,
+            CollateralAction::LineResumedByBank,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(prev_status),
+            StateLabel::LineActive,
+            resume_evidence_hash,
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::BalanceMove(BalanceMoveData {
+                amount: 0,
+                drawn_after,
+                available_after,
+            }),
+        );
         Ok(())
     }
 
@@ -1089,8 +1859,16 @@ impl CreditLedger {
         max_age_secs: u64,
         conf_tol_bps: u32,
         warning_bps: u32,
+        valuation_ref: BytesN<32>,
     ) -> Result<(), Error> {
         valuer.require_auth();
+        // A revaluation is a valuation-bearing act: it must reference the source
+        // it acted on (feed / attestation / oracle reference). No valuation
+        // source, no valuation state transition. This keeps valuation_ref a real
+        // event dimension rather than a decorative zero.
+        if Self::is_zero_hash(&env, &valuation_ref) {
+            return Err(Error::InvalidDocumentHash);
+        }
         if max_age_secs == 0
             || conf_tol_bps == 0
             || conf_tol_bps > 10_000
@@ -1103,9 +1881,24 @@ impl CreditLedger {
         let is_valuer = Self::is_approved(env.clone(), valuer.clone(), Role::Valuation);
 
         let mut line = Self::load_line(&env, &credit_line_id)?;
-        if !is_valuer && line.bank != valuer {
+        // Either an approved Valuation party, or the line's bank while still an
+        // approved Bank. A revoked bank can no longer revalue its own facility.
+        let is_line_bank = line.bank == valuer
+            && Self::is_approved(env.clone(), valuer.clone(), Role::Bank);
+        if !is_valuer && !is_line_bank {
             return Err(Error::NotAuthorized);
         }
+        // The event must name the authority the actor acted under, because
+        // actor + role is the reconciliation surface against the off-chain
+        // approval. If the actor is this line's own bank, it acts as Bank even
+        // if it also happens to hold a Valuation grant; a separate approved
+        // valuer acts as Valuation. Emitting Role::Valuation unconditionally
+        // would misstate the authority when the bank revalues.
+        let actor_role = if is_line_bank {
+            Role::Bank
+        } else {
+            Role::Valuation
+        };
         // Only meaningful on a live or already-called line, not a closed one.
         if line.status == LineStatus::Closed || line.status == LineStatus::Defaulted {
             return Err(Error::LineNotActive);
@@ -1126,7 +1919,8 @@ impl CreditLedger {
         // Confidence: the band (half-width) must be within tolerance of price.
         // confidence_e7 <= price_per_oz_e7 * conf_tol_bps / 1e4
         let max_conf = price_per_oz_e7
-            .saturating_mul(conf_tol_bps as i128)
+            .checked_mul(conf_tol_bps as i128)
+            .ok_or(Error::InvalidRiskParams)?
             / 10_000i128;
         if confidence_e7 > max_conf {
             return Err(Error::PriceConfidenceTooWide);
@@ -1136,16 +1930,22 @@ impl CreditLedger {
         // advance base (LTV-adjusted) for the available-limit calculation.
         let pledge = Self::load_pledge(&env, &line.pledge_id)?;
         let pos = Self::load_position(&env, &pledge.position_id)?;
-        let raw_value = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, 10_000);
-        let advance_base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, line.ltv_bps);
+        let raw_value = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, 10_000)?;
+        let advance_base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, line.ltv_bps)?;
 
         // Two-threshold check, Schwab-style, against RAW collateral value.
         // The margin call fires when the drawn balance exceeds the maintenance
         // fraction of current collateral value:
         //   action band  = raw_value * maintenance_bps / 1e4
         //   warning band = action band * warning_bps / 1e4 (sits below it)
-        let action_band = raw_value.saturating_mul(line.maintenance_bps as i128) / 10_000i128;
-        let warning_band = action_band.saturating_mul(warning_bps as i128) / 10_000i128;
+        let action_band = raw_value
+            .checked_mul(line.maintenance_bps as i128)
+            .ok_or(Error::InvalidRiskParams)?
+            / 10_000i128;
+        let warning_band = action_band
+            .checked_mul(warning_bps as i128)
+            .ok_or(Error::InvalidRiskParams)?
+            / 10_000i128;
         let margin_state = if line.drawn_balance > action_band {
             MarginState::Called
         } else if line.drawn_balance > warning_band {
@@ -1159,6 +1959,7 @@ impl CreditLedger {
         // is a separate dimension: a revaluation must never clear a deliberate
         // bank stop. Available limit follows the lesser of the approved limit
         // and the current advance base, less drawn.
+        let prev_line_status = line.status;
         let cover = if advance_base < line.approved_limit { advance_base } else { line.approved_limit };
         line.available_limit = (cover - line.drawn_balance).max(0);
         line.status = if line.manual_bank_suspension {
@@ -1191,7 +1992,35 @@ impl CreditLedger {
             MarginState::Covered => symbol_short!("covered"),
         };
         env.events()
-            .publish((symbol_short!("margin"), topic), credit_line_id);
+            .publish((symbol_short!("margin"), topic), credit_line_id.clone());
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Valuation,
+            CollateralAction::LineRevalued,
+            valuer,
+            actor_role,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::from_line(prev_line_status),
+            StateLabel::from_line(line.status),
+            valuation_ref.clone(),
+            zero.clone(),
+            valuation_ref.clone(),
+            CollateralPayloadV1::Revalued(RevaluedData {
+                price_per_oz_e7,
+                confidence_e7,
+                margin_state,
+                drawn_balance: line.drawn_balance,
+                advance_base,
+                available_after: line.available_limit,
+            }),
+        );
         Ok(())
     }
 
@@ -1259,7 +2088,31 @@ impl CreditLedger {
         Self::save_line(&env, &credit_line_id, &line);
         env.events().publish(
             (symbol_short!("enforce"), symbol_short!("recorded")),
-            (credit_line_id, outcome, legal_instrument_hash),
+            (credit_line_id.clone(), outcome, legal_instrument_hash.clone()),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Enforcement,
+            CollateralAction::EnforcementRecorded,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::PledgeDefaulted,
+            StateLabel::PledgeEnforced,
+            legal_instrument_hash.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::Enforcement(EnforcementData {
+                outcome,
+                legal_instrument_hash,
+            }),
         );
         Ok(())
     }
@@ -1281,11 +2134,18 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         bank: Address,
+        readiness_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         let line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
+        }
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
+        if Self::is_zero_hash(&env, &readiness_evidence_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         if env.storage().persistent().has(&DataKey::Readiness(credit_line_id.clone())) {
             return Err(Error::ReadinessWrongStatus);
@@ -1307,7 +2167,28 @@ impl CreditLedger {
             .set(&DataKey::Readiness(credit_line_id.clone()), &readiness);
         env.events().publish(
             (symbol_short!("readines"), symbol_short!("opened")),
+            credit_line_id.clone(),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Readiness,
+            CollateralAction::ReadinessOpened,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
             credit_line_id,
+            zero.clone(),
+            StateLabel::Null,
+            StateLabel::ReadinessIncomplete,
+            readiness_evidence_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::Hash(HashData { hash: readiness_evidence_hash }),
         );
         Ok(())
     }
@@ -1332,6 +2213,9 @@ impl CreditLedger {
         let line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
+        }
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
         }
         let mut readiness = Self::load_readiness(&env, &credit_line_id)?;
 
@@ -1364,12 +2248,45 @@ impl CreditLedger {
             ReadinessStatus::Incomplete
         };
 
+        let new_status = readiness.status;
+        let route_for_event = readiness.realization_route_hash.clone();
+        let readiness_payload = ReadinessPopulatedData {
+            liquidation_agent: readiness.liquidation_agent.clone(),
+            realization_route_hash: readiness.realization_route_hash.clone(),
+            settlement_asset: readiness.settlement_asset.clone(),
+            valuation_source_hash: readiness.valuation_source_hash.clone(),
+            waterfall_hash: readiness.waterfall_hash.clone(),
+            valid_until_ledger: readiness.valid_until_ledger,
+            version: readiness.version,
+            status: readiness.status,
+        };
         env.storage()
             .persistent()
             .set(&DataKey::Readiness(credit_line_id.clone()), &readiness);
         env.events().publish(
             (symbol_short!("readines"), symbol_short!("populate")),
-            (credit_line_id, readiness.version, readiness.status),
+            (credit_line_id.clone(), readiness.version, readiness.status),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Readiness,
+            CollateralAction::ReadinessPopulated,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
+            credit_line_id,
+            zero.clone(),
+            StateLabel::ReadinessIncomplete,
+            StateLabel::from_readiness(new_status),
+            route_for_event.clone(),
+            zero.clone(),
+            zero,
+            CollateralPayloadV1::ReadinessPopulated(readiness_payload),
         );
         Ok(())
     }
@@ -1381,11 +2298,18 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         bank: Address,
+        expiry_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         let line = Self::load_line(&env, &credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
+        }
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
+        if Self::is_zero_hash(&env, &expiry_evidence_hash) {
+            return Err(Error::InvalidDocumentHash);
         }
         let mut readiness = Self::load_readiness(&env, &credit_line_id)?;
         readiness.status = ReadinessStatus::Expired;
@@ -1394,7 +2318,28 @@ impl CreditLedger {
             .set(&DataKey::Readiness(credit_line_id.clone()), &readiness);
         env.events().publish(
             (symbol_short!("readines"), symbol_short!("expired")),
+            credit_line_id.clone(),
+        );
+
+        let (framework_id, position_id, pledge_id) = Self::line_context(&env, &credit_line_id)?;
+        let zero = Self::zero_hash(&env);
+        Self::emit_event(
+            &env,
+            &framework_id,
+            EntityKind::Readiness,
+            CollateralAction::ReadinessExpired,
+            bank,
+            Role::Bank,
+            position_id,
+            pledge_id,
             credit_line_id,
+            zero.clone(),
+            StateLabel::ReadinessReady,
+            StateLabel::ReadinessExpired,
+            expiry_evidence_hash.clone(),
+            zero.clone(),
+            zero.clone(),
+            CollateralPayloadV1::Hash(HashData { hash: expiry_evidence_hash }),
         );
         Ok(())
     }
@@ -1431,19 +2376,50 @@ impl CreditLedger {
     /// borrowing_base = fine_weight_oz * price_per_oz * ltv
     /// inputs are scaled by 1e7 (weight, price); ltv is in bps.
     /// result is in the line's minor units (already-scaled).
-    fn borrowing_base(fine_weight_oz_e7: i128, price_per_oz_e7: i128, ltv_bps: u32) -> i128 {
+    fn borrowing_base(
+        fine_weight_oz_e7: i128,
+        price_per_oz_e7: i128,
+        ltv_bps: u32,
+    ) -> Result<i128, Error> {
         // (weight_e7 / 1e7) * (price_e7 / 1e7) * (ltv_bps / 1e4)
         // = weight_e7 * price_e7 * ltv_bps / 1e18
+        // Checked, not saturating: a value that overflows i128 is a malformed
+        // risk input, not something to silently clamp to a misleading base.
         let value = fine_weight_oz_e7
-            .saturating_mul(price_per_oz_e7)
-            .saturating_mul(ltv_bps as i128);
-        value / 1_000_000_000_000_000_000i128
+            .checked_mul(price_per_oz_e7)
+            .and_then(|v| v.checked_mul(ltv_bps as i128))
+            .ok_or(Error::InvalidRiskParams)?;
+        Ok(value / 1_000_000_000_000_000_000i128)
     }
 
     fn admin(env: &Env) -> Result<Address, Error> {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Only these roles are grantable through the approval registry. Owner is an
+    /// event-semantics role (the self-signing pledgor) and Admin is the contract
+    /// owner; neither is a registry-approvable counterparty, so an attempt to
+    /// grant them is treated as an unauthorized action.
+    fn assert_approvable_role(role: Role) -> Result<(), Error> {
+        match role {
+            Role::Bank
+            | Role::Custodian
+            | Role::Processor
+            | Role::Valuation
+            | Role::Vault => Ok(()),
+            Role::Admin | Role::Owner => Err(Error::NotAuthorized),
+        }
+    }
+
+    /// The single SettlementVault contract bound to this ledger. Repayments may
+    /// only be applied by this exact address (see apply_repayment).
+    fn settlement_vault(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::SettlementVault)
             .ok_or(Error::NotInitialized)
     }
 

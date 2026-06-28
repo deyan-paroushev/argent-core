@@ -134,6 +134,10 @@ pub struct CollateralAdjustment {
     pub adjustment_type: AdjustmentType,
     /// proposed new bar-list commitment if the adjustment is approved
     pub new_barlist_hash: BytesN<32>,
+    /// proposed new serials commitment (the collateral-uniqueness key). Must be
+    /// maintained in lockstep with new_barlist_hash so the BarSet uniqueness lock
+    /// tracks the real collateral identity after substitution/top-up/release.
+    pub new_serials_hash: BytesN<32>,
     /// proposed new fine weight (troy oz, scaled 1e7) if approved
     pub new_weight_oz_e7: i128,
     /// hash of the owner's signed adjustment-request instruction
@@ -230,6 +234,12 @@ pub enum Role {
     /// A SettlementVault contract authorized to apply repayments / release
     /// pledges on behalf of the atomic repay-and-release flow.
     Vault,
+    /// The asset owner / pledgor: the delegated self-signing party. It
+    /// authorizes its own acts (selection, adjustment requests, cure) but is
+    /// never policy-governed by the registry and never checked by is_approved.
+    /// Present so a CollateralEventV1 can name the true authority on an
+    /// owner-delegated act. No approval path grants it.
+    Owner,
 }
 
 /// An attested vaulted-gold position. The full bar list is NEVER stored on
@@ -393,6 +403,8 @@ pub struct CreditLine {
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    /// the single SettlementVault contract address authorized to apply repayments
+    SettlementVault,
     /// role registry: (Address, Role) -> bool
     Approved(Address, Role),
     /// tri-party control framework: framework_id -> ControlFramework
@@ -420,4 +432,15 @@ pub enum DataKey {
     Adjustment(BytesN<32>),
     /// enforcement-readiness record: line_id -> EnforcementReadiness
     Readiness(BytesN<32>),
+    /// CollateralEventV1 ordering: framework_id -> u64 last-emitted sequence.
+    /// Gap-free run the indexer can replay.
+    FrameworkSeq(BytesN<32>),
+    /// position_id -> framework_id, for cheap event tagging.
+    ContextForPosition(BytesN<32>),
+    /// pledge_id -> FacilityContext
+    ContextForPledge(BytesN<32>),
+    /// credit_line_id -> FacilityContext
+    ContextForLine(BytesN<32>),
+    /// adjustment_id -> FacilityContext
+    ContextForAdjustment(BytesN<32>),
 }

@@ -104,4 +104,6 @@ pub enum Error {
     InvalidDocumentHash = 78,
     /// Enforcement readiness cannot be promoted because its validity window has expired.
     ReadinessExpired = 79,
+    /// A pledge with this id already exists; activation is not idempotent over a live id.
+    PledgeExists = 80,
 }

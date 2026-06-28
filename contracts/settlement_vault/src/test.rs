@@ -23,7 +23,8 @@ fn setup_drawn_line(
     BytesN<32>, // pledge_id
     BytesN<32>, // line_id
     Address,    // bank
-    Address,    // cardholder
+    Address,    // cardholder (== owner; the cardholder must be the pledgor)
+    Address,    // vault_id (bound to this ledger at initialize)
 ) {
     let ledger_id = env.register(credit_ledger::WASM, ());
     let ledger = credit_ledger::Client::new(env, &ledger_id);
@@ -33,12 +34,18 @@ fn setup_drawn_line(
     let custodian = Address::generate(env);
     let bank = Address::generate(env);
     let processor = Address::generate(env);
-    let cardholder = Address::generate(env);
+    // The cardholder (borrower) must be the pledgor: owner == cardholder.
+    let cardholder = owner.clone();
 
-    ledger.initialize(&admin);
+    // The settlement vault is bound at initialize (it only needs to be deployed,
+    // not initialized, for binding). Deploy it first so we can pass it to init.
+    let vault_id = env.register(SettlementVault, ());
+
+    ledger.initialize(&admin, &vault_id);
     ledger.approve_party(&custodian, &credit_ledger::Role::Custodian);
     ledger.approve_party(&bank, &credit_ledger::Role::Bank);
     ledger.approve_party(&processor, &credit_ledger::Role::Processor);
+    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
 
     // tri-party control framework first
     let framework_id = id(env);
@@ -64,13 +71,16 @@ fn setup_drawn_line(
     );
     ledger.record_drawdown(&line_id, &processor, &id(env), &25_000i128);
 
-    (ledger, ledger_id, pledge_id, line_id, bank, cardholder)
+    (ledger, ledger_id, pledge_id, line_id, bank, cardholder, vault_id)
 }
 
 #[test]
 fn settle_repayment_moves_token_and_reduces_debt() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
 
     // SAC test asset (USDC-like settlement token)
     let issuer = Address::generate(&env);
@@ -79,14 +89,14 @@ fn settle_repayment_moves_token_and_reduces_debt() {
     let token = TokenClient::new(&env, &token_addr);
     let token_admin = StellarAssetClient::new(&env, &token_addr);
 
-    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
+    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder, vault_id) = setup_drawn_line(&env);
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
 
     // deploy SettlementVault, bind token + ledger, approve as Vault
-    let vault_id = env.register(SettlementVault, ());
+    // setup_drawn_line already deployed this vault and bound it to the ledger at
+    // init; initialize it with the settlement token for the transfer.
     let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
-    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
 
     token_admin.mint(&cardholder, &25_000i128);
     assert_eq!(token.balance(&cardholder), 25_000);
@@ -109,18 +119,21 @@ fn settle_repayment_moves_token_and_reduces_debt() {
 fn partial_settlement_reduces_debt() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
 
     let issuer = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_addr = sac.address();
     let token_admin = StellarAssetClient::new(&env, &token_addr);
 
-    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
+    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder, vault_id) = setup_drawn_line(&env);
 
-    let vault_id = env.register(SettlementVault, ());
+    // setup_drawn_line already deployed this vault and bound it to the ledger at
+    // init; initialize it with the settlement token for the transfer.
     let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
-    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
     token_admin.mint(&cardholder, &10_000i128);
 
     // repay only 10,000 of 25,000
@@ -135,18 +148,21 @@ fn partial_settlement_reduces_debt() {
 fn settlement_is_idempotent_on_payment_ref() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
 
     let issuer = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(issuer.clone());
     let token_addr = sac.address();
     let token_admin = StellarAssetClient::new(&env, &token_addr);
 
-    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
+    let (_ledger, ledger_id, _pledge_id, line_id, bank, cardholder, vault_id) = setup_drawn_line(&env);
 
-    let vault_id = env.register(SettlementVault, ());
+    // setup_drawn_line already deployed this vault and bound it to the ledger at
+    // init; initialize it with the settlement token for the transfer.
     let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
-    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
     token_admin.mint(&cardholder, &20_000i128);
 
     let pay = id(&env);
@@ -203,12 +219,12 @@ fn setup_vault(
     let token = TokenClient::new(env, &token_addr);
     let token_admin = StellarAssetClient::new(env, &token_addr);
 
-    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(env);
+    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder, vault_id) = setup_drawn_line(env);
 
-    let vault_id = env.register(SettlementVault, ());
+    // setup_drawn_line already bound this vault to the ledger at init; initialize
+    // it with the settlement token.
     let vault = SettlementVaultClient::new(env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
-    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
 
     (ledger, vault, token, token_admin, line_id, bank, cardholder, vault_id)
 }
@@ -222,6 +238,9 @@ fn insufficient_balance_leaves_debt_unchanged() {
     // reduction (step 2), the drawn balance must be untouched and no tokens move.
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
@@ -242,15 +261,18 @@ fn insufficient_balance_leaves_debt_unchanged() {
 fn double_initialize_is_refused() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let issuer = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(issuer);
     let token_addr = sac.address();
-    let (_ledger, ledger_id, _p, _l, _b, _c) = setup_drawn_line(&env);
+    let (_ledger, ledger_id, _p, _l, _b, _c, _vault_id) = setup_drawn_line(&env);
 
     let vault_id = env.register(SettlementVault, ());
     let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
-    let res = vault.try_initialize(&token_addr, &ledger_id);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
+    let res = vault.try_initialize(&Address::generate(&env), &token_addr, &ledger_id);
     assert_eq!(res, Err(Ok(Error::AlreadyInitialized)));
 }
 
@@ -260,7 +282,10 @@ fn settle_before_initialize_is_refused() {
     // settle attempt must fail with NotInitialized rather than moving anything.
     let env = Env::default();
     env.mock_all_auths();
-    let (_ledger, _ledger_id, _p, line_id, bank, cardholder) = setup_drawn_line(&env);
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
+    let (_ledger, _ledger_id, _p, line_id, bank, cardholder, _vault_id) = setup_drawn_line(&env);
 
     let vault_id = env.register(SettlementVault, ());
     let vault = SettlementVaultClient::new(&env, &vault_id);
@@ -278,6 +303,9 @@ fn host_auth_only_cardholder_can_authorize_transfer() {
     // tokens, even with the cardholder's address passed as the arg.
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (_ledger, vault, _token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
     token_admin.mint(&cardholder, &25_000i128);
 
@@ -314,6 +342,9 @@ fn unapproved_vault_cannot_settle_and_reverts_cleanly() {
     // the bank even if a rogue vault is deployed and bound to the token.
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
 
     let issuer = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(issuer);
@@ -321,12 +352,12 @@ fn unapproved_vault_cannot_settle_and_reverts_cleanly() {
     let token = TokenClient::new(&env, &token_addr);
     let token_admin = StellarAssetClient::new(&env, &token_addr);
 
-    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
+    let (ledger, ledger_id, _pledge_id, line_id, bank, cardholder, _vault_id) = setup_drawn_line(&env);
 
     // deploy a vault and bind it, but DO NOT approve it on the ledger
     let vault_id = env.register(SettlementVault, ());
     let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &ledger_id);
+    vault.initialize(&Address::generate(&env), &token_addr, &ledger_id);
     // (intentionally NO ledger.approve_party(vault_id, Vault))
 
     token_admin.mint(&cardholder, &25_000i128);
@@ -346,6 +377,9 @@ fn unapproved_vault_cannot_settle_and_reverts_cleanly() {
 fn settle_nonpositive_amount_refused() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (_ledger, vault, _token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
     token_admin.mint(&cardholder, &25_000i128);
     assert_eq!(
@@ -365,6 +399,9 @@ fn over_settlement_documented_bank_receives_full_amount_debt_clamps() {
     // token, so the bank cannot receive an unrecorded overpayment.
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
@@ -385,6 +422,9 @@ fn over_settlement_documented_bank_receives_full_amount_debt_clamps() {
 fn settlement_refuses_overpayment_above_drawn_balance() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
@@ -401,12 +441,15 @@ fn settlement_refuses_overpayment_above_drawn_balance() {
 fn settlement_refuses_repayment_on_closed_line() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     token_admin.mint(&cardholder, &26_000i128);
     vault.settle_repayment(&line_id, &cardholder, &bank, &id(&env), &25_000i128);
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 0);
-    ledger.bank_authorize_release(&line_id, &bank);
+    ledger.bank_authorize_release(&line_id, &bank, &id(&env));
     assert_eq!(ledger.get_line(&line_id).status, credit_ledger::LineStatus::Closed);
 
     let res = vault.try_settle_repayment(&line_id, &cardholder, &bank, &id(&env), &1i128);
@@ -421,6 +464,9 @@ fn settlement_refuses_repayment_on_closed_line() {
 fn duplicate_payment_ref_does_not_move_tokens_twice() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     token_admin.mint(&cardholder, &25_000i128);
@@ -445,6 +491,9 @@ fn duplicate_payment_ref_does_not_move_tokens_twice() {
 fn snapshot_partial_settlement_records_exact_balances_and_debt() {
     let env = Env::default();
     env.mock_all_auths();
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
     let (ledger, vault, token, token_admin, line_id, bank, cardholder, _v) = setup_vault(&env);
 
     token_admin.mint(&cardholder, &25_000i128);
@@ -462,23 +511,73 @@ fn snapshot_partial_settlement_records_exact_balances_and_debt() {
 fn settlement_bound_to_configured_ledger_only() {
     let env = Env::default();
     env.mock_all_auths();
-    let (ledger, _ledger_id, _pledge_id, line_id, bank, cardholder) = setup_drawn_line(&env);
-    let (_other_ledger, other_ledger_id, _other_pledge, _other_line, _other_bank, _other_cardholder) = setup_drawn_line(&env);
+    // The imported credit_ledger WASM is large (unoptimized); lift the test
+    // instantiation budget. Production deploys an optimized (wasm-opt) build.
+    env.cost_estimate().budget().reset_unlimited();
+    let (ledger, _ledger_id, _pledge_id, line_id, bank, cardholder, _vault_id) = setup_drawn_line(&env);
+    let (_other_ledger, other_ledger_id, _other_pledge, _other_line, _other_bank, _other_cardholder, _other_vault_id) = setup_drawn_line(&env);
 
     let issuer = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(issuer);
     let token_addr = sac.address();
     let token = TokenClient::new(&env, &token_addr);
     let token_admin = StellarAssetClient::new(&env, &token_addr);
-    let vault_id = env.register(SettlementVault, ());
-    let vault = SettlementVaultClient::new(&env, &vault_id);
-    vault.initialize(&token_addr, &other_ledger_id);
-    ledger.approve_party(&vault_id, &credit_ledger::Role::Vault);
+    // A vault that points at a DIFFERENT ledger and is not the vault our ledger was
+    // bound to at init. The ledger binds exactly one vault at initialize and accepts
+    // repayments only from it, so this stranger vault must not be able to settle this
+    // line. (We do not call set_settlement_vault: binding is init-only now, and the
+    // ledger is already bound to its own vault.)
+    let other_vault_id = env.register(SettlementVault, ());
+    let other_vault = SettlementVaultClient::new(&env, &other_vault_id);
+    other_vault.initialize(&Address::generate(&env), &token_addr, &other_ledger_id);
+    ledger.approve_party(&other_vault_id, &credit_ledger::Role::Vault);
 
     token_admin.mint(&cardholder, &25_000i128);
-    let res = vault.try_settle_repayment(&line_id, &cardholder, &bank, &id(&env), &10_000i128);
-    assert!(res.is_err(), "a vault bound to the wrong ledger must not settle this line");
+    let res = other_vault.try_settle_repayment(&line_id, &cardholder, &bank, &id(&env), &10_000i128);
+    assert!(res.is_err(), "a vault that is not the ledger's bound vault must not settle this line");
     assert_eq!(token.balance(&cardholder), 25_000);
     assert_eq!(token.balance(&bank), 0);
     assert_eq!(ledger.get_line(&line_id).drawn_balance, 25_000);
+}
+
+// ---- Batch 10: the vault exposes its bindings and refuses getters pre-init ----
+// Operators and reviewers must be able to verify what the vault is bound to
+// (which ledger, which settlement asset, which admin) without inspecting raw
+// storage. These getters make the binding auditable on-chain.
+#[test]
+fn batch10_vault_getters_return_bound_addresses() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    // A real ledger (for a real address) and a SAC settlement token.
+    let ledger_id = env.register(credit_ledger::WASM, ());
+    let issuer = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(issuer.clone());
+    let token_addr = sac.address();
+
+    let vault_id = env.register(SettlementVault, ());
+    let vault = SettlementVaultClient::new(&env, &vault_id);
+    let admin = Address::generate(&env);
+    vault.initialize(&admin, &token_addr, &ledger_id);
+
+    assert_eq!(vault.get_credit_ledger(), ledger_id, "get_credit_ledger returns the bound ledger");
+    assert_eq!(vault.get_settlement_token(), token_addr, "get_settlement_token returns the bound asset");
+    assert_eq!(vault.get_admin(), admin, "get_admin returns the init admin");
+}
+
+#[test]
+fn batch10_vault_getters_fail_before_init() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let vault_id = env.register(SettlementVault, ());
+    let vault = SettlementVaultClient::new(&env, &vault_id);
+
+    // Before initialize, every binding getter reports NotInitialized rather than
+    // panicking or returning a junk address.
+    assert_eq!(vault.try_get_credit_ledger(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(vault.try_get_settlement_token(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(vault.try_get_admin(), Err(Ok(Error::NotInitialized)));
 }

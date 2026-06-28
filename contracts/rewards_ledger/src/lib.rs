@@ -9,7 +9,7 @@ mod test;
 pub use error::Error;
 pub use types::*;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, contractmeta, symbol_short, Address, BytesN, Env};
 
 const DAY_IN_LEDGERS: u32 = 17_280; // ~5s ledgers
 // Storage TTL horizon. Set beyond a 12-month claim window (365 days) so a
@@ -26,6 +26,11 @@ const MAX_RATE_BPS: u32 = 1_000;
 const BPS_DENOM: i128 = 10_000;
 /// 1e7 fixed-point scale, matching the credit ledger's price/weight scaling.
 const E7: i128 = 10_000_000;
+
+// Self-identifying protocol metadata (WASM `contractmetav0` section).
+contractmeta!(key = "name", val = "Argent RewardsLedger");
+contractmeta!(key = "proto", val = "argent.rewards.v1");
+contractmeta!(key = "sdk", val = "soroban-sdk-23.5.3");
 
 #[contract]
 pub struct RewardsLedger;
