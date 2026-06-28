@@ -44,10 +44,11 @@ physical-collateral use cases.
 
 ## Status
 
-These contracts are **deployed and tested on Stellar testnet**, with a passing
-test suite across all three crates. They are real Soroban contracts: `require_auth`,
-emitted events, and one atomic value transfer in `settlement_vault`. Not
-arbitrary on-chain storage.
+These contracts are **deployed and tested on Stellar testnet**, with **187
+passing tests** across all three crates (`credit_ledger` 125, `rewards_ledger`
+45, `settlement_vault` 17). They are real Soroban contracts: `require_auth`, a
+typed canonical `CollateralEventV1` event stream, and one atomic value transfer
+in `settlement_vault`. Not arbitrary on-chain storage.
 
 **What is funded, not yet built:** the institutional **DFNS authorization layer**
 that sits on top of these contracts, DFNS role wallets, deny-by-default approval
@@ -58,16 +59,33 @@ documented in [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-
 The contracts here are deliberately **signer-agnostic** so any institutional
 signing layer, DFNS or otherwise, can govern them.
 
+In this demo, one operator holds local keys for all parties so the lifecycle
+runs end to end. In production each party (bank, custodian, owner, processor)
+holds its own signing authority through DFNS under its own approval policies;
+Argent assembles the transaction but holds no party's keys and can sign for no
+one. The contract enforces which role may perform each act; DFNS enforces that
+only the real party can produce that act's signature. Same lifecycle, same
+contract, decentralized authority.
+
 ## Build and test
 
 ```bash
 cd contracts
-cargo test --workspace        # run the contract test suite
-cargo build --release         # build the wasm (opt-level z, panic=abort)
+cargo build --target wasm32v1-none --release -p credit_ledger  # build first: settlement_vault tests import this wasm
+cargo test --workspace                                         # run the contract test suite
 ```
 
-Requires the Rust toolchain and the `wasm32-unknown-unknown` target. The
-contracts target `soroban-sdk` 22.
+Expected: `credit_ledger` 125, `rewards_ledger` 45, `settlement_vault` 17, for
+187 passing, 0 failed.
+
+Requires the Rust toolchain and the `wasm32v1-none` target
+(`rustup target add wasm32v1-none`). The contracts target `soroban-sdk` 23.5.3.
+The `settlement_vault` integration tests import the compiled `credit_ledger`
+wasm, so the credit ledger must be built before the workspace test run.
+
+New reviewers should start with
+[`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md): what V4 proves, the
+key tests to inspect, and the live testnet contract ids.
 
 ## Documentation
 
