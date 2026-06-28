@@ -20,3 +20,7 @@ Cargo.lock
 .idea/
 .vscode/
 *.tar.gz
+
+# Local reference artifacts, never published
+argent-core-v4-summary.pdf
+*.pdf
