@@ -587,6 +587,8 @@ The Soroban reference implementation emits compact runtime event topics. The pro
 
 Two repayment events exist by design and are not duplicates. `("repay", "settled")` is emitted by the settlement vault when the settlement-asset transfer completes. `("repay", "applied")` is emitted by the credit ledger when that repayment is applied to the line's drawn balance. The Soroban topics are compact because of symbol-length limits. The normalized protocol names are the descriptive forms the indexer SHOULD surface.
 
+Alongside these compact compatibility topics, every lifecycle act in the reference implementation also emits one typed `CollateralEventV1` (a soroban-sdk `#[contractevent]`), the canonical, replayable record this protocol's event model normalizes. Its topics are four-part: a pinned `collateral_event_v1` marker, the `framework_id`, the affected `entity` kind, and the `action`, so an indexer filters by deal, object kind, and act without decoding bodies. Its non-topic fields are emitted as a self-describing `Map<Symbol, Val>` (the SEP-48 map data format) registered in the contract spec, so an indexer or forker decodes by field name with no Argent-specific code and the wire event cannot diverge from the published spec. Each event carries a monotonic, framework-scoped sequence, the previous and new state of the affected entity, the actor and role, the relevant evidence, condition, and valuation commitments, and a typed payload sufficient to reconstruct projection state from the stream alone. The thin topics above remain for migration; the canonical event is authoritative, and the reference implementation in `credit_ledger/src/event.rs` is the definitive schema.
+
 ---
 
 ## 10. State machine
