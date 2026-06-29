@@ -29,9 +29,9 @@ pub enum Error {
     PositionNotSelected = 15,
     /// Custodian tried to confirm release on a position not awaiting release.
     PositionNotReleasePending = 16,
-    /// These exact bars (serials_hash) are already active under another
-    /// position. The same physical set cannot be double-pledged.
-    BarSetAlreadyActive = 17,
+    /// This exact lot (uniqueness_hash) is already active under another
+    /// position. The same allocated lot cannot be double-pledged.
+    LotAlreadyActive = 17,
 
     PledgeNotFound = 20,
     PledgeNotActive = 21,
@@ -41,8 +41,6 @@ pub enum Error {
     LimitExceedsBorrowingBase = 32,
     InsufficientCapacity = 33,
     OutstandingBalance = 34,
-    /// bank_resume_line was called on a line that is not under a bank stop.
-    LineNotSuspended = 36,
     /// The bank-set risk parameters are invalid: the rule is
     /// 0 < ltv_bps (advance) < maintenance_bps <= 10000. This prevents a line
     /// from being configured to lend past the value of its collateral.
@@ -86,16 +84,13 @@ pub enum Error {
     ReadinessNotFound = 70,
     /// The readiness record is not in a state that permits this transition.
     ReadinessWrongStatus = 71,
-    /// A required readiness field (agent / route / settlement asset) is unset,
-    /// so the record cannot be promoted to Ready.
-    ReadinessIncompleteFields = 72,
 
     /// A credit line with this id already exists.
     LineExists = 73,
     /// This pledge already has a bound credit line.
     PledgeAlreadyHasLine = 74,
     /// Repayment amount exceeds the outstanding drawn balance.
-    RepaymentExceedsOutstandingBalance = 75,
+    RepaymentExceedsBalance = 75,
     /// Oracle price timestamp is later than the current ledger timestamp.
     PriceFromFuture = 76,
     /// Revaluation thresholds or freshness parameters are malformed.
@@ -106,4 +101,9 @@ pub enum Error {
     ReadinessExpired = 79,
     /// A pledge with this id already exists; activation is not idempotent over a live id.
     PledgeExists = 80,
+    /// No instrument with this key exists in the registry.
+    InstrumentNotFound = 82,
+    /// The instrument is not admitted to this framework's eligible set (or is
+    /// retired and can no longer back a position).
+    InstrumentNotEligible = 84,
 }

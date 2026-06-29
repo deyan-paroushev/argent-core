@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, BytesN};
+use soroban_sdk::{contracttype, Address, BytesN, Symbol};
 
 /// Lifecycle of a tri-party control framework.
 #[contracttype]
@@ -54,9 +54,9 @@ pub enum PositionStatus {
 }
 
 /// The owner's signed instruction to designate a registered position as
-/// collateral. The bars themselves are already identified on the position
-/// (barlist_hash) and recorded at the custody/account level; this record is the
-/// owner's directive that the recorded set be committed, anchoring the hash of
+/// collateral. The lot itself is already identified on the position
+/// (manifest_hash) and recorded at the custody/account level; this record is the
+/// owner's directive that the recorded lot be committed, anchoring the hash of
 /// the owner's signed collateral-request letter. It is the owner-selects half
 /// of the two-sided consent that the custodian then confirms at immobilization.
 #[contracttype]
@@ -132,14 +132,21 @@ pub enum AdjustmentStatus {
 pub struct CollateralAdjustment {
     pub credit_line_id: BytesN<32>,
     pub adjustment_type: AdjustmentType,
-    /// proposed new bar-list commitment if the adjustment is approved
-    pub new_barlist_hash: BytesN<32>,
-    /// proposed new serials commitment (the collateral-uniqueness key). Must be
-    /// maintained in lockstep with new_barlist_hash so the BarSet uniqueness lock
+    /// proposed new manifest commitment (document for the new lot) if approved
+    pub new_manifest_hash: BytesN<32>,
+    /// proposed new uniqueness commitment (the collateral-uniqueness key). Must be
+    /// maintained in lockstep with new_manifest_hash so the lot uniqueness lock
     /// tracks the real collateral identity after substitution/top-up/release.
-    pub new_serials_hash: BytesN<32>,
-    /// proposed new fine weight (troy oz, scaled 1e7) if approved
-    pub new_weight_oz_e7: i128,
+    pub new_uniqueness_hash: BytesN<32>,
+    /// proposed new quality certificate commitment for the substituted / topped-up
+    /// lot, maintained in lockstep with the other new_* commitments.
+    pub new_quality_cert_hash: BytesN<32>,
+    /// proposed new quantity certificate commitment for the new lot.
+    pub new_quantity_cert_hash: BytesN<32>,
+    /// proposed new location commitment for the new lot.
+    pub new_location_hash: BytesN<32>,
+    /// proposed new quantity in the instrument's unit (scaled 1e7) if approved
+    pub new_quantity_e7: i128,
     /// hash of the owner's signed adjustment-request instruction
     pub request_hash: BytesN<32>,
     pub status: AdjustmentStatus,
@@ -242,8 +249,109 @@ pub enum Role {
     Owner,
 }
 
-/// An attested vaulted-gold position. The full bar list is NEVER stored on
-/// chain. Only its hash, plus the usable collateral facts.
+/// Lifecycle of an instrument in the registry.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstrumentStatus {
+    Active,
+    Retired,
+}
+
+/// Lifecycle of a per-framework instrument eligibility record.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EligibilityStatus {
+    Active,
+    Retired,
+}
+
+/// The bank-approved result of a framework eligible-collateral schedule for a
+/// single instrument: not merely admitted but admitted under a specific
+/// treatment. On-chain compression of the CDM collateral criteria / treatment
+/// model. The legal schedule stays off-chain as eligibility_hash; the contract
+/// records the treatment the bank applies (haircut, max advance, maintenance).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FrameworkInstrumentEligibility {
+    pub framework_id: BytesN<32>,
+    pub instrument: InstrumentKey,
+    /// Commitment to the eligibility schedule clause / CDM CollateralCriteria.
+    pub eligibility_hash: BytesN<32>,
+    /// Discount applied to gross value before LTV, in bps. 500 = 5 percent.
+    pub haircut_bps: u32,
+    /// Maximum advance rate permitted for this instrument here, bps.
+    pub max_ltv_bps: u32,
+    /// Maintenance threshold for this instrument here, bps.
+    pub maintenance_bps: u32,
+    pub status: EligibilityStatus,
+}
+
+/// The identity of an instrument in the registry. Mirrors Daml Finance's
+/// InstrumentKey (issuer, depository, id, version). The issuer is the party that
+/// defines the asset standard; the depository is the custodian that attests
+/// custody of this asset class. Both co-sign instrument registration, so neither
+/// can unilaterally define the asset (the two-signatory anti-fraud guarantee).
+/// `version` tracks the linear evolution of a standard: a grade redefinition
+/// bumps the version, so old holdings keep referencing the standard in force
+/// when they were created.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstrumentKey {
+    pub issuer: Address,
+    pub depository: Address,
+    /// short textual id, e.g. "XAU_LGD", "CU_LME_A", "WHEAT_2"
+    pub id: Symbol,
+    pub version: u32,
+}
+
+/// The economic identity of one unit of collateral. Daml Finance "Instrument":
+/// it describes WHAT is held, separated from the holding that records HOW MUCH
+/// and against which custodian. Defined once in the registry and referenced by
+/// every position of this asset, so asset data is never replicated per holding.
+/// Gold is one instrument among many; copper, wheat, and crude are others.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Instrument {
+    pub key: InstrumentKey,
+    /// the commodity class, e.g. "gold", "copper", "wheat", "crude"
+    pub commodity: Symbol,
+    /// the unit the quantity is denominated in, e.g. "oz", "mt", "bbl", "bu"
+    pub unit: Symbol,
+    /// commitment to the off-chain grade / quality standard document (LBMA Good
+    /// Delivery, LME Grade A, No.2 wheat, Brent). First-class because grade
+    /// prices the collateral and a substitution to a lower grade is a risk event.
+    pub grade_hash: BytesN<32>,
+    pub status: InstrumentStatus,
+}
+
+/// The set of off-chain document and identity commitments for a single lot. This
+/// is the evidence a warehouse-receipt-finance lender underwrites against:
+/// the manifest, the lot's unique identity, and the quality, quantity, and
+/// location certificates. Bundled into one struct so the position and adjustment
+/// entrypoints stay within Soroban's per-function parameter limit, and because
+/// these commitments are a cohesive evidence set, not independent arguments.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LotEvidence {
+    /// Commitment to the off-chain manifest document for this lot (bar list,
+    /// warehouse receipt, lot schedule, with quantities and quality).
+    pub manifest_hash: BytesN<32>,
+    /// Commitment to the lot's identity (the collateral-uniqueness key): bar
+    /// serials, receipt id, parcel id. The same lot cannot be active twice.
+    pub uniqueness_hash: BytesN<32>,
+    /// Commitment to the lot-level quality / assay / grading certificate.
+    pub quality_cert_hash: BytesN<32>,
+    /// Commitment to the lot-level weight / quantity certificate.
+    pub quantity_cert_hash: BytesN<32>,
+    /// Commitment to the warehouse / vault / tank / terminal location.
+    pub location_hash: BytesN<32>,
+}
+
+/// An attested allocated-collateral position: the Daml Finance "Holding". It
+/// records how much of an instrument an owner holds against a custodian under a
+/// framework. The economic terms (commodity, unit, grade) live on the referenced
+/// instrument, not here. The specific lot's documents and identity stay here.
+/// The full manifest is NEVER stored on chain, only its hash.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VaultPosition {
@@ -253,20 +361,39 @@ pub struct VaultPosition {
     /// designated as collateral under that framework's eligible-collateral
     /// schedule, with its owner and custodian matching the framework's.
     pub framework_id: BytesN<32>,
-    /// keccak/sha hash of the off-chain bar list document (serials, assay,
-    /// weights, formatting). The full-document commitment.
-    pub barlist_hash: BytesN<32>,
-    /// hash of just the bar serial numbers. This is the collateral-uniqueness
-    /// key: the same serials cannot be active under two positions at once, which
-    /// is what enforces no-double-pledge at the bar-set level (not merely at the
-    /// position level).
-    pub serials_hash: BytesN<32>,
-    /// fine weight in troy ounces, scaled by 1e7 (so 401.10 oz -> 4_011_000_000)
-    pub fine_weight_oz_e7: i128,
+    /// the instrument this collateral is an allocation of. The economic identity
+    /// (commodity, unit, grade) is read from the registry under this key.
+    pub instrument: InstrumentKey,
+    /// hash of the off-chain manifest document for this specific lot (the bar
+    /// list, the warehouse receipt, the lot schedule, with quantities and
+    /// quality). The full-document commitment for this holding.
+    pub manifest_hash: BytesN<32>,
+    /// hash of the lot's identity (bar serials for gold, receipt id for a
+    /// warehouse receipt, lot/parcel id for bulk). This is the collateral-
+    /// uniqueness key: the same lot cannot be active under two positions at once,
+    /// which enforces no-double-pledge at the lot level (not merely the position
+    /// level). The same mechanism that prevents duplicate financing of one
+    /// warehouse receipt.
+    pub uniqueness_hash: BytesN<32>,
+    /// lot-level quality / assay / grading certificate commitment. The bank
+    /// underwrites against grade, so quality is a first-class evidence field, not
+    /// buried in the manifest. Warehouse-receipt finance evidences stated quality.
+    pub quality_cert_hash: BytesN<32>,
+    /// lot-level weight / quantity certificate commitment. The collateral manager
+    /// certifies quantity independently of the manifest. Warehouse-receipt finance
+    /// evidences stated quantity.
+    pub quantity_cert_hash: BytesN<32>,
+    /// warehouse / vault / tank / terminal location commitment. Existence and
+    /// location are part of what the collateral manager monitors.
+    pub location_hash: BytesN<32>,
+    /// quantity of the instrument's unit, scaled by 1e7 (so 401.10 units ->
+    /// 4_011_000_000). The unit meaning comes from the referenced instrument.
+    pub quantity_e7: i128,
     /// ledger sequence after which the custody attestation is stale
     pub attestation_expiry: u32,
     pub status: PositionStatus,
 }
+
 
 /// The outcome of enforcing the security after an uncured default. Enforcement
 /// follows the agreed waterfall in the off-chain security and control
@@ -316,8 +443,8 @@ pub enum MarginState {
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineValuation {
-    /// price per troy ounce, scaled by 1e7, last acted on
-    pub price_per_oz_e7: i128,
+    /// price per the instrument's unit, scaled by 1e7, last acted on
+    pub price_per_unit_e7: i128,
     /// confidence (half-width) of that price, scaled by 1e7; smaller is better
     pub confidence_e7: i128,
     /// source publish time of the price (unix seconds), for the freshness check
@@ -403,16 +530,40 @@ pub struct CreditLine {
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    /// The admin address proposed by the current admin but not yet accepted. The
+    /// rotation is a two-step handshake: the current admin proposes, and the
+    /// proposed address must itself accept before it becomes the admin. This
+    /// makes it impossible to hand control to a mistyped or uncontrolled address.
+    PendingAdmin,
     /// the single SettlementVault contract address authorized to apply repayments
     SettlementVault,
     /// role registry: (Address, Role) -> bool
     Approved(Address, Role),
     /// tri-party control framework: framework_id -> ControlFramework
     Framework(BytesN<32>),
+    /// instrument registry: fingerprint(InstrumentKey) -> Instrument. The economic
+    /// identity of an asset, defined once and referenced by every position of it.
+    /// Keyed by a 32-byte sha256 fingerprint of the InstrumentKey rather than the
+    /// key struct itself: the full InstrumentKey serializes to 264 bytes, over the
+    /// network's 250-byte ledger-key limit. The full key still travels in the
+    /// stored value and in events, so the book of record is unchanged in content.
+    Instrument(BytesN<32>),
+    /// per-framework instrument eligibility (the CDM "GC basket"):
+    /// (framework_id, fingerprint(InstrumentKey)) -> bool. A framework admits the
+    /// instruments it will accept as collateral; register_position checks
+    /// membership. Fingerprinted for the same ledger-key-size reason as Instrument.
+    EligibleInstrument(BytesN<32>, BytesN<32>),
+    /// per-framework instrument treatment (CDM collateral criteria / treatment
+    /// result): (framework_id, fingerprint(InstrumentKey)) ->
+    /// FrameworkInstrumentEligibility. Supersedes the boolean EligibleInstrument:
+    /// records the haircut / LTV / maintenance the bank applies, not just that the
+    /// instrument is admitted. Fingerprinted for the same ledger-key-size reason.
+    FrameworkInstrument(BytesN<32>, BytesN<32>),
     Position(BytesN<32>),
-    /// bar-set uniqueness lock: serials_hash -> position_id holding it active.
-    /// Prevents the same physical bars being pledged under two positions.
-    BarSet(BytesN<32>),
+    /// lot uniqueness lock: uniqueness_hash -> position_id holding it active.
+    /// Prevents the same allocated lot (bars, warehouse receipt, parcel) being
+    /// pledged under two positions. Generalizes the former bar-set lock.
+    LotLock(BytesN<32>),
     /// owner's bar-selection instruction: position_id -> CollateralSelection
     Selection(BytesN<32>),
     Pledge(BytesN<32>),
@@ -435,6 +586,10 @@ pub enum DataKey {
     /// CollateralEventV1 ordering: framework_id -> u64 last-emitted sequence.
     /// Gap-free run the indexer can replay.
     FrameworkSeq(BytesN<32>),
+    /// GovernanceEventV1 ordering: a single contract-wide u64 last-emitted
+    /// sequence. Unlike FrameworkSeq this is not keyed by framework: governance
+    /// acts form one global authority stream. Gap-free run the indexer replays.
+    GovernanceSeq,
     /// position_id -> framework_id, for cheap event tagging.
     ContextForPosition(BytesN<32>),
     /// pledge_id -> FacilityContext

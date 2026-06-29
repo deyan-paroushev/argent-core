@@ -27,3 +27,4 @@ argent-core-v4-summary.pdf
 
 # Publish the V5 test summary; keep other PDFs (e.g. V4) untracked
 !docs/argent-core-v5-summary.pdf
+contracts/*/test_snapshots/

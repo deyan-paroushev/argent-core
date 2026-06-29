@@ -11,7 +11,7 @@ pub use error::Error;
 pub use types::*;
 pub use event::*;
 use soroban_sdk::{
-    contract, contractimpl, contractmeta, symbol_short, Address, BytesN, Env,
+    contract, contractimpl, contractmeta, symbol_short, xdr::ToXdr, Address, BytesN, Env,
 };
 
 const DAY_IN_LEDGERS: u32 = 17_280; // ~5s ledgers
@@ -25,6 +25,13 @@ contractmeta!(key = "name", val = "Argent CreditLedger");
 contractmeta!(key = "proto", val = "argent.collateral.v1");
 contractmeta!(key = "events", val = "CollateralEventV1");
 contractmeta!(key = "sdk", val = "soroban-sdk-23.5.3");
+// Upgrade stance: this contract exposes NO code-upgrade entrypoint. Its WASM is
+// immutable once deployed; the book of record cannot be rewritten by a later
+// implementation swap. Operational control is limited to admin rotation (a
+// two-step propose/accept handshake) and the role registry. Stated explicitly
+// so a reviewer can confirm the immutability claim against the entrypoints.
+contractmeta!(key = "upgrade", val = "none-immutable");
+contractmeta!(key = "admin", val = "rotatable-2step");
 
 #[contract]
 pub struct CreditLedger;
@@ -54,6 +61,69 @@ impl CreditLedger {
         Ok(())
     }
 
+    /// Step 1 of admin rotation. The current admin nominates a successor. This
+    /// does NOT change the active admin: the nominee is recorded as pending and
+    /// must call accept_admin to take control. A nomination can be overwritten by
+    /// proposing a different address, or effectively cancelled by proposing the
+    /// current admin. Admin only.
+    pub fn propose_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        let admin = Self::admin(&env)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+        env.storage()
+            .instance()
+            .extend_ttl(LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::AdminProposed,
+            admin,
+            Self::zero_hash(&env),
+            GovernancePayloadV1::AdminChange(AdminChangeData {
+                new_admin,
+            }),
+        );
+        Ok(())
+    }
+
+    /// Step 2 of admin rotation. The pending admin accepts control. The caller
+    /// must be the exact address the current admin proposed, and must authorize
+    /// the call itself, so control can never pass to a mistyped or uncontrolled
+    /// address. On success the active admin is replaced and the pending slot is
+    /// cleared. Fails if there is no pending proposal or the caller is not it.
+    pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        new_admin.require_auth();
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(Error::NotAuthorized)?;
+        if pending != new_admin {
+            return Err(Error::NotAuthorized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage()
+            .instance()
+            .extend_ttl(LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::AdminAccepted,
+            new_admin.clone(),
+            Self::zero_hash(&env),
+            GovernancePayloadV1::AdminChange(AdminChangeData {
+                new_admin,
+            }),
+        );
+        Ok(())
+    }
+
+    /// The current admin address. Read-only.
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        Self::admin(&env)
+    }
+
     /// Approve a party for a role. Admin only.
     pub fn approve_party(
         env: Env,
@@ -69,7 +139,14 @@ impl CreditLedger {
             .persistent()
             .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         env.events()
-            .publish((symbol_short!("party"), symbol_short!("approved")), (party, role));
+            .publish((symbol_short!("party"), symbol_short!("approved")), (party.clone(), role));
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::PartyApproved,
+            admin,
+            Self::zero_hash(&env),
+            GovernancePayloadV1::PartyChange(PartyChangeData { party, role }),
+        );
         Ok(())
     }
 
@@ -81,11 +158,23 @@ impl CreditLedger {
     ) -> Result<(), Error> {
         let admin = Self::admin(&env)?;
         admin.require_auth();
+        // Only roles that can be approved can be revoked. Owner and Admin are
+        // never approval-granted (Owner is self-delegated, Admin is the rotation
+        // key), so revoking them is meaningless and would emit a misleading
+        // PartyRevoked event. Mirrors the guard approve_party already applies.
+        Self::assert_approvable_role(role)?;
         env.storage()
             .persistent()
             .remove(&DataKey::Approved(party.clone(), role));
         env.events()
-            .publish((symbol_short!("party"), symbol_short!("revoked")), (party, role));
+            .publish((symbol_short!("party"), symbol_short!("revoked")), (party.clone(), role));
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::PartyRevoked,
+            admin,
+            Self::zero_hash(&env),
+            GovernancePayloadV1::PartyChange(PartyChangeData { party, role }),
+        );
         Ok(())
     }
 
@@ -145,6 +234,17 @@ impl CreditLedger {
         BytesN::from_array(env, &[0u8; 32])
     }
 
+    /// 32-byte fingerprint of an InstrumentKey, used as the storage-key component
+    /// wherever an instrument is indexed (Instrument, EligibleInstrument,
+    /// FrameworkInstrument). The full InstrumentKey struct serializes to 264 bytes,
+    /// over the network's 250-byte ledger-key limit, so it cannot be a storage key
+    /// directly. The fingerprint is sha256 of the key's XDR serialization: stable,
+    /// collision-resistant, and fixed at 32 bytes. The full InstrumentKey is still
+    /// carried in stored values and events, so no information is lost.
+    fn instrument_fingerprint(env: &Env, key: &InstrumentKey) -> BytesN<32> {
+        env.crypto().sha256(&key.clone().to_xdr(env)).to_bytes()
+    }
+
     /// Read-and-increment the framework-scoped sequence. Returns the sequence to
     /// stamp on the event being emitted (1 for the first event under a framework).
     fn next_framework_sequence(env: &Env, framework_id: &BytesN<32>) -> u64 {
@@ -158,12 +258,62 @@ impl CreditLedger {
         next
     }
 
+    /// Next contract-wide governance sequence number. Mirrors
+    /// next_framework_sequence but for the single global GovernanceSeq counter:
+    /// governance acts form one authority stream, not a per-framework one.
+    fn next_governance_sequence(env: &Env) -> u64 {
+        let key = DataKey::GovernanceSeq;
+        let last: u64 = env.storage().persistent().get(&key).unwrap_or(0);
+        let next = last + 1;
+        env.storage().persistent().set(&key, &next);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        next
+    }
+
+    /// Emit a governance event onto the contract-wide authority stream. Assigns
+    /// the next global sequence, stamps the observed ledger, and publishes. The
+    /// caller supplies the act, the authorizing actor, an optional evidence
+    /// commitment (zero hash when none), and the typed payload.
+    fn emit_governance_event(
+        env: &Env,
+        action: GovernanceAction,
+        actor: Address,
+        evidence_hash: BytesN<32>,
+        payload: GovernancePayloadV1,
+    ) {
+        let sequence = Self::next_governance_sequence(env);
+        let event = GovernanceEventV1 {
+            action,
+            sequence,
+            actor,
+            evidence_hash,
+            occurred_ledger: env.ledger().sequence(),
+            payload,
+        };
+        event.publish(env);
+    }
+
     /// Public read of the current last-emitted sequence for a framework (0 if
     /// none), so an indexer can check completeness against the chain.
     pub fn framework_sequence(env: Env, framework_id: BytesN<32>) -> u64 {
         env.storage()
             .persistent()
             .get(&DataKey::FrameworkSeq(framework_id))
+            .unwrap_or(0)
+    }
+
+    /// The current contract-wide governance sequence: the number of governance
+    /// events emitted so far. Read-only. Advances by one on each governance act
+    /// (admin rotation, party approval/revocation, instrument lifecycle). A
+    /// consumer reads this to bound a replay of the governance stream, or to
+    /// confirm a governance act published (the value advancing is the observable
+    /// proof emit_governance_event ran to completion).
+    pub fn governance_sequence(env: Env) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::GovernanceSeq)
             .unwrap_or(0)
     }
 
@@ -206,6 +356,66 @@ impl CreditLedger {
     /// Construct and publish a CollateralEventV1. Bumps the framework sequence,
     /// stamps the current ledger, and publishes via the generated .publish().
     #[allow(clippy::too_many_arguments)]
+    /// Map a lifecycle action to the framework document whose terms condition
+    /// it. Returns the zero hash when the framework cannot be loaded or when the
+    /// act has no prior conditioning document (framework registration is itself
+    /// the anchoring act, so it conditions nothing). This is a pure read used
+    /// only to enrich emitted events; it never affects control flow.
+    fn condition_for(
+        env: &Env,
+        framework_id: &BytesN<32>,
+        action: &CollateralAction,
+    ) -> BytesN<32> {
+        let fwk: Option<ControlFramework> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Framework(framework_id.clone()));
+        let fwk = match fwk {
+            Some(f) => f,
+            None => return Self::zero_hash(env),
+        };
+        match action {
+            // The position lifecycle is governed by the custody agreement: the
+            // custodian's control of the asset is what these acts assert.
+            CollateralAction::PositionRegistered
+            | CollateralAction::CollateralSelected
+            | CollateralAction::CollateralImmobilized => fwk.custody_agreement_hash,
+
+            // Pledge creation, collateral substitution, and release are governed
+            // by the pledge agreement (the security interest itself).
+            CollateralAction::PledgeActivated
+            | CollateralAction::AdjustmentRequested
+            | CollateralAction::AdjustmentCustodianConfirmed
+            | CollateralAction::AdjustmentApproved
+            | CollateralAction::ReleaseAuthorized
+            | CollateralAction::ReleaseConfirmed => fwk.pledge_agreement_hash,
+
+            // The facility (loan) terms govern opening, drawing, repaying, and the
+            // bank's discretionary stop/resume of the line.
+            CollateralAction::LineOpened
+            | CollateralAction::DrawdownRecorded
+            | CollateralAction::DrawdownReversed
+            | CollateralAction::RepaymentApplied
+            | CollateralAction::LineSuspendedByBank
+            | CollateralAction::LineResumedByBank => fwk.facility_agreement_hash,
+
+            // Revaluation is governed by the margin policy.
+            CollateralAction::LineRevalued => fwk.margin_policy_hash,
+
+            // Default, cure, enforcement, and readiness are governed by the
+            // enforcement waterfall.
+            CollateralAction::DefaultNoticeIssued
+            | CollateralAction::DefaultCured
+            | CollateralAction::EnforcementRecorded
+            | CollateralAction::ReadinessOpened
+            | CollateralAction::ReadinessPopulated
+            | CollateralAction::ReadinessExpired => fwk.enforcement_waterfall_hash,
+
+            // Framework registration is the anchoring act; it conditions nothing.
+            CollateralAction::FrameworkRegistered => Self::zero_hash(env),
+        }
+    }
+
     fn emit_event(
         env: &Env,
         framework_id: &BytesN<32>,
@@ -224,6 +434,17 @@ impl CreditLedger {
         valuation_ref: BytesN<32>,
         payload: CollateralPayloadV1,
     ) {
+        // Evidence channel: bind each act to the specific framework document
+        // whose terms condition it. If the caller passed an explicit non-zero
+        // condition_hash, honor it; otherwise derive the conditioning document
+        // from the action. This makes every emitted event self-describing about
+        // which leg of the tri-party agreement authorized the act, so an indexer
+        // or a forking team can verify the act against the right off-chain terms.
+        let condition_hash = if Self::is_zero_hash(env, &condition_hash) {
+            Self::condition_for(env, framework_id, &action)
+        } else {
+            condition_hash
+        };
         let sequence = Self::next_framework_sequence(env, framework_id);
         let event = CollateralEventV1 {
             framework_id: framework_id.clone(),
@@ -347,12 +568,201 @@ impl CreditLedger {
             .ok_or(Error::FrameworkNotActive)
     }
 
+    // ---- instrument registry (Daml Finance "Instrument") -----------------
+
+    /// Register an instrument: the economic identity of one unit of collateral
+    /// (commodity, unit, grade), defined once and referenced by every position
+    /// of it. The issuer (who defines the asset standard) and the depository
+    /// (the custodian attesting custody of this asset class) both sign, so
+    /// neither can unilaterally define the asset. Idempotent over a live key.
+    pub fn register_instrument(env: Env, instrument: Instrument) -> Result<(), Error> {
+        instrument.key.issuer.require_auth();
+        instrument.key.depository.require_auth();
+
+        if Self::is_zero_hash(&env, &instrument.grade_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
+        let key = DataKey::Instrument(Self::instrument_fingerprint(&env, &instrument.key));
+        if env.storage().persistent().has(&key) {
+            return Err(Error::NotAuthorized);
+        }
+        // Normalize status on registration: a freshly registered instrument is
+        // Active regardless of what the caller passed.
+        let mut stored = instrument.clone();
+        stored.status = InstrumentStatus::Active;
+        env.storage().persistent().set(&key, &stored);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::InstrumentRegistered,
+            instrument.key.issuer.clone(),
+            Self::zero_hash(&env),
+            GovernancePayloadV1::InstrumentRegistry(InstrumentRegistryData {
+                instrument: instrument.key,
+            }),
+        );
+        Ok(())
+    }
+
+    /// Retire an instrument. New positions can no longer reference it; existing
+    /// holdings are unaffected. Issuer and depository both sign, as at creation.
+    pub fn retire_instrument(
+        env: Env,
+        key: InstrumentKey,
+        issuer: Address,
+        depository: Address,
+    ) -> Result<(), Error> {
+        issuer.require_auth();
+        depository.require_auth();
+
+        let storage_key = DataKey::Instrument(Self::instrument_fingerprint(&env, &key));
+        let mut instrument: Instrument = env
+            .storage()
+            .persistent()
+            .get(&storage_key)
+            .ok_or(Error::InstrumentNotFound)?;
+        // Only the instrument's own issuer and depository may retire it.
+        if instrument.key.issuer != issuer || instrument.key.depository != depository {
+            return Err(Error::NotAuthorized);
+        }
+        instrument.status = InstrumentStatus::Retired;
+        env.storage().persistent().set(&storage_key, &instrument);
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::InstrumentRetired,
+            issuer,
+            Self::zero_hash(&env),
+            GovernancePayloadV1::InstrumentRegistry(InstrumentRegistryData {
+                instrument: key,
+            }),
+        );
+        Ok(())
+    }
+
+    pub fn get_instrument(env: Env, key: InstrumentKey) -> Result<Instrument, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Instrument(Self::instrument_fingerprint(&env, &key)))
+            .ok_or(Error::InstrumentNotFound)
+    }
+
+    /// Admit an instrument to a framework's eligible-collateral set (the CDM "GC
+    /// basket" made enforceable). The framework's bank and custodian both sign:
+    /// they jointly decide what collateral the facility will accept. Only an
+    /// active, registered instrument can be admitted. register_position then
+    /// checks membership here.
+    pub fn admit_instrument(
+        env: Env,
+        framework_id: BytesN<32>,
+        instrument: InstrumentKey,
+        bank: Address,
+        custodian: Address,
+        eligibility_hash: BytesN<32>,
+        haircut_bps: u32,
+        max_ltv_bps: u32,
+        maintenance_bps: u32,
+    ) -> Result<(), Error> {
+        bank.require_auth();
+        custodian.require_auth();
+
+        let framework: ControlFramework = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Framework(framework_id.clone()))
+            .ok_or(Error::FrameworkNotActive)?;
+        if framework.status != FrameworkStatus::Active {
+            return Err(Error::FrameworkNotActive);
+        }
+        if framework.bank != bank || framework.custodian != custodian {
+            return Err(Error::NotAuthorized);
+        }
+        // Re-check current approval. require_auth proves the key signed, and the
+        // framework match proves these are the framework's named parties, but
+        // neither proves the party is STILL approved. A bank or custodian whose
+        // approval was revoked after the framework was created must not be able
+        // to admit new instruments. This mirrors the approval re-check every
+        // other governed act performs.
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
+        }
+        if !Self::is_approved(env.clone(), custodian.clone(), Role::Custodian) {
+            return Err(Error::PartyNotApproved);
+        }
+
+        let instrument_rec: Instrument = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Instrument(Self::instrument_fingerprint(&env, &instrument)))
+            .ok_or(Error::InstrumentNotFound)?;
+        if instrument_rec.status != InstrumentStatus::Active {
+            return Err(Error::InstrumentNotEligible);
+        }
+
+        // The eligibility schedule clause must be a real commitment, and the
+        // treatment must be coherent: a haircut cannot exceed 100%, and the
+        // advance rate must be positive and strictly below the maintenance
+        // threshold, which itself cannot exceed 100%. This is the on-chain
+        // record of the CDM collateral criteria / treatment the bank applies to
+        // this instrument under this framework.
+        if Self::is_zero_hash(&env, &eligibility_hash) {
+            return Err(Error::InvalidDocumentHash);
+        }
+        if haircut_bps > 10_000
+            || max_ltv_bps == 0
+            || max_ltv_bps >= maintenance_bps
+            || maintenance_bps > 10_000
+        {
+            return Err(Error::InvalidRiskParams);
+        }
+
+        let eligibility = FrameworkInstrumentEligibility {
+            framework_id: framework_id.clone(),
+            instrument: instrument.clone(),
+            eligibility_hash: eligibility_hash.clone(),
+            haircut_bps,
+            max_ltv_bps,
+            maintenance_bps,
+            status: EligibilityStatus::Active,
+        };
+        // Commit the eligibility record first, then emit. Soroban rolls the
+        // whole transaction back on a later panic, so an event could never be
+        // committed without its state, but writing before emitting is the
+        // cleaner ordering: the event always follows the state it announces.
+        let key = DataKey::FrameworkInstrument(
+            framework_id.clone(),
+            Self::instrument_fingerprint(&env, &instrument),
+        );
+        env.storage().persistent().set(&key, &eligibility);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+        Self::emit_governance_event(
+            &env,
+            GovernanceAction::InstrumentAdmitted,
+            bank,
+            Self::zero_hash(&env),
+            GovernancePayloadV1::InstrumentAdmitted(InstrumentAdmittedData {
+                framework_id,
+                instrument,
+                eligibility_hash,
+                haircut_bps,
+                max_ltv_bps,
+                maintenance_bps,
+            }),
+        );
+        Ok(())
+    }
+
     // ---- lifecycle: collateral & facility --------------------------------
 
-    /// Register an attested vaulted-gold position. Both owner and custodian
-    /// sign; the custodian must be an approved attestor; the attestation must
-    /// not already be expired. The position id is supplied by the caller
-    /// (derived off-chain from owner + barlist_hash) so the service controls
+    /// Register an attested allocated-collateral position (a Daml "Holding").
+    /// Both owner and custodian sign; the custodian must be an approved attestor;
+    /// the attestation must not already be expired. The position references an
+    /// instrument that must be registered, Active, and admitted to this
+    /// framework's eligible set. The position id is supplied by the caller
+    /// (derived off-chain from owner + manifest_hash) so the service controls
     /// referencing.
     pub fn register_position(
         env: Env,
@@ -360,41 +770,71 @@ impl CreditLedger {
         framework_id: BytesN<32>,
         owner: Address,
         custodian: Address,
-        barlist_hash: BytesN<32>,
-        serials_hash: BytesN<32>,
-        fine_weight_oz_e7: i128,
+        instrument: InstrumentKey,
+        evidence: LotEvidence,
+        quantity_e7: i128,
         attestation_expiry: u32,
     ) -> Result<(), Error> {
         owner.require_auth();
         custodian.require_auth();
+        // Destructure the lot evidence bundle into the individual commitments.
+        let LotEvidence {
+            manifest_hash,
+            uniqueness_hash,
+            quality_cert_hash,
+            quantity_cert_hash,
+            location_hash,
+        } = evidence;
 
         if !Self::is_approved(env.clone(), custodian.clone(), Role::Custodian) {
             return Err(Error::PartyNotApproved);
         }
         // The position must be registered under an active control framework, and
         // the position's owner and custodian must be the parties named in it.
-        // This is the on-chain designation of the bars as collateral under the
+        // This is the on-chain designation of the lot as collateral under the
         // framework's eligible-collateral schedule.
         let framework = Self::load_active_framework(&env, &framework_id)?;
         if framework.owner != owner || framework.custodian != custodian {
             return Err(Error::FrameworkPartyMismatch);
         }
+        // The instrument must exist, be Active, and be admitted to this framework.
+        // This is the on-chain enforcement of the eligible-collateral schedule:
+        // a facility only accepts the instruments its bank and custodian admitted.
+        let instrument_rec: Instrument = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Instrument(Self::instrument_fingerprint(&env, &instrument)))
+            .ok_or(Error::InstrumentNotFound)?;
+        if instrument_rec.status != InstrumentStatus::Active {
+            return Err(Error::InstrumentNotEligible);
+        }
+        // The instrument must be admitted to this framework with an active
+        // treatment record (the CDM eligibility result). This both proves
+        // eligibility and is where the haircut / LTV ceiling come from at line
+        // opening.
+        Self::load_active_eligibility(&env, &framework_id, &instrument)?;
         if env.storage().persistent().has(&DataKey::Position(position_id.clone())) {
             return Err(Error::PositionExists);
         }
-        if Self::is_zero_hash(&env, &barlist_hash) || Self::is_zero_hash(&env, &serials_hash) {
+        if Self::is_zero_hash(&env, &manifest_hash)
+            || Self::is_zero_hash(&env, &uniqueness_hash)
+            || Self::is_zero_hash(&env, &quality_cert_hash)
+            || Self::is_zero_hash(&env, &quantity_cert_hash)
+            || Self::is_zero_hash(&env, &location_hash)
+        {
             return Err(Error::InvalidDocumentHash);
         }
-        // Bar-set uniqueness: these exact serials must not already be active
-        // under another position. This enforces no-double-pledge at the
-        // collateral-set level, which is the core promise of the instrument.
-        if env.storage().persistent().has(&DataKey::BarSet(serials_hash.clone())) {
-            return Err(Error::BarSetAlreadyActive);
+        // Lot uniqueness: this exact lot must not already be active under another
+        // position. This enforces no-double-pledge at the lot level, which is the
+        // core promise of the instrument (and prevents duplicate financing of one
+        // warehouse receipt).
+        if env.storage().persistent().has(&DataKey::LotLock(uniqueness_hash.clone())) {
+            return Err(Error::LotAlreadyActive);
         }
         if attestation_expiry <= env.ledger().sequence() {
             return Err(Error::AttestationStale);
         }
-        if fine_weight_oz_e7 <= 0 {
+        if quantity_e7 <= 0 {
             return Err(Error::AmountNotPositive);
         }
 
@@ -402,19 +842,23 @@ impl CreditLedger {
             owner: owner.clone(),
             custodian: custodian.clone(),
             framework_id: framework_id.clone(),
-            barlist_hash: barlist_hash.clone(),
-            serials_hash: serials_hash.clone(),
-            fine_weight_oz_e7,
+            instrument: instrument.clone(),
+            manifest_hash: manifest_hash.clone(),
+            uniqueness_hash: uniqueness_hash.clone(),
+            quality_cert_hash: quality_cert_hash.clone(),
+            quantity_cert_hash: quantity_cert_hash.clone(),
+            location_hash: location_hash.clone(),
+            quantity_e7,
             attestation_expiry,
             status: PositionStatus::Free,
         };
         Self::save_position(&env, &position_id, &pos);
-        // Lock the bar set to this position until it reaches a terminal state.
-        let bar_key = DataKey::BarSet(serials_hash.clone());
-        env.storage().persistent().set(&bar_key, &position_id);
+        // Lock the lot to this position until it reaches a terminal state.
+        let lot_key = DataKey::LotLock(uniqueness_hash.clone());
+        env.storage().persistent().set(&lot_key, &position_id);
         env.storage()
             .persistent()
-            .extend_ttl(&bar_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
+            .extend_ttl(&lot_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
         // context map: position_id -> framework_id, for cheap event tagging.
         let ctx_key = DataKey::ContextForPosition(position_id.clone());
         env.storage().persistent().set(&ctx_key, &framework_id);
@@ -438,15 +882,21 @@ impl CreditLedger {
             zero.clone(),
             StateLabel::Null,
             StateLabel::PositionFree,
-            barlist_hash.clone(),
+            manifest_hash.clone(),
             zero.clone(),
             zero,
             CollateralPayloadV1::PositionRegistered(PositionRegisteredData {
                 owner,
                 custodian,
-                barlist_hash,
-                serials_hash,
-                fine_weight_oz_e7,
+                instrument: instrument.clone(),
+                manifest_hash,
+                uniqueness_hash,
+                quality_cert_hash,
+                quantity_cert_hash,
+                location_hash,
+                quantity_e7,
+                unit: instrument_rec.unit,
+                grade_hash: instrument_rec.grade_hash,
                 attestation_expiry,
             }),
         );
@@ -455,12 +905,12 @@ impl CreditLedger {
 
     /// Owner selects a registered position to be designated as collateral,
     /// signing a collateral-request instruction. This is the owner-selects half
-    /// of the two-sided consent: the owner directs that the bars (already
+    /// of the two-sided consent: the owner directs that the lot (already
     /// identified on the position) be committed. The custodian then confirms it
     /// can hold and block that selection at immobilization. Owner signs; the
     /// owner must be the position's owner; the position must be Free. Moves
     /// Free -> Selected.
-    pub fn select_bars_for_collateral(
+    pub fn select_lot_for_collateral(
         env: Env,
         position_id: BytesN<32>,
         owner: Address,
@@ -525,7 +975,7 @@ impl CreditLedger {
         Ok(())
     }
 
-    /// Read the owner's bar-selection instruction for a position.
+    /// Read the owner's lot-selection instruction for a position.
     pub fn get_selection(
         env: Env,
         position_id: BytesN<32>,
@@ -536,12 +986,12 @@ impl CreditLedger {
             .ok_or(Error::PositionNotFound)
     }
 
-    /// Custodian confirms the owner's selected bars and immobilizes them under
+    /// Custodian confirms the owner's selected lot and immobilizes it under
     /// the tri-party control agreement. This is the control point that converts
     /// a free holding into bankable collateral: the custodian cryptographically
-    /// attests this exact barlist (the position's barlist_hash) and accepts the
+    /// attests this exact manifest (the position's manifest_hash) and accepts the
     /// block, so the owner can no longer withdraw or substitute unilaterally and
-    /// a bank can rely on the bars being there to pledge.
+    /// a bank can rely on the lot being there to pledge.
     ///
     /// The custodian acts under the tri-party control framework. A real control
     /// agreement is a separate instrument signed by owner, custodian, and bank;
@@ -670,7 +1120,7 @@ impl CreditLedger {
         if framework.bank != bank {
             return Err(Error::FrameworkPartyMismatch);
         }
-        // The custodian must have confirmed and immobilized the bars first. A
+        // The custodian must have confirmed and immobilized the lot first. A
         // bank cannot pledge a position the custodian has not earmarked under
         // the control agreement.
         if pos.status != PositionStatus::Earmarked {
@@ -731,9 +1181,9 @@ impl CreditLedger {
     }
 
     /// Open a credit line against an active pledge. Bank signs. The limit must
-    /// not exceed the borrowing base (fine weight * price * ltv). The price is
+    /// not exceed the borrowing base (quantity * price * ltv). The price is
     /// passed in by the bank for the MVP (an OracleAdapter replaces this in
-    /// Phase 5); it is the price per troy ounce in the line's minor units,
+    /// Phase 5); it is the price per unit in the line's minor units,
     /// scaled by 1e7.
     pub fn open_credit_line(
         env: Env,
@@ -744,11 +1194,19 @@ impl CreditLedger {
         approved_limit: i128,
         ltv_bps: u32,
         maintenance_bps: u32,
-        price_per_oz_e7: i128,
+        price_per_unit_e7: i128,
+        valuation_ref: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
         if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
             return Err(Error::PartyNotApproved);
+        }
+        // A line cannot be opened without pointing at the valuation that justifies
+        // the price and limit. valuation_ref commits to the off-chain valuation
+        // record, so the opening figure is auditable against a real source rather
+        // than an unanchored number. Mirrors the requirement on revalue.
+        if Self::is_zero_hash(&env, &valuation_ref) {
+            return Err(Error::InvalidDocumentHash);
         }
         if env.storage().persistent().has(&DataKey::Line(credit_line_id.clone())) {
             return Err(Error::LineExists);
@@ -764,7 +1222,7 @@ impl CreditLedger {
         if pledge.bank != bank {
             return Err(Error::NotAuthorized);
         }
-        // The cardholder (borrower) must be the pledgor: the entity whose gold is
+        // The cardholder (borrower) must be the pledgor: the entity whose collateral is
         // pledged is the entity that may draw against it. Argent does not support
         // a bank unilaterally designating a third-party borrower against someone
         // else's collateral; that would require an explicit third-party-collateral
@@ -775,7 +1233,7 @@ impl CreditLedger {
             return Err(Error::NotAuthorized);
         }
         cardholder.require_auth();
-        if approved_limit <= 0 || price_per_oz_e7 <= 0 {
+        if approved_limit <= 0 || price_per_unit_e7 <= 0 {
             return Err(Error::AmountNotPositive);
         }
         // Risk-parameter invariant: the advance rate must be positive and
@@ -788,7 +1246,32 @@ impl CreditLedger {
         }
 
         let pos = Self::load_position(&env, &pledge.position_id)?;
-        let base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, ltv_bps)?;
+        // Load the instrument's framework eligibility treatment. The bank's
+        // pre-approved terms bind the line: the requested advance rate may not
+        // exceed the instrument's max LTV ceiling, and the haircut recorded in
+        // the treatment is applied to the borrowing base. Maintenance stays at
+        // the bank's per-line discretion (the treatment carries a framework
+        // maintenance level, but the contract does not pin each line to it).
+        let eligibility =
+            Self::load_active_eligibility(&env, &pos.framework_id, &pos.instrument)?;
+        if ltv_bps > eligibility.max_ltv_bps {
+            return Err(Error::InvalidRiskParams);
+        }
+        // Maintenance floor: in Argent's convention the margin call fires when
+        // the drawn balance exceeds maintenance_bps of collateral value, so a
+        // HIGHER maintenance_bps fires LATER and is WEAKER protection. The
+        // framework's admitted maintenance_bps is therefore the weakest the line
+        // may be: a line can set maintenance lower (call sooner, stricter) but
+        // not higher (call later, weaker) than the treatment allows.
+        if maintenance_bps > eligibility.maintenance_bps {
+            return Err(Error::InvalidRiskParams);
+        }
+        let base = Self::borrowing_base(
+            pos.quantity_e7,
+            price_per_unit_e7,
+            eligibility.haircut_bps,
+            ltv_bps,
+        )?;
         if approved_limit > base {
             return Err(Error::LimitExceedsBorrowingBase);
         }
@@ -850,12 +1333,13 @@ impl CreditLedger {
             StateLabel::LineActive,
             zero.clone(),
             zero.clone(),
-            zero,
+            valuation_ref,
             CollateralPayloadV1::LineOpened(LineOpenedData {
                 approved_limit,
                 ltv_bps,
+                haircut_bps: eligibility.haircut_bps,
                 maintenance_bps,
-                price_per_oz_e7,
+                price_per_unit_e7,
             }),
         );
         Ok(())
@@ -1074,7 +1558,7 @@ impl CreditLedger {
             return Err(Error::LineNotActive);
         }
         if amount > line.drawn_balance {
-            return Err(Error::RepaymentExceedsOutstandingBalance);
+            return Err(Error::RepaymentExceedsBalance);
         }
         let applied = amount;
         line.drawn_balance -= applied;
@@ -1140,7 +1624,7 @@ impl CreditLedger {
     // ---- collateral adjustment -------------------------------------------
 
     /// Owner requests an adjustment to the collateral on a live credit line:
-    /// TopUp (add bars), Substitution (swap bars), or PartialRelease (return
+    /// TopUp (add to the lot), Substitution (swap the lot), or PartialRelease (return
     /// some). The owner signs and must be the line's pledgor; the line must be
     /// Active. This is the owner's leg of a three-party clearing: the custodian
     /// must then confirm it can hold and block the proposed set, and the bank
@@ -1153,12 +1637,19 @@ impl CreditLedger {
         credit_line_id: BytesN<32>,
         owner: Address,
         adjustment_type: AdjustmentType,
-        new_barlist_hash: BytesN<32>,
-        new_serials_hash: BytesN<32>,
-        new_weight_oz_e7: i128,
+        new_evidence: LotEvidence,
+        new_quantity_e7: i128,
         request_hash: BytesN<32>,
     ) -> Result<(), Error> {
         owner.require_auth();
+        // Destructure the proposed new lot evidence into its commitments.
+        let LotEvidence {
+            manifest_hash: new_manifest_hash,
+            uniqueness_hash: new_uniqueness_hash,
+            quality_cert_hash: new_quality_cert_hash,
+            quantity_cert_hash: new_quantity_cert_hash,
+            location_hash: new_location_hash,
+        } = new_evidence;
 
         if env.storage().persistent().has(&DataKey::Adjustment(adjustment_id.clone())) {
             return Err(Error::AdjustmentExists);
@@ -1171,11 +1662,14 @@ impl CreditLedger {
         if pledge.pledgor != owner {
             return Err(Error::NotAuthorized);
         }
-        if new_weight_oz_e7 <= 0 {
+        if new_quantity_e7 <= 0 {
             return Err(Error::AmountNotPositive);
         }
-        if Self::is_zero_hash(&env, &new_barlist_hash)
-            || Self::is_zero_hash(&env, &new_serials_hash)
+        if Self::is_zero_hash(&env, &new_manifest_hash)
+            || Self::is_zero_hash(&env, &new_uniqueness_hash)
+            || Self::is_zero_hash(&env, &new_quality_cert_hash)
+            || Self::is_zero_hash(&env, &new_quantity_cert_hash)
+            || Self::is_zero_hash(&env, &new_location_hash)
             || Self::is_zero_hash(&env, &request_hash)
         {
             return Err(Error::InvalidDocumentHash);
@@ -1184,9 +1678,12 @@ impl CreditLedger {
         let adjustment = CollateralAdjustment {
             credit_line_id: credit_line_id.clone(),
             adjustment_type,
-            new_barlist_hash,
-            new_serials_hash,
-            new_weight_oz_e7,
+            new_manifest_hash,
+            new_uniqueness_hash,
+            new_quality_cert_hash,
+            new_quantity_cert_hash,
+            new_location_hash,
+            new_quantity_e7,
             request_hash: request_hash.clone(),
             status: AdjustmentStatus::Requested,
         };
@@ -1247,7 +1744,7 @@ impl CreditLedger {
     }
 
     /// Custodian leg of the adjustment clearing: the custodian confirms it can
-    /// hold and block the proposed new bar set. The custodian signs and must be
+    /// hold and block the proposed new lot. The custodian signs and must be
     /// the position's custodian (found via the line's pledge). The adjustment
     /// must be in Requested status. Moves Requested -> CustodianConfirmed. The
     /// bank can then approve if coverage holds.
@@ -1310,23 +1807,30 @@ impl CreditLedger {
     /// (new_weight * price * ltv_bps) must still cover the drawn balance. This
     /// is the real lendable-collateral-value rule (collateral must cover 100% of
     /// advances when discounted to its advance value). On approval the position's
-    /// schedule (barlist and weight) is updated. `price_per_oz_e7` is the bank's
+    /// schedule (manifest and quantity) is updated. `price_per_unit_e7` is the bank's
     /// supplied current price, scaled 1e7. Moves CustodianConfirmed -> Approved.
     pub fn bank_approve_adjustment(
         env: Env,
         adjustment_id: BytesN<32>,
         bank: Address,
-        price_per_oz_e7: i128,
+        price_per_unit_e7: i128,
+        valuation_ref: BytesN<32>,
     ) -> Result<(), Error> {
         bank.require_auth();
-        if price_per_oz_e7 <= 0 {
+        // Approving a collateral substitution re-prices the borrowing base, so it
+        // must point at the valuation that justifies the new price. valuation_ref
+        // commits to that off-chain record, keeping the re-priced base auditable.
+        if Self::is_zero_hash(&env, &valuation_ref) {
+            return Err(Error::InvalidDocumentHash);
+        }
+        if price_per_unit_e7 <= 0 {
             return Err(Error::PriceNotPositive);
         }
         let mut adj = Self::load_adjustment(&env, &adjustment_id)?;
         if adj.status != AdjustmentStatus::CustodianConfirmed {
             return Err(Error::AdjustmentWrongStatus);
         }
-        let line = Self::load_line(&env, &adj.credit_line_id)?;
+        let mut line = Self::load_line(&env, &adj.credit_line_id)?;
         if line.bank != bank {
             return Err(Error::NotAuthorized);
         }
@@ -1334,41 +1838,69 @@ impl CreditLedger {
             return Err(Error::PartyNotApproved);
         }
 
-        // Coverage test at the advance rate: the proposed new collateral's
-        // lendable value must still cover the drawn balance.
-        let new_base = Self::borrowing_base(adj.new_weight_oz_e7, price_per_oz_e7, line.ltv_bps)?;
-        if new_base < line.drawn_balance {
-            return Err(Error::AdjustmentUndercovered);
-        }
-
         // Approved: update the position's collateral schedule to the new set.
         let pledge = Self::load_pledge(&env, &line.pledge_id)?;
         let mut pos = Self::load_position(&env, &pledge.position_id)?;
 
-        // Maintain the bar-set uniqueness lock in lockstep with the collateral
-        // identity. If the serials change (substitution / top-up / partial
-        // release), the new serial set must not already be active under another
+        // Re-price the borrowing base under the instrument's eligibility
+        // treatment (same haircut and instrument as at line opening; an
+        // adjustment cannot change the instrument, only the lot). The proposed
+        // new collateral's lendable value must still cover the drawn balance.
+        let eligibility =
+            Self::load_active_eligibility(&env, &pos.framework_id, &pos.instrument)?;
+        let new_base = Self::borrowing_base(
+            adj.new_quantity_e7,
+            price_per_unit_e7,
+            eligibility.haircut_bps,
+            line.ltv_bps,
+        )?;
+        if new_base < line.drawn_balance {
+            return Err(Error::AdjustmentUndercovered);
+        }
+
+        // Maintain the lot uniqueness lock in lockstep with the collateral
+        // identity. If the lot identity changes (substitution / top-up / partial
+        // release), the new lot must not already be active under another
         // position, the old lock must be released, and the new lock taken. Without
-        // this, an adjustment could swap in bars that are pledged elsewhere, or
-        // leave the old serials phantom-locked forever.
-        if adj.new_serials_hash != pos.serials_hash {
-            let new_bar_key = DataKey::BarSet(adj.new_serials_hash.clone());
+        // this, an adjustment could swap in a lot pledged elsewhere, or
+        // leave the old lot phantom-locked forever.
+        if adj.new_uniqueness_hash != pos.uniqueness_hash {
+            let new_bar_key = DataKey::LotLock(adj.new_uniqueness_hash.clone());
             if env.storage().persistent().has(&new_bar_key) {
-                return Err(Error::BarSetAlreadyActive);
+                return Err(Error::LotAlreadyActive);
             }
             env.storage()
                 .persistent()
-                .remove(&DataKey::BarSet(pos.serials_hash.clone()));
+                .remove(&DataKey::LotLock(pos.uniqueness_hash.clone()));
             env.storage().persistent().set(&new_bar_key, &pledge.position_id);
             env.storage()
                 .persistent()
                 .extend_ttl(&new_bar_key, LIFETIME_THRESHOLD, BUMP_AMOUNT);
-            pos.serials_hash = adj.new_serials_hash.clone();
+            pos.uniqueness_hash = adj.new_uniqueness_hash.clone();
         }
 
-        pos.barlist_hash = adj.new_barlist_hash.clone();
-        pos.fine_weight_oz_e7 = adj.new_weight_oz_e7;
+        pos.manifest_hash = adj.new_manifest_hash.clone();
+        pos.quality_cert_hash = adj.new_quality_cert_hash.clone();
+        pos.quantity_cert_hash = adj.new_quantity_cert_hash.clone();
+        pos.location_hash = adj.new_location_hash.clone();
+        pos.quantity_e7 = adj.new_quantity_e7;
         Self::save_position(&env, &pledge.position_id, &pos);
+
+        // Recalculate spendable capacity against the substituted collateral. The
+        // effective limit is the lower of the bank's approved ceiling and what
+        // the new collateral can back (a top-up beyond the approved limit does
+        // not auto-raise it; a partial release that lowers the base must reduce
+        // available capacity in lockstep, never leaving stale headroom against
+        // collateral that is gone). Floored at zero; the coverage test above
+        // already guarantees new_base >= drawn_balance.
+        let effective_limit = if new_base < line.approved_limit {
+            new_base
+        } else {
+            line.approved_limit
+        };
+        let recalculated = effective_limit - line.drawn_balance;
+        line.available_limit = if recalculated > 0 { recalculated } else { 0 };
+        Self::save_line(&env, &adj.credit_line_id, &line);
 
         adj.status = AdjustmentStatus::Approved;
         Self::save_adjustment(&env, &adjustment_id, &adj);
@@ -1390,15 +1922,18 @@ impl CreditLedger {
             adjustment_id,
             StateLabel::AdjustmentCustodianConfirmed,
             StateLabel::AdjustmentApproved,
-            adj.new_barlist_hash.clone(),
+            adj.new_manifest_hash.clone(),
             zero.clone(),
-            zero,
+            valuation_ref,
             CollateralPayloadV1::AdjustmentApproved(AdjustmentApprovedData {
                 adjustment_type: adj.adjustment_type.clone(),
-                new_barlist_hash: adj.new_barlist_hash.clone(),
-                new_serials_hash: adj.new_serials_hash.clone(),
-                new_weight_oz_e7: adj.new_weight_oz_e7,
-                price_per_oz_e7,
+                new_manifest_hash: adj.new_manifest_hash.clone(),
+                new_uniqueness_hash: adj.new_uniqueness_hash.clone(),
+                new_quality_cert_hash: adj.new_quality_cert_hash.clone(),
+                new_quantity_cert_hash: adj.new_quantity_cert_hash.clone(),
+                new_location_hash: adj.new_location_hash.clone(),
+                new_quantity_e7: adj.new_quantity_e7,
+                price_per_unit_e7,
             }),
         );
         Ok(())
@@ -1407,7 +1942,7 @@ impl CreditLedger {
     /// Stage one of release: the bank authorizes release of its security
     /// interest (the payoff-letter act, prong i). Valid only when the drawn
     /// balance is zero. The bank signs and must be the line's bank. This
-    /// releases the bank's claim and closes the credit line, but the bars remain
+    /// releases the bank's claim and closes the credit line, but the lot remains
     /// in the custodian's possessory block, so perfection is not yet terminated.
     /// Position Pledged -> ReleasePending; pledge Active -> ReleaseAuthorized;
     /// line -> Closed. The lien persists until the custodian confirms.
@@ -1503,9 +2038,9 @@ impl CreditLedger {
 
         pos.status = PositionStatus::Released;
         pledge.status = PledgeStatus::Released;
-        // The bars are returned to clean title: free the bar-set lock so they
+        // The lot is returned to clean title: free the lot lock so they
         // can be registered again in future.
-        env.storage().persistent().remove(&DataKey::BarSet(pos.serials_hash.clone()));
+        env.storage().persistent().remove(&DataKey::LotLock(pos.uniqueness_hash.clone()));
         Self::save_position(&env, &pledge.position_id, &pos);
         Self::save_pledge(&env, &pledge_id, &pledge);
 
@@ -1638,15 +2173,27 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         cardholder: Address,
+        bank: Address,
         cure_evidence_hash: BytesN<32>,
     ) -> Result<(), Error> {
         cardholder.require_auth();
+        bank.require_auth();
         if Self::is_zero_hash(&env, &cure_evidence_hash) {
             return Err(Error::InvalidDocumentHash);
         }
         let mut line = Self::load_line(&env, &credit_line_id)?;
         if line.cardholder != cardholder {
             return Err(Error::NotAuthorized);
+        }
+        // The bank that issued the default must countersign the cure. A default
+        // is the bank's declared act; the borrower cannot reverse it alone by
+        // submitting an evidence hash. Both the remedying party (cardholder) and
+        // the declaring party (bank) must authorize for the cure to take effect.
+        if line.bank != bank {
+            return Err(Error::NotAuthorized);
+        }
+        if !Self::is_approved(env.clone(), bank.clone(), Role::Bank) {
+            return Err(Error::PartyNotApproved);
         }
         if line.status != LineStatus::Defaulted {
             return Err(Error::NotDefaulted);
@@ -1771,7 +2318,7 @@ impl CreditLedger {
             return Err(Error::NotAuthorized);
         }
         if !line.manual_bank_suspension {
-            return Err(Error::LineNotSuspended);
+            return Err(Error::LineNotActive);
         }
         let prev_status = line.status;
         line.manual_bank_suspension = false;
@@ -1825,7 +2372,7 @@ impl CreditLedger {
         Ok(())
     }
 
-    /// Revalue a line against a fresh gold price and check it against the
+    /// Revalue a line against a fresh price and check it against the
     /// borrowing base. Records the result as a LineValuation side-record and
     /// moves the line's margin state across two bands:
     ///
@@ -1835,13 +2382,13 @@ impl CreditLedger {
     ///               line is suspended so no further draws are allowed until the
     ///               borrower cures by repayment or additional collateral)
     ///
-    /// The price comes from an off-chain gold feed (Pyth Metal.XAU/USD in the
+    /// The price comes from an off-chain price feed (a metals or commodity oracle in the
     /// current design) submitted by the valuation role (or the bank). The
     /// contract refuses to act on a price that is stale or whose confidence band
     /// is too wide, so a bad price cannot trigger or mask a margin call. Signed
     /// by the valuation role or the bank.
     ///
-    /// `price_per_oz_e7` and `confidence_e7` are scaled by 1e7. `priced_at` is
+    /// `price_per_unit_e7` and `confidence_e7` are scaled by 1e7. `priced_at` is
     /// the source publish time (unix seconds). `max_age_secs` is the freshness
     /// window. `conf_tol_bps` is the maximum allowed confidence as a fraction of
     /// price, in basis points (e.g. 50 = confidence may be at most 0.5% of
@@ -1853,7 +2400,7 @@ impl CreditLedger {
         env: Env,
         credit_line_id: BytesN<32>,
         valuer: Address,
-        price_per_oz_e7: i128,
+        price_per_unit_e7: i128,
         confidence_e7: i128,
         priced_at: u64,
         max_age_secs: u64,
@@ -1903,7 +2450,7 @@ impl CreditLedger {
         if line.status == LineStatus::Closed || line.status == LineStatus::Defaulted {
             return Err(Error::LineNotActive);
         }
-        if price_per_oz_e7 <= 0 || confidence_e7 < 0 {
+        if price_per_unit_e7 <= 0 || confidence_e7 < 0 {
             return Err(Error::PriceNotPositive);
         }
 
@@ -1917,8 +2464,8 @@ impl CreditLedger {
         }
 
         // Confidence: the band (half-width) must be within tolerance of price.
-        // confidence_e7 <= price_per_oz_e7 * conf_tol_bps / 1e4
-        let max_conf = price_per_oz_e7
+        // confidence_e7 <= price_per_unit_e7 * conf_tol_bps / 1e4
+        let max_conf = price_per_unit_e7
             .checked_mul(conf_tol_bps as i128)
             .ok_or(Error::InvalidRiskParams)?
             / 10_000i128;
@@ -1930,8 +2477,26 @@ impl CreditLedger {
         // advance base (LTV-adjusted) for the available-limit calculation.
         let pledge = Self::load_pledge(&env, &line.pledge_id)?;
         let pos = Self::load_position(&env, &pledge.position_id)?;
-        let raw_value = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, 10_000)?;
-        let advance_base = Self::borrowing_base(pos.fine_weight_oz_e7, price_per_oz_e7, line.ltv_bps)?;
+        // The instrument's eligibility haircut is applied continuously, not only
+        // at origination. Real collateralized lending marks the haircut-discounted
+        // value daily, and the maintenance test fires against that discounted
+        // value. So raw_value (the maintenance denominator) is taken at full
+        // advance but after the haircut, and advance_base matches the origination
+        // formula exactly (haircut then LTV).
+        let eligibility =
+            Self::load_active_eligibility(&env, &pos.framework_id, &pos.instrument)?;
+        let raw_value = Self::borrowing_base(
+            pos.quantity_e7,
+            price_per_unit_e7,
+            eligibility.haircut_bps,
+            10_000,
+        )?;
+        let advance_base = Self::borrowing_base(
+            pos.quantity_e7,
+            price_per_unit_e7,
+            eligibility.haircut_bps,
+            line.ltv_bps,
+        )?;
 
         // Two-threshold check, Schwab-style, against RAW collateral value.
         // The margin call fires when the drawn balance exceeds the maintenance
@@ -1973,7 +2538,7 @@ impl CreditLedger {
         Self::save_line(&env, &credit_line_id, &line);
 
         let valuation = LineValuation {
-            price_per_oz_e7,
+            price_per_unit_e7,
             confidence_e7,
             priced_at,
             valued_at_ledger: env.ledger().sequence(),
@@ -2013,7 +2578,7 @@ impl CreditLedger {
             zero.clone(),
             valuation_ref.clone(),
             CollateralPayloadV1::Revalued(RevaluedData {
-                price_per_oz_e7,
+                price_per_unit_e7,
                 confidence_e7,
                 margin_state,
                 drawn_balance: line.drawn_balance,
@@ -2042,7 +2607,7 @@ impl CreditLedger {
     /// This records WHICH lawful enforcement path was taken under the off-chain
     /// security and control documents (sale, appropriation, or transfer) and
     /// anchors a hash of that legal instrument. It does NOT decree ownership and
-    /// does NOT move the physical bars. Default does not automatically vest
+    /// does NOT move the physical collateral. Default does not automatically vest
     /// title in the bank; enforcement happens under the governing law, proceeds
     /// are applied to the debt, and any surplus returns to the owner. The chain
     /// records the outcome so the trail is undisputed.
@@ -2079,9 +2644,9 @@ impl CreditLedger {
         pledge.status = PledgeStatus::Enforced;
         pos.status = PositionStatus::Enforced;
         line.status = LineStatus::Closed;
-        // Enforcement is terminal for these bars under this position: free the
-        // bar-set lock.
-        env.storage().persistent().remove(&DataKey::BarSet(pos.serials_hash.clone()));
+        // Enforcement is terminal for this lot under this position: free the
+        // lot lock.
+        env.storage().persistent().remove(&DataKey::LotLock(pos.uniqueness_hash.clone()));
 
         Self::save_pledge(&env, &line.pledge_id, &pledge);
         Self::save_position(&env, &pledge.position_id, &pos);
@@ -2373,23 +2938,31 @@ impl CreditLedger {
 
     // ---- internal helpers ------------------------------------------------
 
-    /// borrowing_base = fine_weight_oz * price_per_oz * ltv
+    /// borrowing_base = quantity * price_per_unit * (1 - haircut) * ltv
     /// inputs are scaled by 1e7 (weight, price); ltv is in bps.
     /// result is in the line's minor units (already-scaled).
     fn borrowing_base(
-        fine_weight_oz_e7: i128,
-        price_per_oz_e7: i128,
+        quantity_e7: i128,
+        price_per_unit_e7: i128,
+        haircut_bps: u32,
         ltv_bps: u32,
     ) -> Result<i128, Error> {
-        // (weight_e7 / 1e7) * (price_e7 / 1e7) * (ltv_bps / 1e4)
-        // = weight_e7 * price_e7 * ltv_bps / 1e18
+        // Gross value, then haircut, then advance rate. The haircut is applied
+        // before LTV, per ISDA practice (treatment discounts value before the
+        // advance fraction is taken):
+        //   (qty_e7/1e7) * (price_e7/1e7) * ((1e4 - haircut_bps)/1e4) * (ltv_bps/1e4)
+        // = qty_e7 * price_e7 * (1e4 - haircut_bps) * ltv_bps / 1e22
         // Checked, not saturating: a value that overflows i128 is a malformed
         // risk input, not something to silently clamp to a misleading base.
-        let value = fine_weight_oz_e7
-            .checked_mul(price_per_oz_e7)
+        if haircut_bps > 10_000 {
+            return Err(Error::InvalidRiskParams);
+        }
+        let value = quantity_e7
+            .checked_mul(price_per_unit_e7)
+            .and_then(|v| v.checked_mul((10_000 - haircut_bps) as i128))
             .and_then(|v| v.checked_mul(ltv_bps as i128))
             .ok_or(Error::InvalidRiskParams)?;
-        Ok(value / 1_000_000_000_000_000_000i128)
+        Ok(value / 10_000_000_000_000_000_000_000i128)
     }
 
     fn admin(env: &Env) -> Result<Address, Error> {
@@ -2436,6 +3009,29 @@ impl CreditLedger {
             return Err(Error::FrameworkNotActive);
         }
         Ok(fwk)
+    }
+
+    /// Load the active eligibility treatment for an instrument under a framework.
+    /// This is the CDM collateral-criteria / treatment result: it both proves the
+    /// instrument is admitted and carries the haircut / LTV ceiling the bank
+    /// applies. A missing or retired record means the instrument is not eligible.
+    fn load_active_eligibility(
+        env: &Env,
+        framework_id: &BytesN<32>,
+        instrument: &InstrumentKey,
+    ) -> Result<FrameworkInstrumentEligibility, Error> {
+        let elig: FrameworkInstrumentEligibility = env
+            .storage()
+            .persistent()
+            .get(&DataKey::FrameworkInstrument(
+                framework_id.clone(),
+                Self::instrument_fingerprint(env, instrument),
+            ))
+            .ok_or(Error::InstrumentNotEligible)?;
+        if elig.status != EligibilityStatus::Active {
+            return Err(Error::InstrumentNotEligible);
+        }
+        Ok(elig)
     }
 
     fn load_position(env: &Env, id: &BytesN<32>) -> Result<VaultPosition, Error> {

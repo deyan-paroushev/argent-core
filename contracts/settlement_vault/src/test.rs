@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, BytesN as _},
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env,
+    Address, BytesN, Env, Symbol,
 };
 
 // The credit_ledger client + types come from the contractimport! in lib.rs.
@@ -54,20 +54,51 @@ fn setup_drawn_line(
         &id(env), &id(env), &id(env), &id(env), &id(env), &id(env),
     );
 
+    let instrument = credit_ledger::InstrumentKey {
+        issuer: owner.clone(),
+        depository: custodian.clone(),
+        id: Symbol::new(env, "XAU_LGD"),
+        version: 1,
+    };
+    ledger.register_instrument(&credit_ledger::Instrument {
+        key: instrument.clone(),
+        commodity: Symbol::new(env, "gold"),
+        unit: Symbol::new(env, "oz"),
+        grade_hash: id(env),
+        status: credit_ledger::InstrumentStatus::Active,
+    });
+    ledger.admit_instrument(
+        &framework_id, &instrument, &bank, &custodian,
+        &id(env), &0u32, &9000u32, &9500u32,
+    );
+
     let position_id = id(env);
     let pledge_id = id(env);
     let line_id = id(env);
     let expiry = env.ledger().sequence() + 100_000;
     ledger.register_position(
-        &position_id, &framework_id, &owner, &custodian, &id(env), &id(env), &4_011_000_000i128, &expiry,
+        &position_id,
+        &framework_id,
+        &owner,
+        &custodian,
+        &instrument,
+        &credit_ledger::LotEvidence {
+            manifest_hash: id(env),
+            uniqueness_hash: id(env),
+            quality_cert_hash: id(env),
+            quantity_cert_hash: id(env),
+            location_hash: id(env),
+        },
+        &4_011_000_000i128,
+        &expiry,
     );
     // owner selects, custodian immobilizes, bank pledges
-    ledger.select_bars_for_collateral(&position_id, &owner, &id(env));
+    ledger.select_lot_for_collateral(&position_id, &owner, &id(env));
     ledger.confirm_and_immobilize(&position_id, &custodian, &id(env));
     ledger.activate_pledge(&pledge_id, &position_id, &owner, &bank, &id(env));
     ledger.open_credit_line(
         &line_id, &pledge_id, &bank, &cardholder,
-        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128,
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &id(env),
     );
     ledger.record_drawdown(&line_id, &processor, &id(env), &25_000i128);
 

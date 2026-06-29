@@ -140,6 +140,8 @@ Two design decisions a reviewer should note, because they are deliberate and the
 
 **Framework setup.** Owner, bank, and custodian enter a control framework; the contract stores the parties and document hashes (facility, pledge, custody, eligible schedule, margin policy, enforcement waterfall). The documents stay off-chain.
 
+**Instrument registration and admission.** The asset class the facility lends against is registered once as a reusable instrument (issuer, depository, symbol, version, grade-standard hash), then admitted to a framework as eligible collateral under an explicit treatment: haircut, maximum advance rate, and maintenance threshold, with the eligibility schedule committed by hash. Registration and admission are authority acts, recorded on a contract-wide `GovernanceEventV1` stream, distinct from the per-framework deal events. A position cannot be registered against an instrument that was never registered, nor against one not admitted to its framework. This layer follows the ISDA Common Domain Model collateral-criteria / treatment taxonomy (the "GC basket" pattern), informed by Daml Finance's holding decomposition, which is what lets the same structure bind any custody-stable commodity.
+
 **Position registration.** A position is registered through asset-specific identity and valuation fields. For gold: bar-set hash, serials hash, refiner/assay references, fine weight, custody-account evidence. For other custody-stable assets: lot ID, batch ID, warehouse-receipt ID, tank ID, grade, quantity, or inspection-certificate hash, the same pattern.
 
 **Selection and immobilization.** The owner selects a specific collateral set; the custodian confirms and immobilizes it. The same recorded collateral cannot enter another active pledge inside Argent.
@@ -155,6 +157,20 @@ Two design decisions a reviewer should note, because they are deliberate and the
 **Default, cure, enforcement.** The bank issues a default notice; the borrower may `cure_default` before the deadline; if uncured, the bank records enforcement via `record_enforcement` with the legal/custody evidence hash. The chain records; law and custody enforce.
 
 **Reward overlay.** Separate from pledged collateral: a sponsor funds a campaign tied to eligible posted spend; claims, approvals, vouchers, and redemptions are recorded in `rewards_ledger`.
+
+### 8.1 Standards alignment: ISDA CDM and Daml Finance
+
+The instrument and eligibility layer is modeled on the ISDA Common Domain Model (CDM), the financial industry's standard for representing products, events, and collateral treatment, and informed by Daml Finance's holding decomposition, which shaped how the instrument is separated from the position that holds it. The mapping is at the collateral-eligibility and treatment layer, not a full lifecycle conformance claim:
+
+| Argent Core | CDM / Daml Finance concept |
+|-------------|----------------------------|
+| `Instrument` (issuer, depository, symbol, version, grade hash), registered once | An instrument / product definition, decomposed from the holding (Daml Finance instrument-vs-holding split) |
+| `register_position` naming a registered instrument | A holding referencing an instrument |
+| `FrameworkInstrumentEligibility` (haircut, max advance, maintenance) | CDM collateral criteria / treatment result; the per-framework eligible set is a "GC basket" |
+| `eligibility_hash` | Commitment to the off-chain eligibility schedule clause / CDM `CollateralCriteria` |
+| `GovernanceEventV1` (instrument registered, instrument admitted) | The authority events that establish the product and its eligibility, as a replayable, sequenced stream |
+
+What this buys: the eligibility and treatment shape is the same across commodities, so a system that already speaks CDM collateral criteria can map to Argent's admitted-instrument records without a bespoke adapter per asset. The legal schedule itself stays off-chain; the contract records the bank's applied treatment as the on-chain compression of it. This is alignment with a recognized taxonomy, not certification against it.
 
 ## 9. On-chain / off-chain boundary
 

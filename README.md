@@ -28,6 +28,17 @@ no commodity. Argent runs on allocated gold; the same core binds other
 custody-stable assets (base metals, critical minerals, warehouse-held
 commodities) at the leaf fields, with no change to the structure.
 
+The instrument and eligibility model is shaped by the **ISDA Common Domain
+Model (CDM)** collateral-criteria / treatment taxonomy, and informed by Daml
+Finance's holding decomposition. An instrument is registered once as a reusable
+asset class; a framework then admits it as eligible collateral under an explicit
+treatment, the CDM "GC basket" pattern, recording the haircut, maximum advance
+rate, and maintenance threshold the bank applies. Modeling the instrument layer
+on a recognized financial-industry taxonomy is what makes the asset-agnosticism
+principled rather than ad hoc: the same eligibility and treatment shape carries
+across commodities, which is the basis for interoperability with systems that
+already speak CDM.
+
 ## Contracts
 
 | Crate | Role |
@@ -44,10 +55,12 @@ physical-collateral use cases.
 
 ## Status
 
-These contracts are **deployed and tested on Stellar testnet**, with **187
-passing tests** across all three crates (`credit_ledger` 125, `rewards_ledger`
+These contracts are **deployed and tested on Stellar testnet**, with **224
+passing tests** across all three crates (`credit_ledger` 162, `rewards_ledger`
 45, `settlement_vault` 17). They are real Soroban contracts: `require_auth`, a
-typed canonical `CollateralEventV1` event stream, and one atomic value transfer
+typed canonical `CollateralEventV1` event stream for deal acts and a
+`GovernanceEventV1` stream for authority acts (instrument registration,
+eligibility admission, party and admin changes), and one atomic value transfer
 in `settlement_vault`. Not arbitrary on-chain storage.
 
 **What is funded, not yet built:** the institutional **DFNS authorization layer**
@@ -75,8 +88,8 @@ cargo build --target wasm32v1-none --release -p credit_ledger  # build first: se
 cargo test --workspace                                         # run the contract test suite
 ```
 
-Expected: `credit_ledger` 125, `rewards_ledger` 45, `settlement_vault` 17, for
-187 passing, 0 failed.
+Expected: `credit_ledger` 162, `rewards_ledger` 45, `settlement_vault` 17, for
+224 passing, 0 failed.
 
 Requires the Rust toolchain and the `wasm32v1-none` target
 (`rustup target add wasm32v1-none`). The contracts target `soroban-sdk` 23.5.3.
@@ -84,7 +97,7 @@ The `settlement_vault` integration tests import the compiled `credit_ledger`
 wasm, so the credit ledger must be built before the workspace test run.
 
 New reviewers should start with
-[`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md): what V4 proves, the
+[`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md): what V5 proves, the
 key tests to inspect, and the live testnet contract ids.
 
 ## Documentation

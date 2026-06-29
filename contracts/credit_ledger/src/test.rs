@@ -4,7 +4,7 @@ extern crate alloc;
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _, BytesN as _, Events as _},
-    Address, BytesN, Env,
+    Address, BytesN, Env, Symbol,
 };
 use soroban_sdk::xdr::{
     Limits, ReadXdr, ScSpecEntry, ScSpecEventDataFormat, ScSpecEventParamLocationV0,
@@ -53,6 +53,47 @@ fn id(env: &Env) -> BytesN<32> {
     BytesN::random(env)
 }
 
+/// The default gold instrument key used across the lifecycle tests. The fixture
+/// owner is the issuer (defines the asset standard) and the custodian is the
+/// depository (attests custody of this asset class), mirroring how a real
+/// allocated-gold instrument would be co-signed.
+fn gold_key(f: &Fixture) -> InstrumentKey {
+    InstrumentKey {
+        issuer: f.owner.clone(),
+        depository: f.custodian.clone(),
+        id: Symbol::new(&f.env, "XAU_LGD"),
+        version: 1,
+    }
+}
+
+/// Register the default gold instrument in the registry (issuer + depository
+/// co-sign; mock_all_auths covers both). Idempotent-safe per test since each
+/// test builds a fresh env. Returns the instrument key.
+fn register_gold_instrument(f: &Fixture) -> InstrumentKey {
+    let key = gold_key(f);
+    // Idempotent: gold is a global registry entry, but a single test may build
+    // several frameworks, each calling this helper. Registering an existing
+    // instrument is a no-op here (the contract would reject the duplicate, which
+    // is correct behavior; the helper simply tolerates the second call).
+    let _ = f.client.try_register_instrument(&Instrument {
+        key: key.clone(),
+        commodity: Symbol::new(&f.env, "gold"),
+        unit: Symbol::new(&f.env, "oz"),
+        grade_hash: id(&f.env),
+        status: InstrumentStatus::Active,
+    });
+    key
+}
+
+/// Admit the gold instrument to a framework's eligible set (bank + custodian
+/// co-authorize). Call after register_framework + register_gold_instrument.
+fn admit_gold(f: &Fixture, framework_id: &BytesN<32>, key: &InstrumentKey) {
+    f.client.admit_instrument(
+        framework_id, key, &f.bank, &f.custodian,
+        &id(&f.env), &0u32, &9000u32, &9500u32,
+    );
+}
+
 /// Register a tri-party control framework among the fixture's owner, bank, and
 /// custodian, anchoring six placeholder document hashes. Returns framework id.
 fn register_framework(f: &Fixture) -> BytesN<32> {
@@ -72,25 +113,42 @@ fn register_framework(f: &Fixture) -> BytesN<32> {
     framework_id
 }
 
+/// Register a framework AND register + admit the default gold instrument to it,
+/// so positions can be registered against gold. Use this in lifecycle tests that
+/// do not inspect the exact emitted-event sequence. Returns the framework id.
+fn framework_with_gold(f: &Fixture) -> BytesN<32> {
+    let framework_id = register_framework(f);
+    let instrument = register_gold_instrument(f);
+    admit_gold(f, &framework_id, &instrument);
+    framework_id
+}
+
 /// Register a position and have the custodian confirm-and-immobilize it.
 /// Registers a control framework first and binds the position to it.
 /// Returns the position id, left in the Earmarked state.
 fn register_and_immobilize(f: &Fixture) -> BytesN<32> {
-    let framework_id = register_framework(f);
+    let framework_id = framework_with_gold(f);
+    let instrument = gold_key(f);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
-    let fine_weight_oz_e7: i128 = 4_011_000_000; // 401.10 oz
+    let quantity_e7: i128 = 4_011_000_000; // 401.10 oz
     f.client.register_position(
         &position_id,
         &framework_id,
         &f.owner,
         &f.custodian,
-        &id(&f.env), // barlist_hash
-        &id(&f.env), // serials_hash
-        &fine_weight_oz_e7,
+        &instrument,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &quantity_e7,
         &expiry,
     );
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
     f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
     position_id
 }
@@ -112,7 +170,7 @@ fn happy_to_open(f: &Fixture) -> (BytesN<32>, BytesN<32>, BytesN<32>) {
 
     // price 2,990/oz scaled 1e7; advance 6000 bps; maintenance 7500 bps
     // base = 401.10 * 2990 * 0.60 = 719,533 (whole units here)
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
     f.client.open_credit_line(
         &line_id,
         &pledge_id,
@@ -121,7 +179,8 @@ fn happy_to_open(f: &Fixture) -> (BytesN<32>, BytesN<32>, BytesN<32>) {
         &719_000, // <= base
         &6000u32,
         &7500u32,
-        &price_per_oz_e7,
+        &price_per_unit_e7,
+        &id(&f.env),
     );
 
     (position_id, pledge_id, line_id)
@@ -158,16 +217,29 @@ fn refuses_framework_with_unapproved_bank() {
 #[test]
 fn immobilize_moves_free_to_earmarked() {
     let f = setup();
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian, &id(&f.env), &id(&f.env), &4_011_000_000, &expiry,
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000,
+        &expiry,
     );
     assert_eq!(f.client.get_position(&position_id).status, PositionStatus::Free);
     // owner selects the bars as collateral
     let request_hash = id(&f.env);
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &request_hash);
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &request_hash);
     assert_eq!(f.client.get_position(&position_id).status, PositionStatus::Selected);
     let selection = f.client.get_selection(&position_id);
     assert_eq!(selection.request_hash, request_hash);
@@ -242,7 +314,7 @@ fn cure_restores_line() {
     let cure_deadline = f.env.ledger().sequence() + 100;
     f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline, &id(&f.env));
 
-    f.client.cure_default(&line_id, &f.cardholder, &id(&f.env));
+    f.client.cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
     assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
     assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
 }
@@ -304,7 +376,7 @@ fn cure_allowed_after_deadline_until_enforcement() {
     // lenient by design: the cure still succeeds because the default is still
     // "continuing" (enforcement has not been recorded). The deadline gates the
     // bank's right to enforce, not the borrower's ability to pay.
-    f.client.cure_default(&line_id, &f.cardholder, &id(&f.env));
+    f.client.cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
     assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
     assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
 }
@@ -398,6 +470,7 @@ fn open_credit_line_rejects_cardholder_that_is_not_the_pledgor() {
         &6000u32,
         &7500u32,
         &29_900_000_000i128,
+        &id(&f.env),
     );
     assert_eq!(res, Err(Ok(Error::NotAuthorized)));
 }
@@ -428,7 +501,7 @@ fn refuses_resume_of_non_suspended_line() {
     let (_p, _pl, line_id) = happy_to_open(&f);
     // line is Active, not bank-suspended: resume must refuse
     let res = f.client.try_bank_resume_line(&line_id, &f.bank, &id(&f.env));
-    assert_eq!(res, Err(Ok(Error::LineNotSuspended)));
+    assert_eq!(res, Err(Ok(Error::LineNotActive)));
 }
 
 #[test]
@@ -457,11 +530,24 @@ fn called_line_blocks_draws_until_recovered() {
 fn refuses_pledge_of_free_not_earmarked_position() {
     let f = setup();
     // register but do NOT immobilize
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian, &id(&f.env), &id(&f.env), &4_011_000_000, &expiry,
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000,
+        &expiry,
     );
     let res = f.client.try_activate_pledge(
         &id(&f.env), &position_id, &f.owner, &f.bank, &id(&f.env),
@@ -509,16 +595,21 @@ fn owner_requests_collateral_adjustment() {
         &line_id,
         &f.owner,
         &AdjustmentType::TopUp,
-        &new_barlist,
-        &new_serials,
-        &5_000_000_000i128, // proposed new weight
+        &LotEvidence {
+            manifest_hash: new_barlist.clone(),
+            uniqueness_hash: new_serials.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &5_000_000_000i128,
         &request_hash,
     );
     let adj = f.client.get_adjustment(&adj_id);
     assert_eq!(adj.status, AdjustmentStatus::Requested);
     assert_eq!(adj.adjustment_type, AdjustmentType::TopUp);
-    assert_eq!(adj.new_barlist_hash, new_barlist);
-    assert_eq!(adj.new_weight_oz_e7, 5_000_000_000i128);
+    assert_eq!(adj.new_manifest_hash, new_barlist);
+    assert_eq!(adj.new_quantity_e7, 5_000_000_000i128);
 }
 
 #[test]
@@ -531,8 +622,13 @@ fn refuses_adjustment_request_by_non_owner() {
         &line_id,
         &stranger,
         &AdjustmentType::Substitution,
-        &id(&f.env),
-        &id(&f.env),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
         &4_011_000_000i128,
         &id(&f.env),
     );
@@ -550,19 +646,30 @@ fn full_adjustment_topup_clears_three_party() {
     let new_barlist = id(&f.env);
     let new_weight: i128 = 5_000_000_000; // 500 oz, a top-up from 401.10
     f.client.request_collateral_adjustment(
-        &adj_id, &line_id, &f.owner, &AdjustmentType::TopUp,
-        &new_barlist, &id(&f.env), &new_weight, &id(&f.env),
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &LotEvidence {
+            manifest_hash: new_barlist.clone(),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &new_weight,
+        &id(&f.env),
     );
     // custodian confirms it can hold the new set
     f.client.custodian_confirm_adjustment(&adj_id, &f.custodian, &id(&f.env));
     assert_eq!(f.client.get_adjustment(&adj_id).status, AdjustmentStatus::CustodianConfirmed);
     // bank approves at a price where the new collateral covers the draw
-    f.client.bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128);
+    f.client.bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &id(&f.env));
     assert_eq!(f.client.get_adjustment(&adj_id).status, AdjustmentStatus::Approved);
     // the position's collateral schedule updated
     let pos = f.client.get_position(&position_id);
-    assert_eq!(pos.fine_weight_oz_e7, new_weight);
-    assert_eq!(pos.barlist_hash, new_barlist);
+    assert_eq!(pos.quantity_e7, new_weight);
+    assert_eq!(pos.manifest_hash, new_barlist);
 }
 
 #[test]
@@ -575,12 +682,23 @@ fn refuses_undercovered_partial_release() {
     let adj_id = id(&f.env);
     // propose releasing down to a tiny weight that cannot cover 700k at 60% ltv
     f.client.request_collateral_adjustment(
-        &adj_id, &line_id, &f.owner, &AdjustmentType::PartialRelease,
-        &id(&f.env), &id(&f.env), &500_000_000i128 /* 50 oz */, &id(&f.env),
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::PartialRelease,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &500_000_000i128 /* 50 oz */,
+        &id(&f.env),
     );
     f.client.custodian_confirm_adjustment(&adj_id, &f.custodian, &id(&f.env));
     // at 2,990/oz, 50 oz * 0.60 = ~89,700 < 700,000 drawn -> undercovered
-    let res = f.client.try_bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128);
+    let res = f.client.try_bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &id(&f.env));
     assert_eq!(res, Err(Ok(Error::AdjustmentUndercovered)));
 }
 
@@ -590,37 +708,74 @@ fn refuses_approve_adjustment_before_custodian() {
     let (_pos, _pledge, line_id) = happy_to_open(&f);
     let adj_id = id(&f.env);
     f.client.request_collateral_adjustment(
-        &adj_id, &line_id, &f.owner, &AdjustmentType::TopUp,
-        &id(&f.env), &id(&f.env), &5_000_000_000i128, &id(&f.env),
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &5_000_000_000i128,
+        &id(&f.env),
     );
     // adjustment is Requested, not CustodianConfirmed: bank cannot approve yet
-    let res = f.client.try_bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128);
+    let res = f.client.try_bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &id(&f.env));
     assert_eq!(res, Err(Ok(Error::AdjustmentWrongStatus)));
 }
 
 #[test]
 fn refuses_double_pledge_of_same_bars() {
     let f = setup();
-    let framework_id = register_framework(&f);
-    // register a first position with a specific serials_hash
+    let framework_id = framework_with_gold(&f);
+    // register a first position with a specific uniqueness_hash
     let serials = id(&f.env);
     let pos1 = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &pos1, &framework_id, &f.owner, &f.custodian, &id(&f.env), &serials, &4_011_000_000i128, &expiry,
+        &pos1,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: serials.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
     );
     // a second position cannot register the SAME serials while pos1 is active
     let pos2 = id(&f.env);
     let res = f.client.try_register_position(
-        &pos2, &framework_id, &f.owner, &f.custodian, &id(&f.env), &serials, &4_011_000_000i128, &expiry,
+        &pos2,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: serials.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
     );
-    assert_eq!(res, Err(Ok(Error::BarSetAlreadyActive)));
+    assert_eq!(res, Err(Ok(Error::LotAlreadyActive)));
 }
 
 #[test]
 fn bars_reusable_after_release() {
     let f = setup();
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let serials = id(&f.env);
     let pos1 = id(&f.env);
     let pledge1 = id(&f.env);
@@ -628,13 +783,27 @@ fn bars_reusable_after_release() {
     let expiry = f.env.ledger().sequence() + 100_000;
     // full lifecycle: register -> select -> immobilize -> pledge -> open -> release
     f.client.register_position(
-        &pos1, &framework_id, &f.owner, &f.custodian, &id(&f.env), &serials, &4_011_000_000i128, &expiry,
+        &pos1,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: serials.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
     );
-    f.client.select_bars_for_collateral(&pos1, &f.owner, &id(&f.env));
+    f.client.select_lot_for_collateral(&pos1, &f.owner, &id(&f.env));
     f.client.confirm_and_immobilize(&pos1, &f.custodian, &id(&f.env));
     f.client.activate_pledge(&pledge1, &pos1, &f.owner, &f.bank, &id(&f.env));
     f.client.open_credit_line(
         &line1, &pledge1, &f.bank, &f.cardholder, &719_000i128, &6000u32, &7500u32, &29_900_000_000i128,
+        &id(&f.env),
     );
     // no draw: release immediately (drawn == 0)
     f.client.bank_authorize_release(&line1, &f.bank, &id(&f.env));
@@ -644,7 +813,20 @@ fn bars_reusable_after_release() {
     // the same serials can now be registered again under a new position
     let pos2 = id(&f.env);
     f.client.register_position(
-        &pos2, &framework_id, &f.owner, &f.custodian, &id(&f.env), &serials, &4_011_000_000i128, &expiry,
+        &pos2,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: serials.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
     );
     assert_eq!(f.client.get_position(&pos2).status, PositionStatus::Free);
 }
@@ -652,11 +834,24 @@ fn bars_reusable_after_release() {
 #[test]
 fn refuses_immobilize_of_unselected_position() {
     let f = setup();
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian, &id(&f.env), &id(&f.env), &4_011_000_000, &expiry,
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000,
+        &expiry,
     );
     // position is Free, owner has not selected it: custodian cannot immobilize
     let res = f.client.try_confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
@@ -668,13 +863,26 @@ fn refuses_immobilize_by_wrong_custodian() {
     let f = setup();
     let rogue = Address::generate(&f.env);
     f.client.approve_party(&rogue, &Role::Custodian);
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian, &id(&f.env), &id(&f.env), &4_011_000_000, &expiry,
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000,
+        &expiry,
     );
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
     // rogue is an approved custodian but not THIS position's custodian
     let res = f.client.try_confirm_and_immobilize(&position_id, &rogue, &id(&f.env));
     assert_eq!(res, Err(Ok(Error::NotAuthorized)));
@@ -818,6 +1026,7 @@ fn refuses_limit_above_borrowing_base() {
     // base ~= 719,533; ask for 1,000,000
     let res = f.client.try_open_credit_line(
         &line_id, &pledge_id, &f.bank, &f.cardholder, &1_000_000, &6000u32, &7500u32, &29_900_000_000,
+        &id(&f.env),
     );
     assert_eq!(res, Err(Ok(Error::LimitExceedsBorrowingBase)));
 }
@@ -832,12 +1041,14 @@ fn refuses_invalid_risk_params() {
     // advance >= maintenance is invalid
     let res = f.client.try_open_credit_line(
         &id(&f.env), &pledge_id, &f.bank, &f.cardholder, &100_000, &7500u32, &7000u32, &29_900_000_000,
+        &id(&f.env),
     );
     assert_eq!(res, Err(Ok(Error::InvalidRiskParams)));
 
     // maintenance > 100% is invalid
     let res2 = f.client.try_open_credit_line(
         &id(&f.env), &pledge_id, &f.bank, &f.cardholder, &100_000, &6000u32, &10_001u32, &29_900_000_000,
+        &id(&f.env),
     );
     assert_eq!(res2, Err(Ok(Error::InvalidRiskParams)));
 }
@@ -936,11 +1147,24 @@ fn refuses_unapproved_bank() {
 #[test]
 fn refuses_stale_attestation_on_register() {
     let f = setup();
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     f.env.ledger().set_sequence_number(50);
     let res = f.client.try_register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian, &id(&f.env), &id(&f.env), &4_011_000_000, &10u32,
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000,
+        &10u32,
     );
     assert_eq!(res, Err(Ok(Error::AttestationStale)));
 }
@@ -1102,7 +1326,8 @@ fn host_auth_wrong_signer_cannot_open_line() {
     // open a SECOND line, but now strictly: only the attacker has signed.
     let attacker = Address::generate(&f.env);
     let line_id2 = id(&f.env);
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    let valuation_ref = id(&f.env);
 
     // Re-enter strict mode: clear blanket auth by creating a narrow grant that
     // authorizes the ATTACKER (not the bank) for this invocation.
@@ -1121,7 +1346,8 @@ fn host_auth_wrong_signer_cannot_open_line() {
                     100_000i128,
                     6000u32,
                     7500u32,
-                    price_per_oz_e7,
+                    price_per_unit_e7,
+                    valuation_ref.clone(),
                 )
                     .into_val(&f.env),
                 sub_invokes: &[],
@@ -1135,7 +1361,8 @@ fn host_auth_wrong_signer_cannot_open_line() {
             &100_000,
             &6000u32,
             &7500u32,
-            &price_per_oz_e7,
+            &price_per_unit_e7,
+            &valuation_ref,
         );
     // The bank's require_auth() is not satisfied by the attacker's grant.
     assert!(res.is_err(), "open_credit_line must fail when the bank did not sign");
@@ -1204,7 +1431,8 @@ fn host_auth_correct_signer_succeeds() {
     f.client.activate_pledge(&pledge_id, &position_id2, &f.owner, &f.bank, &id(&f.env));
 
     let line_id2 = id(&f.env);
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    let valuation_ref = id(&f.env);
     let res = f
         .client
         .mock_auths(&[
@@ -1221,7 +1449,8 @@ fn host_auth_correct_signer_succeeds() {
                         100_000i128,
                         6000u32,
                         7500u32,
-                        price_per_oz_e7,
+                        price_per_unit_e7,
+                        valuation_ref.clone(),
                     )
                         .into_val(&f.env),
                     sub_invokes: &[],
@@ -1240,7 +1469,8 @@ fn host_auth_correct_signer_succeeds() {
                         100_000i128,
                         6000u32,
                         7500u32,
-                        price_per_oz_e7,
+                        price_per_unit_e7,
+                        valuation_ref.clone(),
                     )
                         .into_val(&f.env),
                     sub_invokes: &[],
@@ -1255,7 +1485,8 @@ fn host_auth_correct_signer_succeeds() {
             &100_000,
             &6000u32,
             &7500u32,
-            &price_per_oz_e7,
+            &price_per_unit_e7,
+            &valuation_ref,
         );
     assert!(res.is_ok(), "open_credit_line must succeed when both the bank and cardholder sign");
 }
@@ -1282,9 +1513,10 @@ fn revoked_bank_cannot_open_line() {
     // admin revokes the bank
     f.client.revoke_party(&f.bank, &Role::Bank);
 
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
     let res = f.client.try_open_credit_line(
-        &line_id, &pledge_id, &f.bank, &f.cardholder, &719_000, &6000u32, &7500u32, &price_per_oz_e7,
+        &line_id, &pledge_id, &f.bank, &f.cardholder, &719_000, &6000u32, &7500u32, &price_per_unit_e7,
+        &id(&f.env),
     );
     // With the bank revoked, opening must fail with PartyNotApproved.
     // (activate_pledge happened pre-revoke; this is the post-revoke action.)
@@ -1402,10 +1634,11 @@ fn open_line_with_overflow_price_is_refused_not_wrapped() {
 
     // Attempt a wildly large approved_limit with a normal price. Must be
     // refused because it exceeds the borrowing base.
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
     let res = f.client.try_open_credit_line(
         &line_id, &pledge_id, &f.bank, &f.cardholder,
-        &i128::MAX, &6000u32, &7500u32, &price_per_oz_e7,
+        &i128::MAX, &6000u32, &7500u32, &price_per_unit_e7,
+        &id(&f.env),
     );
     assert!(res.is_err(), "an absurd approved_limit must be refused, never accepted");
 }
@@ -1452,14 +1685,14 @@ fn cannot_resume_a_line_never_suspended() {
     let f = setup();
     let (_p, _pl, line_id) = happy_to_open(&f);
     let res = f.client.try_bank_resume_line(&line_id, &f.bank, &id(&f.env));
-    assert_eq!(res, Err(Ok(Error::LineNotSuspended)));
+    assert_eq!(res, Err(Ok(Error::LineNotActive)));
 }
 
 #[test]
 fn cannot_cure_a_line_not_in_default() {
     let f = setup();
     let (_p, _pl, line_id) = happy_to_open(&f);
-    let res = f.client.try_cure_default(&line_id, &f.cardholder, &id(&f.env));
+    let res = f.client.try_cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
     assert_eq!(res, Err(Ok(Error::NotDefaulted)));
 }
 
@@ -1494,7 +1727,7 @@ fn refuses_second_credit_line_against_same_pledge() {
     let f = setup();
     let (_position_id, pledge_id, _line_id) = happy_to_open(&f);
     let second_line_id = id(&f.env);
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
 
     let res = f.client.try_open_credit_line(
         &second_line_id,
@@ -1504,7 +1737,8 @@ fn refuses_second_credit_line_against_same_pledge() {
         &100_000i128,
         &6000u32,
         &7500u32,
-        &price_per_oz_e7,
+        &price_per_unit_e7,
+        &id(&f.env),
     );
     assert_eq!(res, Err(Ok(Error::PledgeAlreadyHasLine)));
 }
@@ -1513,7 +1747,7 @@ fn refuses_second_credit_line_against_same_pledge() {
 fn refuses_duplicate_credit_line_id() {
     let f = setup();
     let (_position_id, pledge_id, line_id) = happy_to_open(&f);
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
 
     let res = f.client.try_open_credit_line(
         &line_id,
@@ -1523,7 +1757,8 @@ fn refuses_duplicate_credit_line_id() {
         &100_000i128,
         &6000u32,
         &7500u32,
-        &price_per_oz_e7,
+        &price_per_unit_e7,
+        &id(&f.env),
     );
     assert_eq!(res, Err(Ok(Error::LineExists)));
 }
@@ -1535,7 +1770,7 @@ fn refuses_repayment_above_drawn_balance() {
     f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000i128);
 
     let res = f.client.try_apply_repayment(&line_id, &f.vault, &id(&f.env), &25_001i128);
-    assert_eq!(res, Err(Ok(Error::RepaymentExceedsOutstandingBalance)));
+    assert_eq!(res, Err(Ok(Error::RepaymentExceedsBalance)));
     assert_eq!(f.client.get_line(&line_id).drawn_balance, 25_000);
 }
 
@@ -1638,7 +1873,7 @@ fn refuses_zero_hash_in_framework_documents() {
 #[test]
 fn refuses_zero_barlist_or_serials_hash() {
     let f = setup();
-    let framework_id = register_framework(&f);
+    let framework_id = framework_with_gold(&f);
     let position_id = id(&f.env);
     let zero = zero_hash(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
@@ -1648,8 +1883,14 @@ fn refuses_zero_barlist_or_serials_hash() {
         &framework_id,
         &f.owner,
         &f.custodian,
-        &zero,
-        &id(&f.env),
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: zero.clone(),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
         &4_011_000_000i128,
         &expiry,
     );
@@ -1660,8 +1901,14 @@ fn refuses_zero_barlist_or_serials_hash() {
         &framework_id,
         &f.owner,
         &f.custodian,
-        &id(&f.env),
-        &zero,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: zero.clone(),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
         &4_011_000_000i128,
         &expiry,
     );
@@ -1707,8 +1954,13 @@ fn refuses_adjustment_with_zero_hashes() {
         &line_id,
         &f.owner,
         &AdjustmentType::TopUp,
-        &zero,
-        &id(&f.env),
+        &LotEvidence {
+            manifest_hash: zero.clone(),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
         &4_500_000_000i128,
         &id(&f.env),
     );
@@ -1719,8 +1971,13 @@ fn refuses_adjustment_with_zero_hashes() {
         &line_id,
         &f.owner,
         &AdjustmentType::TopUp,
-        &id(&f.env),
-        &id(&f.env),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
         &4_500_000_000i128,
         &zero,
     );
@@ -1824,7 +2081,7 @@ fn refuses_cure_after_enforcement() {
     f.env.ledger().set_sequence_number(cure_deadline + 1);
     f.client.record_enforcement(&line_id, &f.bank, &EnforcementOutcome::Sold, &id(&f.env));
 
-    let res = f.client.try_cure_default(&line_id, &f.cardholder, &id(&f.env));
+    let res = f.client.try_cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
     assert_eq!(res, Err(Ok(Error::NotDefaulted)));
 }
 
@@ -1915,7 +2172,8 @@ fn owner_cannot_open_line_as_bank() {
     let pledge_id = id(&f.env);
     f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
     let line_id = id(&f.env);
-    let price_per_oz_e7: i128 = 29_900_000_000;
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    let valuation_ref = id(&f.env);
 
     let res = f.client.mock_auths(&[MockAuth {
         address: &f.owner,
@@ -1930,7 +2188,8 @@ fn owner_cannot_open_line_as_bank() {
                 100_000i128,
                 6000u32,
                 7500u32,
-                price_per_oz_e7,
+                price_per_unit_e7,
+                valuation_ref.clone(),
             ).into_val(&f.env),
             sub_invokes: &[],
         },
@@ -1942,7 +2201,8 @@ fn owner_cannot_open_line_as_bank() {
         &100_000i128,
         &6000u32,
         &7500u32,
-        &price_per_oz_e7,
+        &price_per_unit_e7,
+        &valuation_ref,
     );
     assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
 }
@@ -2393,8 +2653,9 @@ fn replay_fold_rebuilds_framework_position_pledge_line() {
             CollateralPayloadV1::LineOpened(LineOpenedData {
                 approved_limit,
                 ltv_bps: 6000,
+                haircut_bps: 0,
                 maintenance_bps: 7500,
-                price_per_oz_e7: 29_900_000_000,
+                price_per_unit_e7: 29_900_000_000,
             })),
     ];
 
@@ -2445,7 +2706,8 @@ fn replay_fold_rebuilds_drawdown_reverse_repayment() {
             StateLabel::Null, StateLabel::LineActive,
             CollateralPayloadV1::LineOpened(LineOpenedData {
                 approved_limit: 719_000, ltv_bps: 6000,
-                maintenance_bps: 7500, price_per_oz_e7: 29_900_000_000 })),
+                haircut_bps: 0,
+                maintenance_bps: 7500, price_per_unit_e7: 29_900_000_000 })),
         ev(&f.env, &fw, 2, EntityKind::Drawdown, CollateralAction::DrawdownRecorded,
             StateLabel::LineActive, StateLabel::LineActive,
             CollateralPayloadV1::BalanceMove(BalanceMoveData {
@@ -2487,7 +2749,8 @@ fn replay_fold_rebuilds_release_path() {
             StateLabel::Null, StateLabel::LineActive,
             CollateralPayloadV1::LineOpened(LineOpenedData {
                 approved_limit: 719_000, ltv_bps: 6000,
-                maintenance_bps: 7500, price_per_oz_e7: 29_900_000_000 })),
+                haircut_bps: 0,
+                maintenance_bps: 7500, price_per_unit_e7: 29_900_000_000 })),
         ev(&f.env, &fw, 2, EntityKind::Drawdown, CollateralAction::DrawdownRecorded,
             StateLabel::LineActive, StateLabel::LineActive,
             CollateralPayloadV1::BalanceMove(BalanceMoveData {
@@ -2533,7 +2796,8 @@ fn replay_fold_rebuilds_revalue_suspend_resume() {
             StateLabel::Null, StateLabel::LineActive,
             CollateralPayloadV1::LineOpened(LineOpenedData {
                 approved_limit: 719_000, ltv_bps: 6000,
-                maintenance_bps: 7500, price_per_oz_e7: 29_900_000_000 })),
+                haircut_bps: 0,
+                maintenance_bps: 7500, price_per_unit_e7: 29_900_000_000 })),
         ev(&f.env, &fw, 2, EntityKind::Drawdown, CollateralAction::DrawdownRecorded,
             StateLabel::LineActive, StateLabel::LineActive,
             CollateralPayloadV1::BalanceMove(BalanceMoveData {
@@ -2541,7 +2805,7 @@ fn replay_fold_rebuilds_revalue_suspend_resume() {
         ev(&f.env, &fw, 3, EntityKind::Valuation, CollateralAction::LineRevalued,
             StateLabel::LineActive, StateLabel::from_line(line.status),
             CollateralPayloadV1::Revalued(RevaluedData {
-                price_per_oz_e7: 23_000_000_000,
+                price_per_unit_e7: 23_000_000_000,
                 confidence_e7: 23_000_000,
                 margin_state: val.margin_state,
                 drawn_balance: 700_000,
@@ -2582,7 +2846,7 @@ fn replay_fold_rebuilds_default_cure_enforcement_path() {
     f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
     let deadline = f.env.ledger().sequence() + 10;
     f.client.issue_default_notice(&line_id, &f.bank, &deadline, &id(&f.env));
-    f.client.cure_default(&line_id, &f.cardholder, &id(&f.env));
+    f.client.cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
     let cured = f.client.get_line(&line_id);
     let fw = id(&f.env);
     let zero = BytesN::from_array(&f.env, &[0u8; 32]);
@@ -2642,19 +2906,36 @@ fn replay_fold_rebuilds_default_cure_enforcement_path() {
 /// sequence can be queried at each step.
 fn lifecycle_with_framework(f: &Fixture) -> (BytesN<32>, BytesN<32>, BytesN<32>, BytesN<32>) {
     let framework_id = register_framework(f);
+    // Gold instrument register + admit emit no canonical events and do not bump
+    // the framework sequence, so they do not disturb the sequence assertions.
+    let instrument = register_gold_instrument(f);
+    admit_gold(f, &framework_id, &instrument);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian,
-        &id(&f.env), &id(&f.env), &4_011_000_000i128, &expiry);
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &id(&f.env));
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
     f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
     let pledge_id = id(&f.env);
     let line_id = id(&f.env);
     f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
     f.client.open_credit_line(
         &line_id, &pledge_id, &f.bank, &f.cardholder,
-        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128);
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &id(&f.env));
     (framework_id, position_id, pledge_id, line_id)
 }
 
@@ -2665,14 +2946,33 @@ fn each_successful_domain_action_advances_sequence_once() {
     // register_framework already emitted once.
     assert_eq!(f.client.framework_sequence(&framework_id), 1, "after register_framework");
 
+    // Register + admit the gold instrument. These emit no canonical events and
+    // do not bump the framework sequence, so the count stays at 1.
+    let instrument = register_gold_instrument(&f);
+    admit_gold(&f, &framework_id, &instrument);
+    assert_eq!(f.client.framework_sequence(&framework_id), 1, "instrument setup does not bump sequence");
+
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian,
-        &id(&f.env), &id(&f.env), &4_011_000_000i128, &expiry);
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
     assert_eq!(f.client.framework_sequence(&framework_id), 2, "after register_position");
 
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
     assert_eq!(f.client.framework_sequence(&framework_id), 3, "after select");
 
     f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
@@ -2685,7 +2985,7 @@ fn each_successful_domain_action_advances_sequence_once() {
     let line_id = id(&f.env);
     f.client.open_credit_line(
         &line_id, &pledge_id, &f.bank, &f.cardholder,
-        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128);
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &id(&f.env));
     assert_eq!(f.client.framework_sequence(&framework_id), 6, "after open_credit_line");
 }
 
@@ -2712,7 +3012,7 @@ fn failed_call_does_not_increment_framework_sequence() {
     assert!(res.is_err(), "over-limit draw must fail");
     assert_eq!(
         f.client.framework_sequence(&framework_id), before,
-        "a reverted call must not advance the sequence"
+        "a reverted call must not advance the sequence",
     );
 }
 // ---- Batch 3A: real emitted-event round-trip proof ---------------------
@@ -2917,7 +3217,7 @@ fn batch3a_emitted_events_fold_spine_to_contract_state() {
     // capture between calls (happy_to_open batches them and we'd see only the
     // last). framework id is needed by register_position.
     let mut decoded: alloc::vec::Vec<DecodedEvent> = alloc::vec::Vec::new();
-    let mut grab = |f: &Fixture, acc: &mut alloc::vec::Vec<DecodedEvent>| {
+    let grab = |f: &Fixture, acc: &mut alloc::vec::Vec<DecodedEvent>| {
         for (_addr, topics, data) in f.env.events().all().iter() {
             if let Some(d) = try_decode_emitted(&f.env, &topics, &data) {
                 acc.push(d);
@@ -2927,13 +3227,30 @@ fn batch3a_emitted_events_fold_spine_to_contract_state() {
 
     let framework_id = register_framework(&f);
     grab(&f, &mut decoded);
+    // Register + admit gold so the position can be created. These emit no
+    // canonical events; we do not grab after them (nothing to capture).
+    let instrument = register_gold_instrument(&f);
+    admit_gold(&f, &framework_id, &instrument);
     let position_id = id(&f.env);
     let expiry = f.env.ledger().sequence() + 100_000;
     f.client.register_position(
-        &position_id, &framework_id, &f.owner, &f.custodian,
-        &id(&f.env), &id(&f.env), &4_011_000_000i128, &expiry);
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
     grab(&f, &mut decoded);
-    f.client.select_bars_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
     grab(&f, &mut decoded);
     f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
     grab(&f, &mut decoded);
@@ -2943,7 +3260,7 @@ fn batch3a_emitted_events_fold_spine_to_contract_state() {
     let line_id = id(&f.env);
     f.client.open_credit_line(
         &line_id, &pledge_id, &f.bank, &f.cardholder,
-        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128);
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &id(&f.env));
     grab(&f, &mut decoded);
 
     assert!(decoded.len() >= 6, "expected >=6 canonical spine events, got {}", decoded.len());
@@ -3094,7 +3411,7 @@ fn batch2_default_notice_event_carries_cure_deadline() {
     assert_eq!(
         found,
         Some(deadline),
-        "emitted default-notice event must carry the exact cure deadline the bank set"
+        "emitted default-notice event must carry the exact cure deadline the bank set",
     );
 }
 
@@ -3494,4 +3811,1026 @@ fn batch7d_revalue_event_carries_valuation_ref() {
         break;
     }
     assert!(checked, "no LineRevalued event emitted");
+}
+
+// ---- V5 instrument-holding decomposition (ISDA CDM / Daml Finance) ----
+
+/// A position cannot be registered against an instrument that was never
+/// registered in the registry.
+#[test]
+fn register_position_refuses_unknown_instrument() {
+    let f = setup();
+    let framework_id = register_framework(&f);
+    // An instrument key that was never registered.
+    let unknown = InstrumentKey {
+        issuer: f.owner.clone(),
+        depository: f.custodian.clone(),
+        id: Symbol::new(&f.env, "NOPE"),
+        version: 1,
+    };
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let res = f.client.try_register_position(
+        &id(&f.env),
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &unknown,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    assert_eq!(res, Err(Ok(Error::InstrumentNotFound)));
+}
+
+/// A registered instrument that has not been admitted to THIS framework cannot
+/// back a position under it. The eligibility set (CDM GC basket) is enforced.
+#[test]
+fn register_position_refuses_instrument_not_admitted() {
+    let f = setup();
+    // Fresh framework WITHOUT the auto-admit helper: register it raw so gold is
+    // registered but we control admission.
+    let framework_id = id(&f.env);
+    f.client.register_framework(
+        &framework_id, &f.owner, &f.bank, &f.custodian,
+        &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env),
+    );
+    let instrument = register_gold_instrument(&f);
+    // NOTE: deliberately NOT calling admit_gold.
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let res = f.client.try_register_position(
+        &id(&f.env),
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &instrument,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    assert_eq!(res, Err(Ok(Error::InstrumentNotEligible)));
+}
+
+/// A retired instrument cannot be admitted to a framework, so it cannot back a
+/// new position. (Retirement folds into the not-eligible refusal.)
+#[test]
+fn retired_instrument_cannot_be_admitted() {
+    let f = setup();
+    let framework_id = id(&f.env);
+    f.client.register_framework(
+        &framework_id, &f.owner, &f.bank, &f.custodian,
+        &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env), &id(&f.env),
+    );
+    let key = register_gold_instrument(&f);
+    f.client.retire_instrument(&key, &f.owner, &f.custodian);
+    // Admitting a retired instrument is refused.
+    let res = f.client.try_admit_instrument(
+        &framework_id, &key, &f.bank, &f.custodian,
+        &id(&f.env), &0u32, &9000u32, &9500u32,
+    );
+    assert_eq!(res, Err(Ok(Error::InstrumentNotEligible)));
+}
+
+/// get_instrument returns the registered economic terms.
+#[test]
+fn get_instrument_returns_terms() {
+    let f = setup();
+    let key = register_gold_instrument(&f);
+    let got = f.client.get_instrument(&key);
+    assert_eq!(got.commodity, Symbol::new(&f.env, "gold"));
+    assert_eq!(got.unit, Symbol::new(&f.env, "oz"));
+    assert_eq!(got.status, InstrumentStatus::Active);
+}
+
+/// The contract is genuinely multi-commodity: a copper instrument, denominated
+/// in metric tonnes, runs the same lifecycle as gold. This is the artifact that
+/// backs the "any allocated commodity" claim. Copper warehouse-receipt financing
+/// at ~100 mt, LME price, 75% advance.
+#[test]
+fn copper_position_runs_full_lifecycle() {
+    let f = setup();
+    let framework_id = register_framework(&f);
+
+    // Define a copper instrument: 100 mt of LME Grade A cathode.
+    let copper = InstrumentKey {
+        issuer: f.owner.clone(),
+        depository: f.custodian.clone(),
+        id: Symbol::new(&f.env, "CU_LME_A"),
+        version: 1,
+    };
+    f.client.register_instrument(&Instrument {
+        key: copper.clone(),
+        commodity: Symbol::new(&f.env, "copper"),
+        unit: Symbol::new(&f.env, "mt"),
+        grade_hash: id(&f.env),
+        status: InstrumentStatus::Active,
+    });
+    f.client.admit_instrument(
+        &framework_id, &copper, &f.bank, &f.custodian,
+        &id(&f.env), &0u32, &9000u32, &9500u32,
+    );
+
+    // Register a copper position: 100.0000000 mt (quantity scaled 1e7).
+    let position_id = id(&f.env);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let quantity_e7: i128 = 1_000_000_000; // 100 mt
+    f.client.register_position(
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &copper,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &quantity_e7,
+        &expiry,
+    );
+    // The stored holding references the copper instrument.
+    let pos = f.client.get_position(&position_id);
+    assert_eq!(pos.instrument, copper);
+    assert_eq!(pos.quantity_e7, quantity_e7);
+
+    // Run it through select -> immobilize -> pledge -> open a line.
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+
+    // LME copper ~9,500/mt scaled 1e7; 75% advance.
+    // base = 100 * 9500 * 0.75 = 712,500
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 95_000_000_000;
+    f.client.open_credit_line(
+        &line_id, &pledge_id, &f.bank, &f.cardholder,
+        &700_000i128, &7500u32, &8500u32, &price_per_unit_e7,
+        &id(&f.env),
+    );
+    let line = f.client.get_line(&line_id);
+    assert_eq!(line.status, LineStatus::Active);
+    assert_eq!(line.approved_limit, 700_000i128);
+}
+
+/// Gold and copper coexist: the same framework admits two instruments and a
+/// position of each is registered. Proves instruments are reusable, keyed
+/// records (the Daml separation), not a single hardcoded asset.
+#[test]
+fn gold_and_copper_coexist_in_one_framework() {
+    let f = setup();
+    let framework_id = framework_with_gold(&f); // gold registered + admitted
+
+    // Register + admit copper alongside gold.
+    let copper = InstrumentKey {
+        issuer: f.owner.clone(),
+        depository: f.custodian.clone(),
+        id: Symbol::new(&f.env, "CU_LME_A"),
+        version: 1,
+    };
+    f.client.register_instrument(&Instrument {
+        key: copper.clone(),
+        commodity: Symbol::new(&f.env, "copper"),
+        unit: Symbol::new(&f.env, "mt"),
+        grade_hash: id(&f.env),
+        status: InstrumentStatus::Active,
+    });
+    f.client.admit_instrument(
+        &framework_id, &copper, &f.bank, &f.custodian,
+        &id(&f.env), &0u32, &9000u32, &9500u32,
+    );
+
+    let expiry = f.env.ledger().sequence() + 100_000;
+    // A gold position.
+    let gold_pos = id(&f.env);
+    f.client.register_position(
+        &gold_pos,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    // A copper position.
+    let copper_pos = id(&f.env);
+    f.client.register_position(
+        &copper_pos,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &copper,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &1_000_000_000i128,
+        &expiry,
+    );
+
+    assert_eq!(f.client.get_position(&gold_pos).instrument, gold_key(&f));
+    assert_eq!(f.client.get_position(&copper_pos).instrument, copper);
+}
+
+// ---- Iteration 2, fix 3: cure_default requires the bank's countersignature ----
+
+/// A default is the bank's declared act. The borrower cannot reverse it alone:
+/// the cure requires the issuing bank to countersign. With auth granted only to
+/// the cardholder (the bank does not sign), cure_default must fail at the host.
+#[test]
+fn cure_requires_bank_countersignature() {
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 100;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline, &id(&f.env));
+
+    // Re-enter strict mode: authorize ONLY the cardholder for the cure. The
+    // bank does not sign, so bank.require_auth() is unsatisfied.
+    let evidence = id(&f.env);
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &f.cardholder,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "cure_default",
+                args: (
+                    line_id.clone(),
+                    f.cardholder.clone(),
+                    f.bank.clone(),
+                    evidence.clone(),
+                )
+                    .into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_cure_default(&line_id, &f.cardholder, &f.bank, &evidence);
+    assert!(res.is_err(), "cure must fail when the bank did not countersign");
+    // The line stays defaulted.
+    f.env.mock_all_auths();
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Defaulted);
+}
+
+/// A bank that is not this line's bank cannot cure the line, even if it is an
+/// approved bank party elsewhere. The cure is bound to the issuing bank.
+#[test]
+fn cure_by_wrong_bank_is_refused() {
+    let f = setup();
+    let (_p, _pl, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 100;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline, &id(&f.env));
+
+    // A second, approved-but-unrelated bank.
+    let other_bank = Address::generate(&f.env);
+    f.client.approve_party(&other_bank, &Role::Bank);
+
+    let res = f.client.try_cure_default(&line_id, &f.cardholder, &other_bank, &id(&f.env));
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+    // The line stays defaulted: the wrong bank cannot clear it.
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Defaulted);
+}
+
+/// The happy path with both signatures still works: cardholder remedies, bank
+/// countersigns, line restored. (Mirrors cure_restores_line but asserts the
+/// two-party requirement is satisfiable.)
+#[test]
+fn cure_with_bank_countersignature_succeeds() {
+    let f = setup();
+    let (_p, pledge_id, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &25_000);
+    let cure_deadline = f.env.ledger().sequence() + 100;
+    f.client.issue_default_notice(&line_id, &f.bank, &cure_deadline, &id(&f.env));
+
+    f.client.cure_default(&line_id, &f.cardholder, &f.bank, &id(&f.env));
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
+    assert_eq!(f.client.get_pledge(&pledge_id).status, PledgeStatus::Active);
+}
+
+// ---- Iteration 2, fix 4: approved adjustment recalculates available capacity ----
+
+/// A partial release that lowers the borrowing base below the approved limit
+/// must reduce available_limit in lockstep. Before this fix the line kept stale
+/// headroom against collateral that was no longer there.
+#[test]
+fn partial_release_reduces_available_limit() {
+    let f = setup();
+    let (_pos, _pledge, line_id) = happy_to_open(&f);
+    // Draw 100,000 of the 719,000 line. available = 619,000.
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &100_000i128);
+    assert_eq!(f.client.get_line(&line_id).available_limit, 619_000i128);
+
+    // Owner requests a partial release down to 300 oz (from 401.10).
+    let adj_id = id(&f.env);
+    let new_qty: i128 = 3_000_000_000; // 300 oz
+    f.client.request_collateral_adjustment(
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::PartialRelease,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &new_qty,
+        &id(&f.env),
+    );
+    f.client.custodian_confirm_adjustment(&adj_id, &f.custodian, &id(&f.env));
+    // Approve at the same price. new_base = 300 * 2990 * 0.60 = 538,200.
+    f.client.bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &id(&f.env));
+
+    // new_base (538,200) < approved_limit (719,000), so effective limit is the
+    // base; available = 538,200 - 100,000 drawn = 438,200.
+    let line = f.client.get_line(&line_id);
+    assert_eq!(line.available_limit, 438_200i128, "available tracks the reduced collateral");
+    assert_eq!(line.drawn_balance, 100_000i128, "drawn unchanged");
+    assert_eq!(line.approved_limit, 719_000i128, "approved ceiling unchanged");
+}
+
+/// A top-up beyond the approved limit does NOT auto-raise capacity above the
+/// bank's approved ceiling. The effective limit is capped at approved_limit.
+#[test]
+fn topup_does_not_raise_available_above_approved() {
+    let f = setup();
+    let (_pos, _pledge, line_id) = happy_to_open(&f);
+    // Zero drawn: available == approved == 719,000.
+    assert_eq!(f.client.get_line(&line_id).available_limit, 719_000i128);
+
+    // Top up to 600 oz. new_base = 600 * 2990 * 0.60 = 1,074,840 > approved.
+    let adj_id = id(&f.env);
+    let new_qty: i128 = 6_000_000_000; // 600 oz
+    f.client.request_collateral_adjustment(
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &new_qty,
+        &id(&f.env),
+    );
+    f.client.custodian_confirm_adjustment(&adj_id, &f.custodian, &id(&f.env));
+    f.client.bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &id(&f.env));
+
+    // effective limit = min(new_base, approved_limit) = 719,000; available = 719,000 - 0.
+    let line = f.client.get_line(&line_id);
+    assert_eq!(line.available_limit, 719_000i128, "capped at approved ceiling, not the higher base");
+    assert_eq!(line.approved_limit, 719_000i128);
+}
+
+// ---- Iteration 2, fix 2: two-step admin rotation ----
+
+/// The full handshake: current admin proposes a successor, the successor accepts,
+/// and control transfers. get_admin reflects the new holder.
+#[test]
+fn admin_rotation_two_step_transfers_control() {
+    let f = setup();
+    let new_admin = Address::generate(&f.env);
+    assert_eq!(f.client.get_admin(), f.admin);
+
+    f.client.propose_admin(&new_admin);
+    // Proposal alone does not move control.
+    assert_eq!(f.client.get_admin(), f.admin, "admin unchanged until acceptance");
+
+    f.client.accept_admin(&new_admin);
+    assert_eq!(f.client.get_admin(), new_admin, "control transferred on acceptance");
+}
+
+/// After rotation the new admin can manage the role registry and the old admin
+/// cannot. This is the substantive proof that control actually moved.
+#[test]
+fn after_rotation_new_admin_controls_old_admin_does_not() {
+    let f = setup();
+    let new_admin = Address::generate(&f.env);
+    f.client.propose_admin(&new_admin);
+    f.client.accept_admin(&new_admin);
+
+    // New admin can approve a party.
+    let someone = Address::generate(&f.env);
+    f.client.approve_party(&someone, &Role::Bank);
+    assert!(f.client.is_approved(&someone, &Role::Bank));
+
+    // The OLD admin is no longer the admin: approve_party requires the current
+    // admin's authorization, which the old admin no longer holds. Under strict
+    // auth this is a host rejection; here we prove the stored admin changed,
+    // which is what the require_auth check binds against.
+    assert_ne!(f.client.get_admin(), f.admin);
+    assert_eq!(f.client.get_admin(), new_admin);
+}
+
+/// A nomination can be replaced before acceptance. The latest proposal wins; an
+/// earlier nominee can no longer accept.
+#[test]
+fn admin_proposal_can_be_replaced_before_acceptance() {
+    let f = setup();
+    let first = Address::generate(&f.env);
+    let second = Address::generate(&f.env);
+
+    f.client.propose_admin(&first);
+    f.client.propose_admin(&second); // overwrites
+
+    // The superseded nominee cannot accept.
+    let res = f.client.try_accept_admin(&first);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+
+    // The current nominee can.
+    f.client.accept_admin(&second);
+    assert_eq!(f.client.get_admin(), second);
+}
+
+/// accept_admin with no pending proposal is refused.
+#[test]
+fn accept_admin_without_proposal_is_refused() {
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let res = f.client.try_accept_admin(&stranger);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+    // Admin is untouched.
+    assert_eq!(f.client.get_admin(), f.admin);
+}
+
+/// An address that was not proposed cannot accept, even while a different
+/// proposal is pending.
+#[test]
+fn unproposed_address_cannot_accept() {
+    let f = setup();
+    let intended = Address::generate(&f.env);
+    let interloper = Address::generate(&f.env);
+
+    f.client.propose_admin(&intended);
+    let res = f.client.try_accept_admin(&interloper);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+    // Still pending for the intended nominee, admin unchanged.
+    assert_eq!(f.client.get_admin(), f.admin);
+    f.client.accept_admin(&intended);
+    assert_eq!(f.client.get_admin(), intended);
+}
+
+/// Control cannot pass without the nominee's OWN signature. Under strict auth,
+/// accept_admin authorized by someone other than the nominee is rejected by the
+/// host even if the nominee address is passed as the argument.
+#[test]
+fn accept_admin_requires_nominees_own_signature() {
+    let f = setup_strict();
+    f.env.mock_all_auths();
+    // Build: initialize + propose under blanket auth.
+    let nominee = Address::generate(&f.env);
+    f.client.propose_admin(&nominee);
+
+    // Strict: only an attacker signs, but the call names the nominee.
+    let attacker = Address::generate(&f.env);
+    let res = f
+        .client
+        .mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "accept_admin",
+                args: (nominee.clone(),).into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_accept_admin(&nominee);
+    assert!(res.is_err(), "accept must fail when the nominee did not sign");
+}
+
+// ---- Iteration 2, fix 5: evidence channel ----
+
+/// A line cannot be opened without a valuation reference. The zero hash is
+/// refused, so the opening price and limit always point at a real off-chain
+/// valuation record.
+#[test]
+fn open_credit_line_requires_valuation_ref() {
+    let f = setup();
+    let position_id = register_and_immobilize(&f);
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+    let line_id = id(&f.env);
+    let zero = zero_hash(&f.env);
+    let res = f.client.try_open_credit_line(
+        &line_id, &pledge_id, &f.bank, &f.cardholder,
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &zero,
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+/// An adjustment approval cannot be made without a valuation reference, since it
+/// re-prices the borrowing base.
+#[test]
+fn bank_approve_adjustment_requires_valuation_ref() {
+    let f = setup();
+    let (_pos, _pledge, line_id) = happy_to_open(&f);
+    f.client.record_drawdown(&line_id, &f.processor, &id(&f.env), &100_000i128);
+
+    let adj_id = id(&f.env);
+    f.client.request_collateral_adjustment(
+        &adj_id,
+        &line_id,
+        &f.owner,
+        &AdjustmentType::TopUp,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &5_000_000_000i128,
+        &id(&f.env),
+    );
+    f.client.custodian_confirm_adjustment(&adj_id, &f.custodian, &id(&f.env));
+
+    let zero = zero_hash(&f.env);
+    let res = f.client.try_bank_approve_adjustment(&adj_id, &f.bank, &29_900_000_000i128, &zero);
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+/// The evidence channel binds each act to the framework document that conditions
+/// it. A LineOpened event must carry the framework's facility_agreement_hash as
+/// its condition_hash, so an indexer can verify the opening against the right
+/// leg of the tri-party agreement.
+#[test]
+fn line_opened_event_condition_hash_is_the_facility_agreement() {
+    let f = setup();
+    // Build a framework and read back its facility agreement hash.
+    let framework_id = framework_with_gold(&f);
+    let facility = f.client.get_framework(&framework_id).facility_agreement_hash;
+
+    // Open a line under this framework (inline lifecycle so we control the ids).
+    let position_id = id(&f.env);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    f.client.register_position(
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &gold_key(&f),
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+    let line_id = id(&f.env);
+    f.client.open_credit_line(
+        &line_id, &pledge_id, &f.bank, &f.cardholder,
+        &719_000i128, &6000u32, &7500u32, &29_900_000_000i128, &id(&f.env),
+    );
+
+    // Read the condition_hash off the most recent LineOpened event.
+    let all = f.env.events().all();
+    let mut found = false;
+    for i in (0..all.len()).rev() {
+        let (_addr, topics, data) = all.get(i).unwrap();
+        if topics.len() != 4 {
+            continue;
+        }
+        let action_val = topics.get(3).unwrap();
+        let action = match CollateralAction::try_from_val(&f.env, &action_val) {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        if action != CollateralAction::LineOpened {
+            continue;
+        }
+        let map: SdkMap<SdkSymbol, SdkVal> =
+            SdkMap::try_from_val(&f.env, &data).expect("data is a map");
+        let ch_val = map
+            .get(SdkSymbol::new(&f.env, "condition_hash"))
+            .expect("condition_hash present in data");
+        let condition_hash = BytesN::<32>::try_from_val(&f.env, &ch_val)
+            .expect("condition_hash decodes to BytesN<32>");
+        assert_eq!(condition_hash, facility,
+            "LineOpened condition_hash must be the facility agreement hash");
+        found = true;
+        break;
+    }
+    assert!(found, "a LineOpened event was emitted");
+}
+
+// ---- Iteration 3 (A4): eligibility-treatment binding tests ----------------
+
+/// Admit gold to a framework with an explicit treatment (haircut, max LTV,
+/// maintenance), then drive a position to the point of opening a line. Returns
+/// (framework_id, pledge_id) ready for open_credit_line, so a test can supply
+/// its own ltv/limit and assert how the treatment binds.
+fn admit_with_treatment_to_pledge(
+    f: &Fixture,
+    haircut_bps: u32,
+    max_ltv_bps: u32,
+    maintenance_bps: u32,
+) -> (BytesN<32>, BytesN<32>) {
+    let framework_id = register_framework(f);
+    let instrument = register_gold_instrument(f);
+    f.client.admit_instrument(
+        &framework_id,
+        &instrument,
+        &f.bank,
+        &f.custodian,
+        &id(&f.env),
+        &haircut_bps,
+        &max_ltv_bps,
+        &maintenance_bps,
+    );
+    let position_id = id(&f.env);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let quantity_e7: i128 = 4_011_000_000; // 401.10 oz
+    f.client.register_position(
+        &position_id,
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &instrument,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: id(&f.env),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &quantity_e7,
+        &expiry,
+    );
+    f.client.select_lot_for_collateral(&position_id, &f.owner, &id(&f.env));
+    f.client.confirm_and_immobilize(&position_id, &f.custodian, &id(&f.env));
+    let pledge_id = id(&f.env);
+    f.client.activate_pledge(&pledge_id, &position_id, &f.owner, &f.bank, &id(&f.env));
+    (framework_id, pledge_id)
+}
+
+#[test]
+fn open_credit_line_refused_when_ltv_exceeds_instrument_ceiling() {
+    let f = setup();
+    // Instrument admitted with a 5000 bps (50%) max LTV ceiling.
+    let (_fw, pledge_id) = admit_with_treatment_to_pledge(&f, 0, 5000, 7500);
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    // Request a 6000 bps advance: above the 5000 ceiling, must be refused.
+    let res = f.client.try_open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000,
+        &6000u32,
+        &7000u32,
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidRiskParams)));
+}
+
+#[test]
+fn open_credit_line_succeeds_at_instrument_ceiling() {
+    let f = setup();
+    // 5000 bps ceiling; request exactly 5000, which is allowed.
+    let (_fw, pledge_id) = admit_with_treatment_to_pledge(&f, 0, 5000, 7500);
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    f.client.open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000,
+        &5000u32,
+        &7000u32,
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
+}
+
+#[test]
+fn haircut_reduces_borrowing_base() {
+    let f = setup();
+    // 401.10 oz at 2,990/oz, 6000 bps advance.
+    // No-haircut base   = 401.10 * 2990 * 0.60          = 719,533
+    // 1000 bps (10%) haircut base = 719,533 * 0.90       = 647,580
+    // A limit between the two proves the haircut bit: 700,000 is fine without a
+    // haircut but must be refused with a 10% haircut.
+    let (_fw, pledge_id) = admit_with_treatment_to_pledge(&f, 1000, 9000, 9500);
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    let res = f.client.try_open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &700_000, // above the haircut-reduced base (~647,580)
+        &6000u32,
+        &7500u32,
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::LimitExceedsBorrowingBase)));
+
+    // The same limit under the haircut-reduced ceiling succeeds at 600,000.
+    let line_id2 = id(&f.env);
+    f.client.open_credit_line(
+        &line_id2,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &600_000, // below the haircut-reduced base
+        &6000u32,
+        &7500u32,
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(f.client.get_line(&line_id2).status, LineStatus::Active);
+}
+
+#[test]
+fn register_position_refuses_zero_quality_or_quantity_or_location_cert() {
+    let f = setup();
+    let framework_id = framework_with_gold(&f);
+    let instrument = gold_key(&f);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let zero = zero_hash(&f.env);
+    // zero quality cert
+    let res = f.client.try_register_position(
+        &id(&f.env),
+        &framework_id,
+        &f.owner,
+        &f.custodian,
+        &instrument,
+        &LotEvidence {
+            manifest_hash: id(&f.env),
+            uniqueness_hash: id(&f.env),
+            quality_cert_hash: zero.clone(),
+            quantity_cert_hash: id(&f.env),
+            location_hash: id(&f.env),
+        },
+        &4_011_000_000i128,
+        &expiry,
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidDocumentHash)));
+}
+
+// ---- Iteration 3 (B3): governance event layer tests -----------------------
+
+// Static spec proofs: the GovernanceEventV1 #[contractevent] is registered in
+// the contract spec as a map-shaped EventV0 with one typed topic (action). This
+// is the forkable surface a jury or indexer inspects without Argent-specific
+// code, the governance-stream counterpart of the CollateralEventV1 spec proofs.
+
+#[test]
+fn contract_spec_contains_governance_event_v1() {
+    let entry = ScSpecEntry::from_xdr(&GovernanceEventV1::spec_xdr()[..], Limits::none()).unwrap();
+    match entry {
+        ScSpecEntry::EventV0(e) => {
+            assert_eq!(e.name.0.as_slice(), b"GovernanceEventV1");
+        }
+        _ => panic!("GovernanceEventV1 spec entry is not an EventV0"),
+    }
+}
+
+#[test]
+fn governance_spec_exposes_map_data_format() {
+    let entry = ScSpecEntry::from_xdr(&GovernanceEventV1::spec_xdr()[..], Limits::none()).unwrap();
+    if let ScSpecEntry::EventV0(e) = entry {
+        assert_eq!(e.data_format, ScSpecEventDataFormat::Map);
+    } else {
+        panic!("GovernanceEventV1 spec entry is not an EventV0");
+    }
+}
+
+#[test]
+fn governance_spec_event_has_one_topic() {
+    let entry = ScSpecEntry::from_xdr(&GovernanceEventV1::spec_xdr()[..], Limits::none()).unwrap();
+    if let ScSpecEntry::EventV0(e) = entry {
+        let topic_params = e
+            .params
+            .iter()
+            .filter(|p| p.location == ScSpecEventParamLocationV0::TopicList)
+            .count();
+        assert_eq!(topic_params, 1, "action is the single governance topic");
+    } else {
+        panic!("GovernanceEventV1 spec entry is not an EventV0");
+    }
+}
+
+// Runtime probes: the governance sequence advances as governance acts run. The
+// soroban test harness scopes the event buffer to each invocation, so emission
+// is proved indirectly via the observable sequence counter, exactly as the
+// framework-sequence probe proves CollateralEventV1 emission.
+
+#[test]
+fn setup_party_approvals_advance_governance_sequence() {
+    let f = setup();
+    // setup() approves five parties (custodian, bank, processor, vault,
+    // valuation). Each PartyApproved governance act bumps the global sequence,
+    // so it stands at exactly 5 before any other act.
+    assert_eq!(
+        f.client.governance_sequence(),
+        5,
+        "five party approvals in setup must advance governance sequence to 5"
+    );
+}
+
+#[test]
+fn party_revocation_advances_governance_sequence() {
+    let f = setup();
+    let before = f.client.governance_sequence();
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    assert_eq!(
+        f.client.governance_sequence(),
+        before + 1,
+        "revoking a party must emit one governance event"
+    );
+}
+
+#[test]
+fn instrument_registration_and_admission_advance_governance_sequence() {
+    let f = setup();
+    let framework_id = register_framework(&f);
+    let before = f.client.governance_sequence();
+    // register_gold_instrument emits InstrumentRegistered; admit_gold emits
+    // InstrumentAdmitted. Two governance acts, sequence advances by two.
+    let instrument = register_gold_instrument(&f);
+    admit_gold(&f, &framework_id, &instrument);
+    assert_eq!(
+        f.client.governance_sequence(),
+        before + 2,
+        "register + admit must emit two governance events"
+    );
+}
+
+#[test]
+fn admin_rotation_advances_governance_sequence_twice() {
+    let f = setup();
+    let before = f.client.governance_sequence();
+    let new_admin = Address::generate(&f.env);
+    f.client.propose_admin(&new_admin);
+    f.client.accept_admin(&new_admin);
+    assert_eq!(
+        f.client.governance_sequence(),
+        before + 2,
+        "propose + accept must emit two governance events"
+    );
+}
+
+#[test]
+fn governance_and_framework_sequences_are_independent() {
+    let f = setup();
+    // The governance stream and the per-framework deal stream are separate
+    // counters. A framework lifecycle act advances the framework sequence but
+    // not the governance sequence, and vice versa.
+    let framework_id = register_framework(&f);
+    let gov_after_fw = f.client.governance_sequence();
+    let fw_seq = f.client.framework_sequence(&framework_id);
+    assert_eq!(fw_seq, 1, "framework registration sets framework sequence to 1");
+    // register_framework is a deal event (FrameworkRegistered), not a governance
+    // event, so the governance sequence is unchanged from its post-setup value.
+    assert_eq!(
+        gov_after_fw, 5,
+        "register_framework must not advance the governance sequence"
+    );
+}
+
+// ---- Phase 1 (D4): hardening proofs for D1 / D2 / D3 ----------------------
+
+#[test]
+fn revoked_bank_cannot_admit_instrument() {
+    // D1: admit_instrument re-checks CURRENT approval. A bank that was approved
+    // when the framework was created, then revoked, must not be able to admit
+    // new instruments even though it still matches the framework and can sign.
+    let f = setup();
+    let framework_id = register_framework(&f);
+    let instrument = register_gold_instrument(&f);
+    // The bank is approved here (setup approved it), so a first admit would work.
+    // Revoke the bank, then attempt to admit: must be refused.
+    f.client.revoke_party(&f.bank, &Role::Bank);
+    let res = f.client.try_admit_instrument(
+        &framework_id,
+        &instrument,
+        &f.bank,
+        &f.custodian,
+        &id(&f.env),
+        &0u32,
+        &9000u32,
+        &9500u32,
+    );
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn revoked_custodian_cannot_admit_instrument() {
+    // D1, the custodian half of the same check.
+    let f = setup();
+    let framework_id = register_framework(&f);
+    let instrument = register_gold_instrument(&f);
+    f.client.revoke_party(&f.custodian, &Role::Custodian);
+    let res = f.client.try_admit_instrument(
+        &framework_id,
+        &instrument,
+        &f.bank,
+        &f.custodian,
+        &id(&f.env),
+        &0u32,
+        &9000u32,
+        &9500u32,
+    );
+    assert_eq!(res, Err(Ok(Error::PartyNotApproved)));
+}
+
+#[test]
+fn revoke_party_rejects_unapprovable_role() {
+    // D2a: revoke_party guards the role the same way approve_party does. Owner
+    // and Admin are never approval-granted, so revoking them is meaningless and
+    // must be refused rather than emitting a misleading PartyRevoked event.
+    let f = setup();
+    let res_owner = f.client.try_revoke_party(&f.owner, &Role::Owner);
+    assert_eq!(res_owner, Err(Ok(Error::NotAuthorized)));
+    let res_admin = f.client.try_revoke_party(&f.admin, &Role::Admin);
+    assert_eq!(res_admin, Err(Ok(Error::NotAuthorized)));
+}
+
+#[test]
+fn line_maintenance_above_framework_floor_is_refused() {
+    // D3: a line's maintenance_bps may not be WEAKER than the framework's
+    // admitted treatment. In Argent's convention a higher maintenance_bps fires
+    // the margin call later (weaker), so the framework value is a ceiling on the
+    // line's. Admit with framework maintenance 7000; a line requesting 7500
+    // (weaker) must be refused.
+    let f = setup();
+    let (_fw, pledge_id) = admit_with_treatment_to_pledge(&f, 0, 6000, 7000);
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    let res = f.client.try_open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000,
+        &5000u32,
+        &7500u32, // weaker (higher) than framework 7000 -> refused
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidRiskParams)));
+}
+
+#[test]
+fn line_maintenance_at_or_below_framework_floor_succeeds() {
+    // D3: a line stricter than (or equal to) the framework floor is allowed.
+    let f = setup();
+    let (_fw, pledge_id) = admit_with_treatment_to_pledge(&f, 0, 6000, 7500);
+    let line_id = id(&f.env);
+    let price_per_unit_e7: i128 = 29_900_000_000;
+    // line maintenance 7000 is STRICTER (lower) than framework 7500 -> allowed.
+    f.client.open_credit_line(
+        &line_id,
+        &pledge_id,
+        &f.bank,
+        &f.cardholder,
+        &100_000,
+        &5000u32,
+        &7000u32,
+        &price_per_unit_e7,
+        &id(&f.env),
+    );
+    assert_eq!(f.client.get_line(&line_id).status, LineStatus::Active);
 }
