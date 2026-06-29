@@ -63,6 +63,12 @@ typed canonical `CollateralEventV1` event stream for deal acts and a
 eligibility admission, party and admin changes), and one atomic value transfer
 in `settlement_vault`. Not arbitrary on-chain storage.
 
+The full run is captured in
+[`docs/argent-core-v5-summary.pdf`](docs/argent-core-v5-summary.pdf): 224
+passing, 0 failed, with the V5 instrument-registry, governance-event, and
+admit-eligibility guarantees listed by test name. It is reproducible from the
+build-and-test steps below.
+
 **What is funded, not yet built:** the institutional **DFNS authorization layer**
 that sits on top of these contracts, DFNS role wallets, deny-by-default approval
 policies, the Soroban signer adapter, and the pending-state / reconciliation
