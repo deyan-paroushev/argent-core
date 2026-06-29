@@ -1,17 +1,18 @@
 # Reviewer quickstart
 
-This repository is the Argent Core V4 contract engine: three Soroban contracts
+This repository is the Argent Core V5 contract engine: three Soroban contracts
 that enforce the control state around physically-held collateral. The gold stays
 in the vault. The control over it goes on chain.
 
-## What V4 proves
+## What V5 proves
 
-1. The same bars cannot back two active pledges.
-2. Only the bound settlement vault can reduce a drawn balance.
-3. Repayment moves token settlement and updates credit exposure together.
-4. Release requires bank authorization and then custodian confirmation.
-5. Every lifecycle act emits a canonical, replayable CollateralEventV1.
-6. The event schema is inspectable through the contract spec.
+1. An asset class is registered once as a reusable instrument, then admitted to a framework as eligible collateral under an explicit treatment (haircut, maximum advance rate, maintenance threshold). A position cannot be registered against an unregistered or unadmitted instrument.
+2. The same lot cannot back two active pledges.
+3. Only the bound settlement vault can reduce a drawn balance.
+4. Repayment moves token settlement and updates credit exposure together.
+5. Release requires bank authorization and then custodian confirmation.
+6. Deal acts emit a canonical, replayable CollateralEventV1; authority acts (instrument registration, admission, party and admin changes) emit a CollateralEventV1-parallel GovernanceEventV1.
+7. Both event schemas are inspectable through the contract spec.
 
 ## Run the suite
 
@@ -28,12 +29,12 @@ cargo test --workspace
 Expected:
 
 ```
-credit_ledger:    125 passed
+credit_ledger:    162 passed
 rewards_ledger:    45 passed
 settlement_vault:  17 passed
 ```
 
-187 tests, 0 failed, on soroban-sdk 23.5.3.
+224 tests, 0 failed, on soroban-sdk 23.5.3.
 
 If the `wasm32v1-none` target is missing, add it with
 `rustup target add wasm32v1-none` and rebuild.
@@ -42,6 +43,8 @@ If the `wasm32v1-none` target is missing, add it with
 
 The guarantees above are each pinned by a test. To read the proof directly:
 
+- `register_position_refuses_instrument_not_admitted`
+- `open_credit_line_refused_when_ltv_exceeds_instrument_ceiling`
 - `refuses_double_pledge_of_same_bars`
 - `unapproved_vault_cannot_apply_repayment`
 - `refuses_confirm_release_before_bank_authorizes`
@@ -49,16 +52,17 @@ The guarantees above are each pinned by a test. To read the proof directly:
 - `batch3_collateral_event_v1_topic_marker_is_pinned`
 - `batch4_spec_matches_wire_contract`
 - `replay_fold_rebuilds_framework_position_pledge_line`
+- `contract_spec_contains_governance_event_v1`
 
-The first four are the institutional impossibilities. The last three show that
-the canonical event stream is well-formed and that contract state can be rebuilt
-from events alone.
+The first two are the V5 instrument-eligibility gate. The next four are the
+institutional impossibilities. The last four show that the canonical event
+streams are well-formed and that contract state can be rebuilt from events alone.
 
-## Live V4 contracts (Stellar testnet)
+## Live V5 contracts (Stellar testnet)
 
 The engine in this repository is deployed and exercised end to end on testnet:
 
-- Credit ledger: `CD7RTIYSKMKOCTLQ2QXE5JVOPUITWA2K25ZZDJ6KO746RJZUCJX5BPZD`
+- Credit ledger: `CA5PIUK6ZQZD5CRLKHWUWWFWK6LZATVWUVWR4B6HR3CNAFENZK6JE4GZ`
 - Settlement vault: `CB45EGGKMQPINDHAFQRDSBAT4MSFNVSTQODBAGMGUPQH6CHIHCI4WZI5`
 
 Any act can be verified on the public explorer at stellar.expert.
