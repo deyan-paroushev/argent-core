@@ -2,7 +2,7 @@
 
 **Event-sourced physical collateral control for assets that remain in custody.**
 
-**Public core specification v0.1**  
+**Public core specification v0.1** · revised 2026-06-29  
 **Reference implementation:** Soroban / Stellar  
 **First asset adapter:** allocated physical gold  
 **First application:** DFNS-governed physical collateral book of record on Stellar
@@ -15,7 +15,9 @@
 
 Argent Protocol is an open, event-sourced protocol for controlling and proving the lifecycle of physical collateral that remains in professional custody. It does not tokenize the asset, hold title, custody the asset, lend money, issue credit, or enforce legal remedies. Instead, it records the ordered chain of signed collateral-control events that make a physical asset usable as bank collateral: identity, custody attestation, immobilization, pledge, line approval, drawdown, revaluation, repayment, release, default, cure, enforcement evidence, and audit trail.
 
-The first reference implementation is written in Soroban on Stellar. The first asset adapter is allocated physical gold because allocated custody already has mature evidence primitives: bar serial numbers, barlists, allocation records, custodian acknowledgements, settlement confirmations, and audit records. The first application uses DFNS-governed role wallets so each institution signs only the action it controls.
+The protocol is asset-agnostic by design. It governs control over any custody-stable physical commodity, that is, a physical asset held under professional physical custody (a vault, a warehouse, a bonded warehouse, or a warehouse-receipt commodity store) whose identity, custody, and uniqueness can be evidenced, so that a financial institution can underwrite operational business credit against it. The governing structure carries no commodity: allocated gold, base and critical metals, and warehouse-held commodities bind at the leaf fields with no change to the structure. The boundary is custody, not commodity: the model holds for assets that stay put and stay identifiable, and does not extend to assets that move, are consumed, spoil, or are commingled without allocation.
+
+The first reference implementation is written in Soroban on Stellar. The first asset adapter is allocated physical gold because allocated custody already has mature evidence primitives: bar serial numbers, barlists, allocation records, custodian acknowledgements, settlement confirmations, and audit records. Gold is the first worked adapter, not the definition of the protocol. The instrument and eligibility model follows the ISDA Common Domain Model (CDM) collateral-criteria / treatment taxonomy so the same structure interoperates across commodities and with systems that already speak CDM. The first application uses DFNS-governed role wallets so each institution signs only the action it controls.
 
 The protocol thesis is simple:
 
@@ -36,6 +38,7 @@ This public whitepaper covers:
 - the problem Argent Protocol solves;
 - the design principles;
 - the actor and authority model;
+- the instrument-registry, admission, and governance-event model;
 - the event model;
 - the state machine;
 - the evidence model;
@@ -71,6 +74,8 @@ This whitepaper shows why that build matters beyond one app. It does **not** exp
 The current Soroban contracts implement the core lifecycle invariants described in this document: framework registration, position registration, collateral selection, custodian immobilization, pledge activation, credit line opening, drawdown and reversal, repayment, collateral adjustment, revaluation and margin, release, default and cure, enforcement readiness, and enforcement recording.
 
 Some objects in this document, including the canonical `CollateralEvent`, the `EvidenceRef` and `EvidenceFunction` model, and the adapter schemas, are protocol-level normalization objects. They describe how the open protocol should expose, normalize, and index the underlying contract state and events for indexers, evidence certificates, and protocol-facing tooling. They are not claimed to be the exact in-contract struct names. Where a contract API name differs from a protocol name, the Soroban event mapping in section 9.3 and the reference implementation are authoritative.
+
+**Revision (2026-06-29).** This revision of the current public core (v0.1) adds the instrument-registry and admission model: an asset class is registered once as a reusable instrument, then admitted to a framework as eligible collateral under an explicit treatment (haircut, maximum advance rate, maintenance threshold). These authority acts are recorded on a `GovernanceEventV1` stream, distinct from the per-framework `CollateralEventV1` deal stream. It also generalizes the position-uniqueness commitment from a gold-specific serials hash to an asset-agnostic `uniqueness_hash` (for the gold adapter, derived from the barlist and serial set), and states the asset-agnostic, custody-bounded thesis and the ISDA CDM alignment explicitly. The reference implementation in `credit_ledger` carries all of these. The machine-readable JSON schemas and test vectors for these objects remain the v0.2 milestone in section 21.
 
 ---
 
@@ -308,6 +313,7 @@ This prevents one operational key from approving a line, releasing collateral, a
 Owner / cardholder:
   MAY request pledge
   MAY select collateral
+  MAY co-sign instrument registration as issuer
   MAY sign the settlement-asset transfer that funds a repayment
   MAY claim rewards
   MUST NOT open a line as bank
@@ -319,11 +325,13 @@ Custodian:
   MAY immobilize collateral
   MAY confirm release
   MAY confirm enforcement outcome
+  MAY co-sign instrument registration and admission
   MUST NOT open credit line
   MUST NOT authorize release as bank
 
 Bank:
   MAY approve eligibility
+  MAY admit an instrument to a framework under a treatment
   MAY open credit line
   MAY authorize release
   MAY issue default notice
@@ -393,7 +401,7 @@ Illustrative JSON form:
     "asset_class": "allocated_gold",
     "asset_id_hash": "0x...",
     "barlist_hash": "0x...",
-    "serials_hash": "0x..."
+    "uniqueness_hash": "0x..."
   },
   "actor": {
     "role": "Custodian",
@@ -527,7 +535,9 @@ The evidence function is required because not all hashes prove the same thing. A
 | Event | Required signer | Effect |
 |---|---|---|
 | `FrameworkRegistered` | Owner + bank + custodian, or agreed admin during setup | Anchors facility, pledge, custody, eligibility, margin, and enforcement document hashes. |
-| `PositionRegistered` | Custodian or operator under custody evidence | Creates a physical asset position by hash and usable collateral fields. |
+| `InstrumentRegistered` | Issuer + depository (owner + custodian) | Registers an asset class once as a reusable instrument (issuer, depository, symbol, version, grade-standard hash). An authority act on the governance stream. |
+| `InstrumentAdmitted` | Bank + custodian | Admits a registered instrument to a framework as eligible collateral under an explicit treatment: haircut, maximum advance rate, and maintenance threshold, with the eligibility schedule committed by hash. The CDM collateral-criteria / treatment result. An authority act on the governance stream. |
+| `PositionRegistered` | Custodian or operator under custody evidence | Creates a physical asset position by hash and usable collateral fields. MUST reference a registered, admitted instrument. |
 | `PledgeRequested` | Owner | Owner designates a position for collateral use. |
 | `AssetImmobilized` | Custodian | Custodian confirms the asset exists and is blocked under the control framework. |
 | `PledgeActivated` | Bank | Bank accepts collateral as security. |
@@ -562,6 +572,8 @@ The Soroban reference implementation emits compact runtime event topics. The pro
 | Protocol event | Reference function | Soroban event topic |
 |---|---|---|
 | `FrameworkRegistered` | `register_framework` | `("framework", "active")` |
+| `InstrumentRegistered` | `register_instrument` | `governance_event_v1` · `InstrumentRegistered` |
+| `InstrumentAdmitted` | `admit_instrument` | `governance_event_v1` · `InstrumentAdmitted` |
 | `PositionRegistered` | `register_position` | `("position", "created")` |
 | `PledgeRequested` | `select_bars_for_collateral` | `("position", "selected")` |
 | `AssetImmobilized` | `confirm_and_immobilize` | `("position", "earmarkd")` |
@@ -588,6 +600,23 @@ The Soroban reference implementation emits compact runtime event topics. The pro
 Two repayment events exist by design and are not duplicates. `("repay", "settled")` is emitted by the settlement vault when the settlement-asset transfer completes. `("repay", "applied")` is emitted by the credit ledger when that repayment is applied to the line's drawn balance. The Soroban topics are compact because of symbol-length limits. The normalized protocol names are the descriptive forms the indexer SHOULD surface.
 
 Alongside these compact compatibility topics, every lifecycle act in the reference implementation also emits one typed `CollateralEventV1` (a soroban-sdk `#[contractevent]`), the canonical, replayable record this protocol's event model normalizes. Its topics are four-part: a pinned `collateral_event_v1` marker, the `framework_id`, the affected `entity` kind, and the `action`, so an indexer filters by deal, object kind, and act without decoding bodies. Its non-topic fields are emitted as a self-describing `Map<Symbol, Val>` (the SEP-48 map data format) registered in the contract spec, so an indexer or forker decodes by field name with no Argent-specific code and the wire event cannot diverge from the published spec. Each event carries a monotonic, framework-scoped sequence, the previous and new state of the affected entity, the actor and role, the relevant evidence, condition, and valuation commitments, and a typed payload sufficient to reconstruct projection state from the stream alone. The thin topics above remain for migration; the canonical event is authoritative, and the reference implementation in `credit_ledger/src/event.rs` is the definitive schema.
+
+### 9.4 Governance events
+
+Deal acts and authority acts are separated into two event streams. The per-framework deal lifecycle (position, pledge, line, repayment, release, default, enforcement) is the `CollateralEventV1` stream above. Authority acts, the acts that establish who and what the deal stream is allowed to reference, are emitted on a distinct `GovernanceEventV1` stream.
+
+A `GovernanceEventV1` is a typed `#[contractevent]` pinned to a `governance_event_v1` marker topic, with the governance action as the first non-pinned topic, so an indexer filters authority acts by kind without decoding bodies. Its non-topic fields use the same self-describing `Map<Symbol, Val>` (SEP-48 map data format) discipline as the collateral event, so the wire event cannot diverge from the published spec. The governance actions are:
+
+| Governance action | Reference function | Records |
+|---|---|---|
+| `InstrumentRegistered` | `register_instrument` | An asset class registered once as a reusable instrument: issuer, depository, symbol, version, grade-standard hash. |
+| `InstrumentAdmitted` | `admit_instrument` | A registered instrument admitted to a framework under a treatment: eligibility-schedule hash, haircut, maximum advance rate, maintenance threshold. The CDM collateral-criteria / treatment result. |
+| `PartyApproved` / `PartyRevoked` | party approval / revocation | A role wallet approved or revoked for a framework. |
+| `AdminRotated` | admin rotation | A two-step administrative key rotation. |
+
+The two streams share the same sequencing and self-describing-map discipline but answer different questions: the collateral stream is the deal's history; the governance stream is the registry of authority and eligibility the deal stream depends on. Separating them lets an indexer or reviewer reconstruct the eligible-collateral set and the role registry independently of any single deal.
+
+The instrument layer is shaped by the ISDA Common Domain Model collateral-criteria / treatment taxonomy, and informed by Daml Finance's instrument-versus-holding decomposition: an instrument is the reusable asset-class definition, a position is a holding that references it, and the admitted treatment is the framework's eligible-collateral criteria (the "GC basket"). This is alignment with a recognized taxonomy for interoperability, not certification against it; the authoritative schema is the reference implementation in `credit_ledger/src/event.rs`.
 
 ---
 
@@ -636,6 +665,7 @@ stateDiagram-v2
 ### 10.4 Required transition constraints
 
 ```text
+No PositionRegistered against an instrument that is not registered and admitted to the framework.
 No PledgeActivated before AssetImmobilized.
 No LineApproved before PledgeActivated.
 No DrawRecorded above available capacity.
@@ -751,7 +781,7 @@ pub struct AllocatedGoldEvidenceSet {
 pub struct GoldAssetIdentity {
     pub asset_class: AssetClass,
     pub barlist_hash: [u8; 32],
-    pub serials_hash: [u8; 32],
+    pub uniqueness_hash: [u8; 32],
     pub fine_weight_oz_e7: i128,
     pub refiner_marks_hash: Option<[u8; 32]>,
     pub custody_account_hash: [u8; 32],
@@ -778,14 +808,14 @@ pub struct VaultPosition {
     pub custodian: Address,
     pub framework_id: BytesN<32>,
     pub barlist_hash: BytesN<32>,
-    pub serials_hash: BytesN<32>,
+    pub uniqueness_hash: BytesN<32>,
     pub fine_weight_oz_e7: i128,
     pub attestation_expiry: u32,
     pub status: PositionStatus,
 }
 ```
 
-This object is intentionally lean. The full barlist, allocation record, and custody documents stay off-chain. The on-chain commitments are enough to bind the collateral state to the evidence set while preserving privacy.
+This object is intentionally lean. The full barlist, allocation record, and custody documents stay off-chain. The on-chain commitments are enough to bind the collateral state to the evidence set while preserving privacy. `uniqueness_hash` is the asset-agnostic uniqueness commitment that prevents the same recorded lot from being pledged twice; for the allocated-gold adapter it is derived from the barlist and bar serial set, while another custody-stable commodity derives it from its own identifying evidence (lot, batch, warehouse-receipt, or tank identity) with no change to the structure.
 
 ### 12.4 Balance-sheet caution
 
@@ -805,7 +835,7 @@ Responsibilities:
 
 - register control frameworks;
 - register physical positions;
-- prevent double pledge of the same recorded bar set;
+- prevent double pledge of the same recorded lot;
 - record owner collateral selection;
 - record custodian immobilization;
 - activate bank pledge;
@@ -1401,7 +1431,7 @@ This is the public core:
   "credit_line_id": "0x...",
   "asset_class": "allocated_gold",
   "barlist_hash": "0x...",
-  "serials_hash": "0x...",
+  "uniqueness_hash": "0x...",
   "current_position_status": "Pledged",
   "line_status": "Active",
   "approved_limit_minor": "16000000",
