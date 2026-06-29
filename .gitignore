@@ -24,3 +24,6 @@ Cargo.lock
 # Local reference artifacts, never published
 argent-core-v4-summary.pdf
 *.pdf
+
+# Publish the V5 test summary; keep other PDFs (e.g. V4) untracked
+!docs/argent-core-v5-summary.pdf
