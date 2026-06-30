@@ -21,9 +21,9 @@ The first reference implementation is written in Soroban on Stellar. The first a
 
 The protocol thesis is simple:
 
-> Physical collateral does not need to become a token to become programmable collateral. It needs a shared, signed, replayable record of the control events that govern it.
+> A physical holding is not yet collateral. It becomes collateral when its lender-relevant constituents, identity, custody, quality, eligibility, valuation, exclusivity, control state, and release path, are made legible to a lender. Argent operationalizes possession into collateral by recording those constituents as a shared, signed, replayable control record, without tokenizing the asset or moving it from custody.
 
-Argent Protocol therefore treats collateral as an event sequence, not as a tradable ownership token. DFNS governs who signs. Soroban preserves what happened. The asset stays in custody.
+Argent Protocol therefore treats collateral as an operationalized state of a holding, recorded as an event sequence, not as a tradable ownership token. DFNS governs who signs. Soroban preserves what happened. The asset stays in custody. The conceptual model in section 4 develops this transformation in full.
 
 ---
 
@@ -151,9 +151,45 @@ The protocol gives every party the same map of who did what, under what authorit
 
 ## 4. Conceptual model
 
-Argent Protocol is best understood as three ideas combined.
+Argent Protocol is best understood as one transformation, supported by three ideas.
 
-### 4.1 Event-sourced collateral control
+The transformation is the point of the protocol: it turns a passive holding into operational collateral. The three ideas that follow, event-sourced control, a lifecycle twin, and a chain of control, are the mechanism by which that transformation is performed and proven.
+
+### 4.1 Possession is not collateral
+
+An owner of a physical asset tends to treat the holding as if it were already collateral. It is not. A bar in a vault, a lot in a warehouse, or stock under a receipt is, to a lender, not collateral but an unanswered set of questions. It may store value, yet it produces no credit capacity. It can even carry negative carry: storage, insurance, and audit cost the owner money while the asset sits inert.
+
+A holding becomes collateral only when its lender-relevant constituents become legible, verifiable, and controllable. Collateral is a relational object: an asset is not collateral in isolation, it is collateral *to a lender* who can recognize it and rely on it. Making the constituents legible to that lender is therefore not a precondition for the asset becoming collateral; it is the act of becoming collateral. There is nothing left over.
+
+Before the constituents are legible, a lender cannot answer the questions that underwriting requires:
+
+- what exactly is it;
+- where is it, and who controls it;
+- how much is there, and at what quality or grade;
+- is it already pledged, and exclusively;
+- is it eligible under this framework, at what haircut and borrowing base;
+- who can release it, and what happens on default.
+
+Argent takes the owner's passive holding, decomposes it into these lender-readable constituents, and registers the relevant control facts on Soroban. The asset never moves and is never tokenized. What changes is not the asset but its legibility. The transformation is:
+
+```text
+passive holding
+  -> decomposed constituents (identity, custody, quality, quantity,
+     eligibility, valuation, exclusivity, control state, release path)
+  -> on-chain, role-signed control record
+  -> lender-readable collateral
+  -> operational credit capacity
+```
+
+Stated as a thesis:
+
+> An asset is what the owner has. Collateral is what a lender can rely on. Argent turns one into the other, by making the holding's constituents legible on Stellar, without the asset leaving custody.
+
+This is why the protocol does not describe itself primarily as a book of record. Recording is after the fact; the value is earlier. Argent prepares a holding to become financeable. It operationalizes possession into collateral.
+
+The decomposition is not arbitrary. The constituents map onto recognized financial-market primitives, instrument, holding, eligibility criteria, collateral treatment, valuation, and lifecycle event, drawn from the ISDA Common Domain Model and the Daml Finance instrument-versus-holding separation (section 9). The taxonomy is the grammar that makes the decomposition legible to systems and counterparties that already speak it; it is the proof that the constituents are the right ones, not the headline.
+
+### 4.2 Event-sourced collateral control
 
 Event sourcing records the full series of events that describe actions taken in a domain in an append-only store. Argent applies that pattern to physical collateral. It does not store only the latest state, such as `Pledged`. It stores the ordered event chain that made `Pledged` legitimate.
 
@@ -173,7 +209,7 @@ ReleaseConfirmed
 
 The protocol value is not merely the current state. It is the ability to replay how that state became true.
 
-### 4.2 Digital twin of the lifecycle, not the asset
+### 4.3 Digital twin of the lifecycle, not the asset
 
 A digital twin is a digital representation of assets, environments, or business systems. Argent uses a narrow version of that idea: it is **not** a twin of the physical bar itself. It is a twin of the collateral lifecycle around the bar.
 
@@ -190,7 +226,7 @@ Argent does not model a gold bar as a digital object to be owned or traded. It m
 - who confirmed release;
 - who recorded enforcement.
 
-### 4.3 Chain of control
+### 4.4 Chain of control
 
 Chain of custody records the chronological handling, transfer, and safeguarding of evidence. Argent Protocol borrows the chronology and accountability logic, but applies it to collateral control rather than physical evidence handling.
 
