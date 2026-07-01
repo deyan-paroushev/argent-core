@@ -14,7 +14,7 @@ The specific frictions Argent exists to address are well documented and probably
 
 This is an invitation to explore, share ideas, and solve real operational problems together. It is a design-partner relationship: an institution with a genuine pain point, working with a builder addressing it, to shape the product against how the work is actually done.
 
-It is not a request for pro-bono collaboration, and it is not a call for volunteers or open-source contributors (though the core is open-source and forks are welcome). It is a substantive, exploratory conversation between people who see the same problem from two sides: the institution that lives with the operational blocker, and the team building the control layer meant to remove it.
+This is not a procurement process, a sales funnel, or a request for unpaid implementation work (though the core is open-source and forks are welcome). It is an early design conversation with institutions that recognize the same operational problem, between people who see it from two sides: the institution that lives with the blocker, and the team building the control layer meant to remove it.
 
 ## Where a conversation is most useful
 
@@ -33,8 +33,24 @@ A working, tested prototype on Stellar testnet (not a whitepaper alone): the ful
 
 No commitment, no procurement process, no pitch deck required from your side. A conversation about where the current physical-collateral-to-credit relationship costs your institution time, risk, or opportunity, and whether a programmable control layer would help. If it is useful to both sides, we explore a concrete pilot shaped around your workflow. If it is not, we have both learned something and shared ideas worth having.
 
+## What we want to learn
+
+A first conversation is most useful when it is concrete. The questions we are trying to answer:
+
+- Where collateral release or substitution gets stuck today.
+- Which documents actually govern custody, pledge, valuation, and release.
+- Which parties must sign before a bank considers the collateral controlled.
+- How borrowing-base updates are reviewed, challenged, and approved.
+- What a bank, custodian, or borrower would need to see before relying on a shared control record.
+
+## Confidentiality
+
+Please do not send confidential client, facility, custody, or transaction data before an appropriate confidentiality arrangement is in place. A first conversation can be productive using anonymized workflows, representative documents, and generic examples.
+
 ## How to reach us
 
 Argent is built by Advisa EOOD. To start a conversation, reach us at **deyan@advisa.tech**.
 
 For the technical foundations, see `argent-architecture.md` and `protocol.md`. For the collateral-control thesis and the institutional grounding, see `collateral-control.md`. For where the product goes next, see `product-roadmap.md`.
+
+Repository: https://github.com/deyan-paroushev/argent-core

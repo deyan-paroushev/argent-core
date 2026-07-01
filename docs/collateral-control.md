@@ -34,7 +34,7 @@ The timing is regulatory, not only technical. Under the final Basel III package,
 
 ## The idea
 
-Today the settlement vault is, in effect, a lockbox: collateral is pledged, held, and released as a whole. That is correct and safe, but a lockbox is a blunt instrument. Real secured lending is more flexible than "all locked or all free," and that flexibility, encoded on-chain with the lender's protections intact, is what makes the control layer genuinely useful to both sides.
+Today the collateral-control layer is, in effect, a lockbox: collateral is pledged, held, and released as a whole. That is correct and safe, but a lockbox is a blunt instrument. Real secured lending is more flexible than "all locked or all free," and that flexibility, encoded on-chain with the lender's protections intact, is what makes the control layer genuinely useful to both sides.
 
 The insight is not to make physical collateral "productive" in the way tokenized collateral can be. A silo of wheat cannot be staked or lent out on-chain, and Argent never tokenizes the asset. The insight is that the control lifecycle itself can be programmable: collateral can be substituted, released on verified conditions, released in part, and unlocked only by multi-party agreement. These are established mechanics in traditional secured and commodity finance [7], [8]. Argent's contribution is to encode them as signed, auditable, on-chain control events while the physical asset stays in custody and is never tokenized.
 
@@ -98,7 +98,7 @@ A note on the collateral model. Argent's V5 direction maps to how institutional 
 
 ## How these fit together
 
-The four features are one coherent upgrade: the settlement vault moves from a whole-pledge lockbox to a programmable control layer where collateral can be substituted, released on verified conditions, released in part, and unlocked only by multi-party agreement, always subject to the coverage guardrail. Together they create the primitives from which richer instruments, including sale-backed and time-bound inventory finance, can later be composed.
+The four features are one coherent upgrade: the control layer moves from whole-pledge release to programmable release, substitution, and partial unlock, where collateral can be substituted, released on verified conditions, released in part, and unlocked only by multi-party agreement, always subject to the coverage guardrail. Together they create the primitives from which richer instruments, including sale-backed and time-bound inventory finance, can later be composed.
 
 ## What this deliberately does not do
 

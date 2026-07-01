@@ -4,6 +4,8 @@ This repository is the Argent Core V5 contract engine: three Soroban contracts
 that enforce the control state around physically-held collateral. The gold stays
 in the vault. The control over it goes on chain.
 
+Argent Core V5 is the current Soroban reference implementation of the public Argent Protocol v0.1 (see `protocol.md`). It uses `CollateralEventV1` and `GovernanceEventV1` as the first stable event schemas.
+
 ## What V5 proves
 
 1. An asset class is registered once as a reusable instrument, then admitted to a framework as eligible collateral under an explicit treatment (haircut, maximum advance rate, maintenance threshold). A position cannot be registered against an unregistered or unadmitted instrument.

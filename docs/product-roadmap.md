@@ -118,7 +118,7 @@ The invariant: **the new collateral is secured before the old collateral is rele
 ```rust
 // Each step advances AdjustmentStatus; the contract refuses release of the
 // old set until the new set is locked, so no unsecured window can exist.
-pub fn request_substitution(env: Env, credit_line_id: BytesN<32>, new_barlist_hash: BytesN<32>, new_weight_oz_e7: i128, request_hash: BytesN<32>) -> BytesN<32>;
+pub fn request_substitution(env: Env, credit_line_id: BytesN<32>, new_evidence: LotEvidence, new_quantity_e7: i128, request_hash: BytesN<32>) -> BytesN<32>;
 pub fn attest_substitute_collateral(env: Env, adjustment_id: BytesN<32>);  // custodian: exists and held
 pub fn bank_approve_substitution(env: Env, adjustment_id: BytesN<32>);     // coverage holds at current price
 pub fn lock_substitute_collateral(env: Env, adjustment_id: BytesN<32>);    // new set immobilized FIRST

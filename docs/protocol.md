@@ -436,7 +436,7 @@ Illustrative JSON form:
   "asset_ref": {
     "asset_class": "allocated_gold",
     "asset_id_hash": "0x...",
-    "barlist_hash": "0x...",
+    "manifest_hash": "0x...",
     "uniqueness_hash": "0x..."
   },
   "actor": {
@@ -611,7 +611,7 @@ The Soroban reference implementation emits compact runtime event topics. The pro
 | `InstrumentRegistered` | `register_instrument` | `governance_event_v1` · `InstrumentRegistered` |
 | `InstrumentAdmitted` | `admit_instrument` | `governance_event_v1` · `InstrumentAdmitted` |
 | `PositionRegistered` | `register_position` | `("position", "created")` |
-| `PledgeRequested` | `select_bars_for_collateral` | `("position", "selected")` |
+| `PledgeRequested` | `select_lot_for_collateral` | `("position", "selected")` |
 | `AssetImmobilized` | `confirm_and_immobilize` | `("position", "earmarkd")` |
 | `PledgeActivated` | `activate_pledge` | `("pledge", "active")` |
 | `LineApproved` | `open_credit_line` | `("line", "opened")` |
@@ -753,7 +753,7 @@ pub struct EvidenceRef {
 The protocol SHOULD make gaps explicit rather than hiding them. For example:
 
 ```text
-If barlist_hash is missing:
+If manifest_hash is missing:
   position MAY NOT be treated as allocated-gold collateral.
 
 If custodian_ack_hash is missing:
@@ -843,9 +843,9 @@ pub struct VaultPosition {
     pub owner: Address,
     pub custodian: Address,
     pub framework_id: BytesN<32>,
-    pub barlist_hash: BytesN<32>,
+    pub manifest_hash: BytesN<32>,
     pub uniqueness_hash: BytesN<32>,
-    pub fine_weight_oz_e7: i128,
+    pub quantity_e7: i128,
     pub attestation_expiry: u32,
     pub status: PositionStatus,
 }
@@ -919,7 +919,7 @@ Responsibilities:
 | Grant / revoke / check role | `approve_party`, `revoke_party`, `is_approved` |
 | Register control framework | `register_framework` |
 | Register position | `register_position` |
-| Owner selects collateral | `select_bars_for_collateral` |
+| Owner selects collateral | `select_lot_for_collateral` |
 | Custodian immobilizes | `confirm_and_immobilize` |
 | Activate pledge | `activate_pledge` |
 | Open line | `open_credit_line` |
@@ -1466,7 +1466,7 @@ This is the public core:
   "pledge_id": "0x...",
   "credit_line_id": "0x...",
   "asset_class": "allocated_gold",
-  "barlist_hash": "0x...",
+  "manifest_hash": "0x...",
   "uniqueness_hash": "0x...",
   "current_position_status": "Pledged",
   "line_status": "Active",
