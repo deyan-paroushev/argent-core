@@ -2,7 +2,7 @@
 
 **How Argent's lifecycle acts are governed, approved, and signed once DFNS is the institutional intent layer above Soroban.**
 
-*Companion to argent-architecture.md. This document describes the revised sequence for the DFNS integration: the intent lifecycle, the approval flow, the webhook transitions, the role-wallet topology, and the deny-by-default policy model. It exists so the integration is built to match how DFNS actually sequences institutional signing, not a guessed approximation. Written for the build and for the Stellar x CV Labs reviewer.*
+*Companion to argent-architecture.md. This document describes the revised sequence for the DFNS integration: the intent lifecycle, the approval flow, the webhook transitions, the role-wallet topology, and the deny-by-default policy model. It exists so the integration is built to match how DFNS actually sequences institutional signing, not a guessed approximation. Written for the build and for any technical reviewer.*
 
 The framing that matters, stated once: DFNS is not a remote private-key box that Argent calls to sign Soroban entries. DFNS governs the institutional intent lifecycle, authentication, permission, policy evaluation, approval, MPC signing, broadcast, reconciliation, before any Soroban state transition is allowed to happen. Argent integrates DFNS as the governed intent layer for multi-party Soroban workflows, not merely as a signer. That distinction shapes the sequence, the policy model, and the reusable deliverable below.
 
@@ -147,13 +147,13 @@ Argent is the reference implementation: the decoder is extracted from Argent's i
 
 ---
 
-## 9. Roadmap-only alignment points (named, not built pre-grant)
+## 9. Roadmap-only alignment points (named, not yet built)
 
 Two further DFNS alignment points belong in the plan, named now, built during the funded phase:
 
 Status reconciliation: DFNS tracks its own activity states (pending, executing, broadcasted, confirmed, failed, rejected) separately from Stellar's transaction state. The service should store DFNS status separately from Stellar status and reconcile the two, so the lifecycle UI reflects the true combined state (e.g. "awaiting bank approval" is a DFNS state with no Stellar transaction yet). Every DFNS request carries an externalId / idempotency key for correlation.
 
-Fee sponsorship: DFNS supports Stellar fee sponsorship via fee-bump transactions, the party signs the inner transaction, an operator fee-sponsor wallet signs the outer. This means institutional actors need not hold XLM to approve operational acts. It is an alignment point, not a core deliverable: name it in the roadmap, do not build it pre-grant.
+Fee sponsorship: DFNS supports Stellar fee sponsorship via fee-bump transactions, the party signs the inner transaction, an operator fee-sponsor wallet signs the outer. This means institutional actors need not hold XLM to approve operational acts. It is an alignment point, not a core deliverable: name it in the roadmap, do not build it in the current milestone.
 
 Neither requires pre-submission code. Both are service-layer build items for the funded tranches.
 

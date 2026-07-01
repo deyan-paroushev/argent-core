@@ -1,24 +1,24 @@
-# Argent: Post-Grant Roadmap
+# Argent: Product Roadmap
 
-**Direction beyond the funded SCF build. Not in scope for the SCF Build grant.**
+**Direction beyond the current committed build.**
 
-*This document is explicitly out of scope for the Argent SCF Build (Integration Track, DFNS) submission. Nothing here is a funded deliverable, a milestone, or a budget line for that grant. The funded work is defined solely in `argent-architecture.md` and the application: take the tested Soroban prototype to a DFNS-governed mainnet reference deployment in twelve weeks, with a reusable DFNS and Soroban authorization adapter. This file records where the product goes after that, so contributors and reviewers can see the direction without mistaking it for the committed scope.*
+*This document records product direction beyond the current committed build. Nothing here is shipped yet; it is where the product goes after the present milestone. The current committed scope is defined in `argent-architecture.md`: take the tested Soroban prototype to a DFNS-governed mainnet reference deployment, with a reusable DFNS and Soroban authorization adapter. This file records where the product goes after that, so contributors can see the direction without mistaking it for what is built today. For the conceptual model behind these features, the collateral-control thesis, the bank pain points it addresses, and the institutional grounding, see `collateral-control.md`.*
 
 ---
 
 ## 1. How to read this document
 
-The SCF Build grant funds one thing: a working, DFNS-governed, single-facility collateral-control application on Stellar mainnet, with the reusable authorization adapter open-sourced. That scope is deliberately tight, and it is complete on its own.
+The current committed build is one thing: a working, DFNS-governed, single-facility collateral-control application on Stellar mainnet, with the reusable authorization adapter open-sourced. That scope is deliberately tight, and it is complete on its own.
 
-This roadmap describes the institutional product that the funded build makes possible. It is written so that a reviewer can confirm two things at a glance: that the team understands where this goes, and that none of it is being smuggled into the funded period. Every item here is post-mainnet, post-traction, and contingent on the core shipping first.
+This roadmap describes the institutional product that the current build makes possible. It is written so that any reader can confirm two things at a glance: that the direction is understood, and that none of it is being confused with what ships today. Every item here is post-mainnet, post-traction, and contingent on the core shipping first.
 
-The detail is deliberate. Where the funded application is kept narrow on purpose, this document is specific on purpose: it shows the later layers as concrete extensions of the types and functions that already exist in the open-source core, with real signatures and fields, so a reviewer can see that the long-term direction is engineered rather than aspirational. Specificity here is evidence of competence, not a claim on the grant.
+The detail is deliberate. Where the current build is kept narrow on purpose, this document is specific on purpose: it shows the later layers as concrete extensions of the types and functions that already exist in the open-source core, with real signatures and fields, so a reader can see that the long-term direction is engineered rather than aspirational.
 
-The guiding principle is unchanged from the architecture document. Argent is a collateral book of record for physical assets under custody. The funded build proves that book for a single facility. The roadmap extends it to the way a bank actually runs a collateral operation: pools, positions, scheduled revaluation, and safe substitution.
+The guiding principle is unchanged from the architecture document. Argent is a collateral book of record for physical assets under custody. The current build proves that book for a single facility. The roadmap extends it to the way a bank actually runs a collateral operation: pools, positions, scheduled revaluation, and safe substitution.
 
-## 2. Completion gate: what must be true before this roadmap starts
+## 2. Prerequisites: what must be true before this roadmap starts
 
-No roadmap work begins until the funded SCF build is complete and proven on mainnet. Completion means all of the following are true:
+No roadmap work begins until the current build is complete and proven on mainnet. Completion means all of the following are true:
 
 1. Argent is live on Stellar mainnet.
 2. The full reference lifecycle runs under DFNS-governed role wallets.
@@ -35,19 +35,19 @@ Only after those conditions hold should anything below become active.
 
 ## 3. What already exists to build on
 
-The roadmap is not a fresh design. Its foundations are already present as shipped, tested contract types and functions in the open-source core, in primitive single-facility form. The post-grant work extends these exact types; it does not replace them.
+The roadmap is not a fresh design. Its foundations are already present as shipped, tested contract types and functions in the open-source core, in primitive single-facility form. The later work extends these exact types; it does not replace them.
 
 - **Revaluation and margin.** `revalue_and_check` already writes a `LineValuation` and evaluates `MarginState` (`Covered`, `Warning`, `Called`) against the bank's policy, validating price freshness and confidence before a margin decision. The roadmap schedules and scales this across a pool; it does not invent it.
 - **Adjustment and substitution.** The `CollateralAdjustment` state machine already exists with `AdjustmentType::Substitution` and an `AdjustmentStatus` flow (`Requested`, `CustodianConfirmed`, `Approved`, `Rejected`) cleared by all three parties through `request_collateral_adjustment`, `bank_approve_adjustment`, and `custodian_confirm_adjustment`. The roadmap hardens this into a strict no-unsecured-gap ordering.
 - **Borrowing base and exclusivity.** `CreditLine` already carries `ltv_bps` and `maintenance_bps`, and the contract enforces `ltv_bps < maintenance_bps <= 10000` so a line can never be configured to lend past the value of its collateral. It already refuses a second line against the same pledge. The roadmap generalizes these from one facility to a pool.
 
-In other words, the roadmap turns types and invariants that are proven at the single-facility level into the operating model a bank uses across many positions. That is product maturation, not new research, and it is why a reviewer should weigh the long-term direction: the funded build is not a dead-end demo but the first working layer of a system whose later layers are already designed against real instruments.
+In other words, the roadmap turns types and invariants that are proven at the single-facility level into the operating model a bank uses across many positions. That is product maturation, not new research, and it is why a reviewer should weigh the long-term direction: the current build is not a dead-end demo but the first working layer of a system whose later layers are already designed against real instruments.
 
 ## 4. Collateral-pool and position model
 
 The first reference implementation binds one specific collateral set to one specific credit line. The natural institutional extension is a pool model, where a bank manages many positions against shared eligibility and policy. This mirrors how a mature collateral operation is actually run, through asset accounts, collateral pools, and mobilisation against shared eligibility, rather than as isolated single pledges [1].
 
-The extension is a new `CollateralPool` record plus pool references on the existing position types. Illustrative, not committed for the funded build:
+The extension is a new `CollateralPool` record plus pool references on the existing position types. Illustrative, not committed for the current build:
 
 ```rust
 #[contracttype]
@@ -156,7 +156,7 @@ These are policy inputs the contract enforces against, never a risk engine the c
 
 ## 8. Asset categories beyond gold
 
-The contract core is already asset-agnostic; gold is the first proof, not the limit. Post-grant, the same control structure binds other custody-stable physical assets through asset-specific identity, custody, valuation, and document hashes: base metals and critical minerals, agricultural warehouse receipts, energy inventory, and serialised industrial collateral. Each new category binds through a narrow identity-and-valuation adapter on an unchanged control core, so a new asset adds an adapter, not a new contract product and not a new set of legal assumptions. The bank still controls eligibility, borrowing base, release, and enforcement; the custodian still signs existence and custody state. Banks already classify collateral and credit-risk mitigation by type, including physical and other funded protection, so each category maps onto a framework the bank already uses rather than a new one Argent invents [6].
+The contract core is already asset-agnostic; gold is the first proof, not the limit. Beyond the current build, the same control structure binds other custody-stable physical assets through asset-specific identity, custody, valuation, and document hashes: base metals and critical minerals, agricultural warehouse receipts, energy inventory, and serialised industrial collateral. Each new category binds through a narrow identity-and-valuation adapter on an unchanged control core, so a new asset adds an adapter, not a new contract product and not a new set of legal assumptions. The bank still controls eligibility, borrowing base, release, and enforcement; the custodian still signs existence and custody state. Banks already classify collateral and credit-risk mitigation by type, including physical and other funded protection, so each category maps onto a framework the bank already uses rather than a new one Argent invents [6].
 
 The adapter is a thin per-asset binding, not a fork of the core:
 
@@ -177,31 +177,28 @@ pub struct AssetAdapter {
 
 The lifecycle, roles, pledge exclusivity, borrowing base, release, and enforcement are unchanged; only identity and valuation are asset-specific. That is what lets one tested core serve many asset classes, and it is the long-term reason this is infrastructure rather than a single-asset app, the point a reviewer weighing durability should register.
 
-## 9. Alignment with the Stellar growth path
+## 9. Sequencing
 
-This roadmap is also the basis for Stellar ecosystem growth support that becomes available only after a successful mainnet launch with verifiable usage. The Stellar Community Fund's post-launch pathways are explicitly gated on live mainnet deployment and demonstrated traction, and are not an automatic continuation of the Build Award. The sequence is therefore deliberate:
+The direction in this document is deliberately sequenced. Each stage earns the next; nothing here is assumed:
 
-1. Ship the funded build: DFNS-governed single-facility control on mainnet, adapter open-sourced.
+1. Ship the current build: DFNS-governed single-facility control on mainnet, adapter open-sourced.
 2. Demonstrate real usage with one or more institutional pilots.
-3. On that evidence, pursue ecosystem growth support to build the pool model, scheduled revaluation, and substitution described above.
+3. On that evidence, build the pool model, scheduled revaluation, and substitution described above.
 
-Argent treats SCF as a launchpad rather than a long-term plan, which is how the program is designed to be used. The funded build earns the right to this roadmap; it does not presume it.
+The build earns the right to this roadmap; it does not presume it. This document assumes no entitlement to any particular resource or outcome. Where later work would benefit from outside support, whether ecosystem introductions, additional technical and security review of the Soroban signing path, indexer, and evidence model, or further audit of the contracts, the DFNS signing path, and the policy decoder, that support is useful only after the first build is complete, only against specific milestones, and only for expansion work outside the current scope.
 
-This document does not assume entitlement to any further funding. It identifies, without quantifying, where post-program support would be useful if Argent completes the mainnet launch and shows traction: ecosystem and partner introductions; additional technical review of the Soroban signing path, indexer, and evidence model; further security and audit review of the contracts, the DFNS signing path, and the policy decoder; and any additional grant or investment pathway, only after the first build is complete, only against specific post-grant milestones, and only for expansion work outside the funded scope.
+## 10. How Argent fits the Stellar and DFNS ecosystem
 
-## 10. Why this is useful to the ecosystem, not only to Argent
+Argent is built natively on two platforms' primitives, and the fit is worth stating plainly. This section claims no partnership or endorsement; it explains how the design aligns with the published technical direction of Stellar and DFNS, and cites their own writing as the reference.
 
-Post-grant work is mutually useful: done well, it advances the published direction of the Stellar Development Foundation, of DFNS, and of the Stellar x CV Labs accelerator, not only Argent. This section states that case plainly. It claims no partnership or endorsement, and it remains contingent on the funded build shipping first.
+**Stellar.** Real-world-asset infrastructure and DeFi composability are a stated Stellar ecosystem priority [7], [8]. Argent is complementary to that direction. Where most RWA work tokenizes ownership so an asset can trade, Argent governs control while ownership and the asset stay in place, the case where a bank wants control rather than a transferable token. That gives Stellar a reference pattern for physical collateral that does not fit the tokenization model, and a reusable open-source authorization adapter other institutional builders can fork. It also exercises Stellar settlement assets where payment is real, repayment and exposure reduction, rather than as a demo. The detachable, independently-signed authorization entry this depends on is the primitive SDF identifies as Stellar's structural advantage [9].
 
-**For SDF and Stellar.** SDF has made real-world-asset infrastructure and DeFi composability a stated 2026 priority [7], including a direct strategic investment in compliance-first on-chain credit infrastructure with collateral monitoring and institutional liquidation [8]. Argent is complementary to that direction. Where most RWA work tokenizes ownership so an asset can trade, Argent governs control while ownership and the asset stay in place, the case where a bank wants control rather than a transferable token. That gives Stellar a reference pattern for physical collateral that does not fit the tokenization model, and a reusable open-source authorization adapter other institutional builders can fork. It also exercises Stellar settlement assets where payment is real, repayment and exposure reduction, rather than as a demo. The detachable, independently-signed authorization entry that this depends on is the primitive SDF identifies as Stellar's structural advantage [9].
+**DFNS.** DFNS is publicly repositioning from wallet infrastructure toward a governed operating layer for institutional digital-asset workflows, with a policy engine, governance, and policy-aware service accounts at the centre [10], [11], [12], [13]. Argent is a hard, non-trivial proof of that thesis on Soroban: a multi-party workflow where release, enforcement, custody confirmation, spend evidence, and reward approval each belong to a different authority and no operator can sign for all of them. The authorization adapter is the Soroban-shaped piece that connects DFNS governance to Stellar's authorization model, and is reusable by any other Stellar builder facing the same multi-party signing problem.
 
-**For DFNS.** DFNS is publicly repositioning from wallet infrastructure toward a governed operating layer for institutional digital-asset workflows, with a policy engine, governance, and policy-aware service accounts at the centre [10], [11], [12], [13]. Argent is a hard, non-trivial proof of that thesis on Soroban: a multi-party workflow where release, enforcement, custody confirmation, spend evidence, and reward approval each belong to a different authority and no operator can sign for all of them. The funded adapter is the Soroban-shaped piece that connects DFNS governance to Stellar's authorization model, which is reusable by any other Stellar builder facing the same multi-party signing problem.
 
-**For Stellar x CV Labs.** The accelerator targets EMEA builders working on practical financial infrastructure across payments, RWA, and tokenization, with Demo Day at Meridian [14]. Argent fits the institutional RWA side: a European founder, a conservative collateral-finance thesis, and a product aimed at banks, custodians, refiners, commodity finance, and secured lending. Post-program support that turns a technical mainnet launch into institutional conversations, bank pilots, custodian design partners, and asset-backed-finance investors, advances the accelerator's own goal of converting builders into deployed ecosystem traction.
+## 11. Explicitly outside the current build
 
-## 11. Explicitly excluded from the funded scope
-
-To remove any ambiguity for a reviewer, none of the following are funded deliverables in the current application. They are post-grant only:
+To remove any ambiguity, none of the following are part of the current build. They are later-stage only:
 
 - collateral-pool accounting and the position report;
 - scheduled daily revaluation jobs;
@@ -219,13 +216,13 @@ To remove any ambiguity for a reviewer, none of the following are funded deliver
 - full production audit beyond available program support;
 - any Series-A product buildout.
 
-These may matter later. None of them is required to complete the DFNS-governed mainnet reference application, and nothing in this document changes the funded twelve-week scope.
+These may matter later. None of them is required to complete the DFNS-governed mainnet reference application, and nothing in this document changes the current build scope.
 
-## 12. Reviewer summary
+## 12. Summary
 
-The funded grant is a focused twelve-week integration build: move a tested Soroban prototype from local signers to DFNS-governed institutional role wallets, and launch the reference lifecycle on mainnet with a reusable authorization adapter open-sourced.
+The current build is a focused integration milestone: move a tested Soroban prototype from local signers to DFNS-governed institutional role wallets, and launch the reference lifecycle on mainnet with a reusable authorization adapter open-sourced.
 
-The post-grant roadmap begins only after that is complete and proven. It extends Argent into a collateral book of record for physical assets under custody: collateral pools, a live position report, scheduled revaluation and margin operations, safe substitution, policy-attributable haircut metadata, and asset categories beyond gold. Much of it builds directly on primitives already shipped and tested in the open-source core. The roadmap is included to show that Argent has a serious institutional path. It does not enlarge the funded scope.
+This roadmap begins only after that is complete and proven. It extends Argent into a collateral book of record for physical assets under custody: collateral pools, a live position report, scheduled revaluation and margin operations, safe substitution, policy-attributable haircut metadata, and asset categories beyond gold. Much of it builds directly on primitives already shipped and tested in the open-source core. It shows that Argent has a serious institutional path beyond the first deployment.
 
 ---
 
@@ -259,4 +256,3 @@ Independent sources, cited to evidence the ecosystem direction described in Sect
 
 [13] H. Tross, "Introducing Policy-Aware Service Accounts," DFNS, April 27, 2026. https://dfns.co/article/introducing-policy-aware-service-accounts
 
-[14] CV Labs and Stellar Development Foundation, "Stellar x CV Labs Accelerator," 2026. https://cvlabs.com

@@ -2,7 +2,7 @@
 
 **DFNS-governed physical-collateral control on Stellar.**
 
-*Technical Architecture Document for the Stellar x CV Labs Accelerator (SCF Build, Integration Track, DFNS). Submission version 1.1.*
+*Technical Architecture Document. DFNS-governed collateral control on Stellar/Soroban. Version 1.1.*
 
 *This document is self-contained. A reviewer should be able to evaluate the Stellar use case, the integration plan, the contract design, the security model, and the build readiness from this document alone, then verify every claim against the open-source contracts in the linked repository. Every contract function named here exists in that repository.*
 
@@ -14,7 +14,7 @@ Argent is a Soroban-based collateral-control layer for physical assets that rema
 
 Argent does not tokenize the physical asset, custody it, issue credit, process card payments, or perform legal enforcement. It records the lifecycle state that a bank, custodian, owner, verifier, and sponsor rely on, collateral identity, eligibility, exclusive pledge, borrowing base, utilization, repayment, release, default, cure, enforcement evidence, and reward claims, and it governs who may authorize each transition.
 
-The current prototype runs with local development signers on Stellar testnet: three deployed Soroban contracts, the full lifecycle, and a clickable demonstrator. The funded work replaces those local signers with DFNS-governed institutional role wallets and a policy-approval workflow, and launches on mainnet. The contracts remain signer-agnostic. **Soroban records what changes. DFNS governs who may change it. Stellar settlement assets move only where value movement is real: repayment through `settlement_vault`.**
+The current prototype runs with local development signers on Stellar testnet: three deployed Soroban contracts, the full lifecycle, and a clickable demonstrator. The current build replaces those local signers with DFNS-governed institutional role wallets and a policy-approval workflow, and launches on mainnet. The contracts remain signer-agnostic. **Soroban records what changes. DFNS governs who may change it. Stellar settlement assets move only where value movement is real: repayment through `settlement_vault`.**
 
 The open-source core (Apache-2.0) contains three contracts: `credit_ledger` (the tri-party control framework and full lifecycle), `settlement_vault` (atomic settlement-asset repayment bound to exposure reduction), and `rewards_ledger` (a sponsor-funded, non-transferable rewards overlay, fully separated from pledged collateral).
 
@@ -32,7 +32,7 @@ Argent is a control layer, not an asset issuer. This boundary determines every a
 
 ## 3. Why Stellar, and why this is not a superficial integration
 
-Stellar/Soroban is core to the system, not a storage layer. Three protocol features do work no off-chain database can, which is the test SCF applies:
+Stellar/Soroban is core to the system, not a storage layer. Three protocol features do work no off-chain database can, which is the test that matters:
 
 1. **Multi-party authorization (`require_auth`, detached authorization entries).** Each party independently signs the precise action it takes. A bank's authorization and a custodian's confirmation are independently signed authorization acts, each bound to the party that performs it, rather than a single combined signature. This native primitive is what Argent's separation-of-duties model is built on; replicating it in a private database would mean rebuilding non-repudiable multi-party signing from scratch.
 2. **Atomic settlement (Stellar Asset Contract / SEP-41).** Repayment and exposure reduction occur in one atomic transaction: the settlement asset moves and the drawn balance falls together, or neither does. A card rail cannot bind a value transfer to a collateral-state change atomically; Soroban can.
@@ -203,7 +203,7 @@ What this buys: the eligibility and treatment shape is the same across commoditi
 
 ## 11. DFNS integration architecture
 
-DFNS is the institutional authorization layer. The contracts already require distinct role authorizations; the funded integration replaces local development signers with DFNS-governed role wallets and policy approvals. DFNS is not a remote key box Argent calls to sign; it governs the institutional intent lifecycle, permission check, policy evaluation, quorum approval, MPC signing, broadcast, reconciliation, before any Soroban state transition is allowed.
+DFNS is the institutional authorization layer. The contracts already require distinct role authorizations; the current integration replaces local development signers with DFNS-governed role wallets and policy approvals. DFNS is not a remote key box Argent calls to sign; it governs the institutional intent lifecycle, permission check, policy evaluation, quorum approval, MPC signing, broadcast, reconciliation, before any Soroban state transition is allowed.
 
 **Where DFNS and Soroban meet (the technical touch points).**
 - **The 32-byte authorization-entry hash.** DFNS signs the exact Soroban authorization-entry payload (a `HashIdPreimageSorobanAuthorization` hash) via its Keys API raw-payload signing, not only pre-built transaction envelopes, and the reassembled transaction verifies on-chain.[8]
@@ -241,9 +241,9 @@ The open-source core ships 187 tests across the three crates: `credit_ledger` 12
 
 ## 15. Build readiness and milestone path
 
-The technical architecture is complete and the contracts exist now, so the funded work is integration and hardening, not design or research. This section states what is built in each funded tranche as clear, measurable, verifiable deliverables. The dollar split across tranches is in the application form; this section establishes the technical content and the success signal a reviewer can test for each.
+The technical architecture is complete and the contracts exist now, so the current work is integration and hardening, not design or research. This section states what is built in each tranche as clear, measurable, verifiable deliverables. It establishes the technical content and the success signal that can be tested for each.
 
-**Already implemented (this repository, live testnet).** Three deployed Soroban contracts on soroban-sdk 23.5.3; the full lifecycle of §8 including the two-step release and the default/cure/enforcement branch; atomic SEP-41 settlement via `settle_repayment`; the typed `CollateralEventV1` canonical event layer with its SEP-48 map schema and replay-fold reconstruction; evidence-certificate output in the live app; 187 passing tests; and a signer interface with a clean `signAuthEntry(payloadHash)` seam currently served by development signers. This is the baseline the funded build starts from, not part of the funded scope.
+**Already implemented (this repository, live testnet).** Three deployed Soroban contracts on soroban-sdk 23.5.3; the full lifecycle of §8 including the two-step release and the default/cure/enforcement branch; atomic SEP-41 settlement via `settle_repayment`; the typed `CollateralEventV1` canonical event layer with its SEP-48 map schema and replay-fold reconstruction; evidence-certificate output in the live app; 187 passing tests; and a signer interface with a clean `signAuthEntry(payloadHash)` seam currently served by development signers. This is the baseline the current build starts from, not part of the current build scope.
 
 **Tranche 1, MVP: the DFNS signing foundation.** Replace development signers with DFNS-governed role wallets behind the existing `signAuthEntry(payloadHash)` seam, and prove one governed action end to end.
 - Deliverables: DFNS sub-organization role wallets provisioned for the bank, custodian, sponsor, and verifier roles; the signer adapter connected behind the existing interface; DFNS raw-payload signing of the exact 32-byte Soroban authorization-entry hash validated on testnet (the one validated unknown of §11, with the transaction-envelope fallback documented if a gap is found); the first complete lifecycle action (a drawdown or a repayment) executed through the DFNS path; the first approval-to-transaction trace captured.
@@ -257,19 +257,19 @@ The technical architecture is complete and the contracts exist now, so the funde
 - Deliverables: mainnet-deployed contracts with published contract IDs, worked transaction examples, and an operations runbook; the reusable Soroban-aware DFNS authorization adapter and policy decoder published open-source under Apache-2.0, with the standard message-purpose vocabulary of §16; the evidence-certificate pack (current-state, release, enforcement, and rewards certificates); and a pilot package for a bank, custodian, and sponsor to review.
 - Success signal (verifiable): live mainnet contract IDs a reviewer can inspect on a block explorer, a public repository containing the forkable adapter and decoder, and a governed lifecycle action executed on mainnet with its approval-to-transaction trace.
 
-Each tranche ships something testable on its own, and the destination is fixed: a functional, DFNS-governed reference facility live on Stellar mainnet with the authorization adapter open-sourced. None of the pool, scheduled-revaluation, margin-call, or substitution work described in the separate post-grant roadmap is in this funded scope.
+Each tranche ships something testable on its own, and the destination is fixed: a functional, DFNS-governed reference facility live on Stellar mainnet with the authorization adapter open-sourced. None of the pool, scheduled-revaluation, margin-call, or substitution work described in the separate product roadmap is in this build scope.
 
 ## 16. Open source and non-goals
 
-The contract core is open-sourced under Apache-2.0. The funded DFNS-and-Soroban authorization adapter and policy decoder will be published open-source as the ecosystem deliverable, so any institutional Stellar RWA builder facing the same multi-party-signing problem can fork them rather than start from a blank page.
+The contract core is open-sourced under Apache-2.0. The DFNS-and-Soroban authorization adapter and policy decoder will be published open-source as the ecosystem deliverable, so any institutional Stellar RWA builder facing the same multi-party-signing problem can fork them rather than start from a blank page.
 
 **A standard message-purpose vocabulary.** The adapter is not only code; it carries a standard set of Soroban message purposes for institutional collateral actions, so that a DFNS policy evaluating a pending action resolves it against a named, unambiguous purpose rather than a raw method string. The lifecycle vocabulary is: attest, lock, pledge, draw, repay, authorize release, confirm release, substitute, default notice, cure, record enforcement, and issue evidence. Publishing this as a shared vocabulary lets other Stellar RWA builders express the same institutional roles and actions consistently, which is where most of the reuse value sits.
 
-**Non-goals (explicit).** The funded build does not become a bank, issue credit, custody assets, tokenize collateral, issue consumer cards, integrate directly with card networks, automate legal enforcement, replace bank underwriting or custodian onboarding, or attempt a general SDK for every Soroban application. It is focused on one reference workflow, DFNS-governed physical-collateral control on Stellar, proven first on gold and made reusable through the open contract core and the authorization adapter.
+**Non-goals (explicit).** The build does not become a bank, issue credit, custody assets, tokenize collateral, issue consumer cards, integrate directly with card networks, automate legal enforcement, replace bank underwriting or custodian onboarding, or attempt a general SDK for every Soroban application. It is focused on one reference workflow, DFNS-governed physical-collateral control on Stellar, proven first on gold and made reusable through the open contract core and the authorization adapter.
 
-## 17. Reviewer summary
+## 17. Summary
 
-Argent is a tested Soroban collateral-control application for physical assets that stay in custody. The contracts prove the core lifecycle today: identity, exclusive pledge, borrowing base, utilization, repayment, the two-step release, default, cure, enforcement evidence, and a separated rewards overlay, with 187 passing tests and a live testnet demonstrator. The funded work brings this from a local-signer prototype to a DFNS-governed institutional workflow and a mainnet reference deployment, and publishes the Soroban-aware DFNS authorization adapter as a reusable ecosystem contribution. The bank receives no token and takes no custody; it receives control evidence, exact collateral identity, exclusive pledge state, contract-enforced borrowing base, a signed release path, default and enforcement evidence, and a transaction-backed audit trail. DFNS governs who signs. Soroban records what changes. Stellar settlement assets move where repayment is real.
+Argent is a tested Soroban collateral-control application for physical assets that stay in custody. The contracts prove the core lifecycle today: identity, exclusive pledge, borrowing base, utilization, repayment, the two-step release, default, cure, enforcement evidence, and a separated rewards overlay, with 187 passing tests and a live testnet demonstrator. The current work brings this from a local-signer prototype to a DFNS-governed institutional workflow and a mainnet reference deployment, and publishes the Soroban-aware DFNS authorization adapter as a reusable ecosystem contribution. The bank receives no token and takes no custody; it receives control evidence, exact collateral identity, exclusive pledge state, contract-enforced borrowing base, a signed release path, default and enforcement evidence, and a transaction-backed audit trail. DFNS governs who signs. Soroban records what changes. Stellar settlement assets move where repayment is real.
 
 ---
 

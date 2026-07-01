@@ -72,8 +72,8 @@ build-and-test steps below.
 **What is funded, not yet built:** the institutional **DFNS authorization layer**
 that sits on top of these contracts, DFNS role wallets, deny-by-default approval
 policies, the Soroban signer adapter, and the pending-state / reconciliation
-machinery, is the deliverable of an in-progress Stellar Community Fund
-Integration Track build, alongside a mainnet launch. The design for that layer is
+machinery, is the focus of the current integration build toward a mainnet
+launch. The design for that layer is
 documented in [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md).
 The contracts here are deliberately **signer-agnostic** so any institutional
 signing layer, DFNS or otherwise, can govern them.
@@ -117,9 +117,11 @@ key tests to inspect, and the live testnet contract ids.
   architecture, contracts, lifecycle, the tri-party model, and why Soroban.
 - [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md):
   the planned DFNS authorization layer and the Soroban signing sequence.
-- [`docs/post-grant-roadmap.md`](docs/post-grant-roadmap.md): the direction
-  beyond the funded build, framed so the open core points further than any single
-  application without enlarging the current scope.
+- [`docs/product-roadmap.md`](docs/product-roadmap.md): the product direction
+  beyond the current build, framed so the open core points further than any single
+  application without enlarging what ships today.
+- [`docs/collateral-control.md`](docs/collateral-control.md): the collateral-control
+  thesis, the bank pain points it addresses, and the institutional grounding.
 
 ## What is not here
 

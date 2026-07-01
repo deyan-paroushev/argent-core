@@ -7,7 +7,7 @@
 **First asset adapter:** allocated physical gold  
 **First application:** DFNS-governed physical collateral book of record on Stellar
 
-> Public document. This whitepaper defines the open protocol core. It intentionally excludes commercial strategy, partner pipeline, pricing, private deployment plans, and institution-specific legal analysis. Those belong in a private companion document. The current SCF Build scope remains narrower: ship the Soroban reference implementation and DFNS-governed mainnet application. The protocol described here is the larger public direction that the reference implementation proves.
+> Public document. This whitepaper defines the open protocol core. It intentionally excludes commercial strategy, partner pipeline, pricing, private deployment plans, and institution-specific legal analysis. Those belong in a private companion document. The current build scope remains narrower: ship the Soroban reference implementation and DFNS-governed mainnet application. The protocol described here is the larger public direction that the reference implementation proves.
 
 ---
 
@@ -29,7 +29,7 @@ Argent Protocol therefore treats collateral as an operationalized state of a hol
 
 ## 1. Scope and status
 
-This document defines the **public protocol core**. It is intended for developers, reviewers, auditors, SDF/SCF evaluators, custodians, banks, and future contributors who need to understand the open architecture behind Argent.
+This document defines the **public protocol core**. It is intended for developers, reviewers, auditors, custodians, banks, ecosystem evaluators, and future contributors who need to understand the open architecture behind Argent.
 
 ### 1.1 What this document covers
 
@@ -63,11 +63,11 @@ This document does **not** cover:
 - hosted UI or SaaS monetization;
 - future private integrations.
 
-### 1.3 Relationship to the SCF Build submission
+### 1.3 Relationship to the current build
 
-The current SCF Build submission is narrower than this protocol vision. It funds a 12-week implementation path: take the tested Soroban prototype to a DFNS-governed mainnet reference deployment and open-source the reusable DFNS and Soroban authorization adapter.
+The current build is narrower than this protocol vision. It is a focused implementation path: take the tested Soroban prototype to a DFNS-governed mainnet reference deployment and open-source the reusable DFNS and Soroban authorization adapter.
 
-This whitepaper shows why that build matters beyond one app. It does **not** expand the funded scope.
+This whitepaper shows why that build matters beyond one app. It does **not** expand the current build scope.
 
 ### 1.4 Implementation status and the protocol/contract boundary
 
@@ -1208,7 +1208,7 @@ contracts/settlement_vault
 contracts/rewards_ledger
 docs/argent-architecture.md
 docs/argent-dfns-signing-sequence.md
-docs/post-grant-roadmap.md
+docs/product-roadmap.md
 schemas/collateral-event.schema.json
 schemas/evidence-ref.schema.json
 schemas/allocated-gold-adapter.schema.json
@@ -1301,7 +1301,7 @@ The following SHOULD remain private unless a partner chooses disclosure:
 - production operational runbooks;
 - partner-specific integration details.
 
-This split lets Argent communicate a bigger open protocol vision to SDF/SCF without exposing commercially sensitive execution details.
+This split lets Argent communicate a bigger open protocol vision publicly without exposing commercially sensitive execution details.
 
 ---
 
@@ -1328,7 +1328,7 @@ This split lets Argent communicate a bigger open protocol vision to SDF/SCF with
 - event-to-contract mapping;
 - certificate JSON output.
 
-### v0.3. Post-grant pool model
+### v0.3. Pool model
 
 - collateral-pool event model;
 - safe substitution formalization;
