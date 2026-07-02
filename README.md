@@ -120,6 +120,12 @@ you want to know. A suggested path:
   a neutral primer on the market this sits in, who is affected, how physical
   collateral is financed, and where the category is heading. Background reading,
   not a pitch.
+- [`docs/collateral-as-locked-value.md`](docs/collateral-as-locked-value.md):
+  an evidence-led reading of the market signals, why the binding constraint in
+  financing physical commodities is the missing control instrument rather than
+  asset quality, why the market reaches for tokenization and why that is the
+  wrong tool for physical goods, and why the timing is now. The market-signal
+  case for why Argent exists, applicable across commodities, not just gold.
 
 **Verify that it works**
 
