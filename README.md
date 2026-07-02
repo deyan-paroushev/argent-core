@@ -9,6 +9,13 @@ The asset stays in the vault. Only the **control and authorization** over it
 become programmable on Soroban. Nothing here tokenizes, custodies, or moves the
 physical asset.
 
+Argent started with allocated gold because it is the cleanest institutional
+proof case. The core is not a gold product. It is a commodity-collateral control
+layer for physical assets that remain in professional custody: eligibility,
+pledge, borrowing base, utilization, repayment, release, default, and
+enforcement. The commodity-finance positioning is set out in
+[`docs/commodity-finance-positioning.md`](docs/commodity-finance-positioning.md).
+
 These contracts are the first reference implementation of the
 [Argent Protocol](docs/protocol.md), an open specification for expressing
 physical-collateral control as a signed, ordered, verifiable event chain. The
@@ -43,7 +50,7 @@ already speak CDM.
 
 | Crate | Role |
 |-------|------|
-| `credit_ledger` | The tri-party control framework, bar-set uniqueness, position state, credit line, margin, release, default, and enforcement lifecycle. Signer-agnostic. |
+| `credit_ledger` | The tri-party control framework, asset-lot uniqueness, position state, credit line, margin, release, default, and enforcement lifecycle. Signer-agnostic. |
 | `settlement_vault` | Atomic repay-and-reduce: the borrower repays in a Stellar settlement asset and the credit exposure reduces in a single transaction. |
 | `rewards_ledger` | Sponsor-funded, non-transferable rewards tied to eligible posted spend and verified claims. Separate from pledged collateral. |
 
@@ -69,10 +76,10 @@ passing, 0 failed, with the V5 instrument-registry, governance-event, and
 admit-eligibility guarantees listed by test name. It is reproducible from the
 build-and-test steps below.
 
-**What is funded, not yet built:** the institutional **DFNS authorization layer**
+**The next build, not yet built:** the institutional **DFNS authorization layer**
 that sits on top of these contracts, DFNS role wallets, deny-by-default approval
 policies, the Soroban signer adapter, and the pending-state / reconciliation
-machinery, is the focus of the current integration build toward a mainnet
+machinery, is the focus of the next integration build toward a mainnet
 launch. The design for that layer is
 documented in [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md).
 The contracts here are deliberately **signer-agnostic** so any institutional
@@ -126,6 +133,12 @@ you want to know. A suggested path:
   asset quality, why the market reaches for tokenization and why that is the
   wrong tool for physical goods, and why the timing is now. The market-signal
   case for why Argent exists, applicable across commodities, not just gold.
+- [`docs/commodity-finance-positioning.md`](docs/commodity-finance-positioning.md):
+  how the current engine reads as a commodity-collateral control layer rather
+  than a gold-only product, anchored in the international legal and standards
+  direction (MLETR, the 2024 UNCITRAL-UNIDROIT Model Law on Warehouse Receipts,
+  ICC DSI). Why not only gold, why not tokenization, which workflows the engine
+  already maps to, and which commodities come next.
 
 **Verify that it works**
 
