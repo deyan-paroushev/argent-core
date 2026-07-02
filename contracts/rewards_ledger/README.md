@@ -68,7 +68,7 @@ Worked figure: a CHF 100.00 reward at CHF 3,000.00/oz redeems to 333_333
 
 ## Build and test
 
-Targets `soroban-sdk = 22.0.0`. With the Stellar toolchain:
+Targets `soroban-sdk = 23.5.3`. With the Stellar toolchain:
 
 ```bash
 cd contracts

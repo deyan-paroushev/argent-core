@@ -38,7 +38,7 @@ Custodian: org-controlled wallet. Its acts (immobilize, confirm release, confirm
 
 Enforcement / liquidation parties: org-controlled wallets, governed by the strictest policies (quorum, possibly a time delay).
 
-Owner / cardholder: a deliberate choice. If their drawdowns should be policy-checked (velocity, amount limits), they are org-controlled. If they are meant to self-sign with full autonomy, they are delegated, and then their actions bypass the policy engine by design. For a bank-issued secured facility, the default is org-controlled so draws can be governed.
+Owner / borrower: a deliberate choice. If their drawdowns should be policy-checked (velocity, amount limits), they are org-controlled. If they are meant to self-sign with full autonomy, they are delegated, and then their actions bypass the policy engine by design. For a bank-issued secured facility, the default is org-controlled so draws can be governed.
 
 The decision rule: govern it with a policy means org-controlled; let the party self-sign autonomously means delegated. Pick per role, deliberately, knowing delegated bypasses governance.
 
@@ -58,7 +58,7 @@ DFNS does not think in a flat list of role wallets. It thinks in wallet fleets: 
 - Sub-organization, sponsor / refiner:
   - campaign-authority, voucher-redemption-authority (the rewards overlay).
 - Sub-organization, verifier / processor adapter:
-  - spend-evidence-authority (attest card spend).
+  - utilization-evidence authority (attest drawdown, repayment, or eligible use).
 
 Splitting the bank into separate credit, release, and enforcement authorities is deliberate: it lets the deny-by-default policies (next section) bind narrowly to each authority, so the wallet that can authorize a release is not the same wallet that can record an enforcement. This is the institutional separation-of-duties a bank expects, expressed in DFNS's own structural vocabulary.
 
@@ -125,23 +125,23 @@ The default and enforcement flow is the strictest-governed case. Issue default n
 
 ---
 
-## 7. The one open validation item (Tranche 1)
+## 7. The one open validation item (Phase 1)
 
 DFNS exposes a low-level Keys API ("Generate Signature") that signs a raw payload for a held key, and lists Stellar among supported networks. This is the path to signing Soroban authorization-entry hashes (a 32-byte payload), as opposed to only signing pre-built transaction envelopes. The DFNS policy docs explicitly acknowledge signature requests of a hash as an activity kind (noting such requests are "unscreenable" by transaction-screening rules, which confirms hash-signing is a first-class operation).
 
-The named Tranche-1 validation item is therefore: confirm, on testnet, that DfnsSigner.signAuthEntry can obtain a DFNS signature over the exact Soroban authorization-entry hash and that the reassembled transaction verifies on-chain. The capability exists in the API surface; Tranche 1 proves it end to end for Soroban auth entries specifically. If a gap is found, the fallback is signing at the transaction-envelope boundary rather than the auth-entry boundary, documented as a contingency.
+The named Phase-1 validation item is therefore: confirm, on testnet, that DfnsSigner.signAuthEntry can obtain a DFNS signature over the exact Soroban authorization-entry hash and that the reassembled transaction verifies on-chain. The capability exists in the API surface; Phase 1 proves it end to end for Soroban auth entries specifically. If a gap is found, the fallback is signing at the transaction-envelope boundary rather than the auth-entry boundary, documented as a contingency.
 
 ---
 
 ## 8. The reusable deliverable: a Soroban-aware DFNS policy decoder
 
-The ecosystem output of this integration is not "a DfnsSigner." A signer is plumbing. The genuinely reusable, sponsor-aligned artifact is a Soroban-aware DFNS policy decoder.
+The ecosystem output of this integration is not "a DfnsSigner." A signer is plumbing. The genuinely reusable artifact is a Soroban-aware DFNS policy decoder.
 
 DFNS already ships a "programmable policy" pattern: a service account watches pending wallet activities, decodes the call data, and approves, requests further approval, or denies based on the function, recipient, and amount. That pattern exists for EVM-style call data. It does not exist for Soroban. The reusable contribution is the Soroban equivalent:
 
 A DFNS service-account policy helper that decodes Soroban XDR on a pending activity, identifies the contract id, the invoked method, and the business reference, maps that to the correct institutional role, and then approves, requests approval, or blocks, enforcing Argent's deny-by-default model at the policy layer rather than only at the contract's require_auth.
 
-This is stronger than a signer for three reasons. It is genuinely new (no Soroban-aware DFNS policy decoder exists in the ecosystem today). It is reusable by any institution building multi-party Soroban workflows on DFNS, not just Argent, which is exactly what makes it an Integration-Track ecosystem contribution rather than private app code. And it is the artifact a sponsor most wants to see, because it extends their own programmable-policy pattern to a chain (Soroban) their pattern does not yet cover.
+This is stronger than a signer for three reasons. It is genuinely new (no Soroban-aware DFNS policy decoder exists in the ecosystem today). It is reusable by any institution building multi-party Soroban workflows on DFNS, not just Argent, which is exactly what makes it an ecosystem contribution rather than private app code. And it is the artifact an institutional signing platform most wants to see, because it extends the programmable-policy pattern to a chain (Soroban) their pattern does not yet cover.
 
 Argent is the reference implementation: the decoder is extracted from Argent's integration and published with Argent as the worked example. Scope discipline applies (as in argent-architecture.md): it is a documented reference decoder extracted from the integration, not a polished standalone SDK, and if it ever threatens the mainnet milestone it is dropped to protect that milestone.
 
@@ -149,13 +149,13 @@ Argent is the reference implementation: the decoder is extracted from Argent's i
 
 ## 9. Roadmap-only alignment points (named, not yet built)
 
-Two further DFNS alignment points belong in the plan, named now, built during the funded phase:
+Two further DFNS alignment points belong in the plan, named now, built during the integration phase:
 
 Status reconciliation: DFNS tracks its own activity states (pending, executing, broadcasted, confirmed, failed, rejected) separately from Stellar's transaction state. The service should store DFNS status separately from Stellar status and reconcile the two, so the lifecycle UI reflects the true combined state (e.g. "awaiting bank approval" is a DFNS state with no Stellar transaction yet). Every DFNS request carries an externalId / idempotency key for correlation.
 
 Fee sponsorship: DFNS supports Stellar fee sponsorship via fee-bump transactions, the party signs the inner transaction, an operator fee-sponsor wallet signs the outer. This means institutional actors need not hold XLM to approve operational acts. It is an alignment point, not a core deliverable: name it in the roadmap, do not build it in the current milestone.
 
-Neither requires pre-submission code. Both are service-layer build items for the funded tranches.
+Neither requires pre-submission code. Both are service-layer build items for the integration phase.
 
 ---
 
@@ -164,4 +164,4 @@ Neither requires pre-submission code. Both are service-layer build items for the
 Argent's two-stage release and enforcement flows map directly onto DFNS quorum-approval policies. The integration replaces synchronous development signing with DFNS's sequence (permission check, policy evaluation, approval collection, MPC signing, broadcast, tracking), and adds the pending-approval state and webhook handling that institutional signing requires. The contracts and lifecycle are unchanged; the new work is one DfnsSigner behind the existing Signer interface plus the approval/pending/webhook layer. Role authority is expressed as DFNS policies on org-controlled wallets, with the custodial-versus-delegated choice made deliberately per role. The reusable output, a DFNS-and-Soroban authorization adapter with this pending-approval pattern, is extracted from the integration for the ecosystem, with Argent as the reference implementation.
 ## 10. What the application can state, precisely
 
-Argent integrates DFNS as the governed intent layer for multi-party Soroban workflows: each business intent is authenticated, permissioned, policy-evaluated, approved, signed, submitted, and reconciled through a DFNS-aligned lifecycle. The two-stage release and the enforcement flow map directly onto DFNS quorum-approval policies. The integration replaces synchronous development signing with DFNS's sequence and adds the pending-approval state, the webhook handling, and the deny-by-default per-wallet policy model that institutional governance requires. The contracts and lifecycle are unchanged. Role authority is expressed through a sub-organization wallet topology on org-controlled wallets, with the cardholder self-signing (delegated) and the institutional roles (bank, custodian, sponsor, verifier, operator) DFNS-governed. The headline reusable output is a Soroban-aware DFNS policy decoder: a service-account helper that decodes Soroban XDR on pending activities and enforces role-mapped, deny-by-default policy, extending DFNS's own programmable-policy pattern to Soroban, with Argent as the reference implementation.
+Argent integrates DFNS as the governed intent layer for multi-party Soroban workflows: each business intent is authenticated, permissioned, policy-evaluated, approved, signed, submitted, and reconciled through a DFNS-aligned lifecycle. The two-stage release and the enforcement flow map directly onto DFNS quorum-approval policies. The integration replaces synchronous development signing with DFNS's sequence and adds the pending-approval state, the webhook handling, and the deny-by-default per-wallet policy model that institutional governance requires. The contracts and lifecycle are unchanged. Role authority is expressed through a sub-organization wallet topology on org-controlled wallets, with the borrower self-signing (delegated) and the institutional roles (bank, custodian, sponsor, verifier, operator) DFNS-governed. The headline reusable output is a Soroban-aware DFNS policy decoder: a service-account helper that decodes Soroban XDR on pending activities and enforces role-mapped, deny-by-default policy, extending DFNS's own programmable-policy pattern to Soroban, with Argent as the reference implementation.

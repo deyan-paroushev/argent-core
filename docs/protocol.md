@@ -346,7 +346,7 @@ This prevents one operational key from approving a line, releasing collateral, a
 ### 7.3 Role-action matrix
 
 ```text
-Owner / cardholder:
+Owner / borrower:
   MAY request pledge
   MAY select collateral
   MAY co-sign instrument registration as issuer
@@ -395,7 +395,7 @@ Vault (settlement contract):
   MUST NOT open lines, authorize release, or act on custody state
 ```
 
-The repayment path is deliberately two-legged. The owner or cardholder signs the
+The repayment path is deliberately two-legged. The owner or borrower signs the
 settlement-asset transfer in the settlement vault. The settlement vault, acting
 as an approved Vault-role party, then calls the credit ledger to apply that
 repayment to the line. The bank does not apply the repayment, and the owner
@@ -617,8 +617,8 @@ The Soroban reference implementation emits compact runtime event topics. The pro
 | `LineApproved` | `open_credit_line` | `("line", "opened")` |
 | `LineSuspended` | `bank_suspend_line` | `("line", "bksuspnd")` |
 | `LineResumed` | `bank_resume_line` | `("line", "bkresume")` |
-| `DrawRecorded` | `record_drawdown` | `("card", "draw")` |
-| `DrawReversed` | `reverse_drawdown` | `("card", "reverse")` |
+| `DrawRecorded` | `record_drawdown` | `("line", "draw")` |
+| `DrawReversed` | `reverse_drawdown` | `("line", "reverse")` |
 | `RepaymentSettled` | `settlement_vault.settle_repayment` | `("repay", "settled")` |
 | `RepaymentApplied` | `credit_ledger.apply_repayment` | `("repay", "applied")` |
 | `AdjustmentRequested` | `request_collateral_adjustment` | `("adjust", "requestd")` |
