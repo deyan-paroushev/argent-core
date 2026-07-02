@@ -108,20 +108,58 @@ key tests to inspect, and the live testnet contract ids.
 
 ## Documentation
 
+The `docs/` folder is organized so you can read in the order that matches what
+you want to know. A suggested path:
+
+**Start here to understand what Argent is and why it exists**
+
+- [`docs/collateral-control.md`](docs/collateral-control.md): the collateral-control
+  thesis, the bank pain points it addresses, and the institutional grounding. The
+  clearest single entry point to the idea.
+- [`docs/physical-collateral-and-trade-finance.md`](docs/physical-collateral-and-trade-finance.md):
+  a neutral primer on the market this sits in, who is affected, how physical
+  collateral is financed, and where the category is heading. Background reading,
+  not a pitch.
+
+**Verify that it works**
+
+- [`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md): what V5 proves, the
+  key tests to inspect, and the live testnet contract ids. The fastest way to
+  confirm the claims are real.
+- [`docs/TEST_SURFACE_MATRIX.md`](docs/TEST_SURFACE_MATRIX.md): what each tested
+  surface covers and the risk it addresses.
+- [`docs/evidence-pack-index.md`](docs/evidence-pack-index.md): a single index of
+  everything a reviewer can independently verify, contracts, tests, transactions,
+  events, and certificates.
+
+**Understand how it is built**
+
 - [`docs/protocol.md`](docs/protocol.md): the Argent Protocol public draft, the
   open, event-sourced specification for controlling and proving the lifecycle of
-  physical collateral that remains in custody. These contracts are its first
-  reference implementation. Start here for the conceptual model, the event and
-  evidence design, the state machines, and the allocated-gold adapter.
+  physical collateral that remains in custody. Start here for the conceptual
+  model, the event and evidence design, the state machines, and the
+  allocated-gold adapter.
 - [`docs/argent-architecture.md`](docs/argent-architecture.md): the full system
   architecture, contracts, lifecycle, the tri-party model, and why Soroban.
 - [`docs/argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md):
-  the planned DFNS authorization layer and the Soroban signing sequence.
+  the DFNS authorization layer and the Soroban signing sequence.
+
+**Assess safety and operations**
+
+- [`docs/threat-model-and-security-boundaries.md`](docs/threat-model-and-security-boundaries.md):
+  what Argent protects against, what it deliberately does not, and the trust
+  boundaries. Read this to understand the edges of what the contracts enforce.
+- [`docs/deployment-and-runbook.md`](docs/deployment-and-runbook.md): how the
+  contracts are built, deployed, initialized, verified, and exercised end to end.
+
+**Direction and engagement**
+
 - [`docs/product-roadmap.md`](docs/product-roadmap.md): the product direction
   beyond the current build, framed so the open core points further than any single
   application without enlarging what ships today.
-- [`docs/collateral-control.md`](docs/collateral-control.md): the collateral-control
-  thesis, the bank pain points it addresses, and the institutional grounding.
+- [`docs/design-partners.md`](docs/design-partners.md): an invitation to
+  institutions that want to shape the product against their real operational
+  needs, and how to start a conversation.
 
 ## What is not here
 
