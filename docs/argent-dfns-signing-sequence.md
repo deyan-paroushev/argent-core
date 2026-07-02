@@ -14,7 +14,7 @@ The on-chain logic does not change. The Soroban contracts (credit_ledger, settle
 
 What changes is the service layer. Today, each governed act is signed synchronously: the service asks a signer for a signature on the Soroban authorization-entry hash, gets it immediately, assembles the transaction, and submits. Under DFNS, signing becomes asynchronous and policy-governed. A governed act may not sign immediately; it may enter a pending state and wait for a second party's approval before DFNS signs it via MPC. The new work is the pending state and the webhook handling that surround the existing call.
 
-This is the genuinely new layer the integration funds. It is not "build multi-party signing from scratch": the Signer interface and SignerRegistry already exist (service/src/chain/signer.ts), with a clean signAuthEntry(payloadHash) seam and throwing placeholders for the production signers. The work is implementing one DfnsSigner behind that interface plus the approval/pending/webhook layer that institutional signing requires.
+This is the genuinely new layer the integration builds. It is not "build multi-party signing from scratch": the Signer interface and SignerRegistry already exist in the private application/service layer (`service/src/chain/signer.ts`, not part of this open-source contract repository), with a clean signAuthEntry(payloadHash) seam and throwing placeholders for the production signers. The work is implementing one DfnsSigner behind that interface plus the approval/pending/webhook layer that institutional signing requires.
 
 ---
 

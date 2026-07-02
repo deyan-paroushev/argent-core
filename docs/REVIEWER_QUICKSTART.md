@@ -71,7 +71,7 @@ Any act can be verified on the public explorer at stellar.expert.
 
 ## Where to read next
 
-- `docs/TEST_SURFACE_MATRIX.md` — what each surface covers and the risk it addresses.
-- `docs/argent-architecture.md` — how the three contracts fit together.
-- `docs/argent-dfns-signing-sequence.md` — the production signing model: each party signs with its own authority; the contract enforces roles, the signer enforces who can sign.
-- `docs/protocol.md` — the protocol specification.
+- `docs/TEST_SURFACE_MATRIX.md`: what each surface covers and the risk it addresses.
+- `docs/argent-architecture.md`: how the three contracts fit together.
+- `docs/argent-dfns-signing-sequence.md`: the production signing model: each party signs with its own authority; the contract enforces roles, the signer enforces who can sign.
+- `docs/protocol.md`: the protocol specification.
