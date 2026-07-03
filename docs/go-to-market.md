@@ -84,18 +84,19 @@ Argent gives them:
 
 ### 2.4 Gold-holding institutions, businesses, funds, and family offices
 
-These are the demand-side users.
+These are the demand-side users, and they hold allocated gold for different reasons, which gives them different motives for a credit line.
 
-They hold allocated gold and may want liquidity without selling the asset, losing the hedge, or converting the position into token exposure.
+An operating business or treasury holds gold as a reserve and wants working liquidity without selling the asset, losing the hedge, or converting the position into token exposure. Its job is to access working capital while keeping the gold position. Argent gives it a way to pledge allocated bars without selling them, a credit line tracked against verified collateral, a release path once the debt is repaid, and a clear view of what is pledged and what remains available.
 
-Their job is to access working liquidity while keeping the gold position.
+A fund or portfolio holder, a hedge fund, a mutual or index fund, a multi-asset or macro strategy, holds gold as a deliberate portfolio position. Its motive is not working capital; it is capital efficiency. The gold is held for a thesis (a hedge, a store of value, a diversifier), and while it sits as pure collateral it is dead capital. Borrowing against it lets the fund keep the full gold exposure and free cash at the same time, without selling the position and incurring the spread, the tax event, the tracking error, or the exit from the thesis that a sale would cause. What the fund does with the freed capital, meet a redemption, fund another position, or increase the gold allocation itself, is the fund's decision. Argent supplies the controlled collateral line; the capital-allocation choice sits with the fund. The economic case is simply that the gold keeps working for its original thesis while also backing a credit line, and the only carrying cost is the financing spread and the vault fee, not the loss of the position.
 
-Argent gives them:
+This framing stays deliberately on the conservative side. Argent is collateral-control infrastructure, not a leverage product, and it does not advise or encourage borrowing against an asset to concentrate exposure in that same asset. The value it provides is the controlled, auditable line and the retained position; risk and allocation decisions remain with the fund and its lender.
 
-- a way to pledge allocated bars without selling them;
-- a credit line whose use is tracked against verified collateral;
-- a release path once the debt is repaid;
-- a clearer view of what is pledged and what remains available.
+The target within the fund universe is narrower than "all funds," and the reason is regulatory. Whether a fund can pledge its gold at all is governed by its own documents and applicable law, not by the availability of a credit line. Regulated retail structures are often the wrong target: European UCITS borrowing is generally limited to a small share of net assets and permitted only temporarily rather than for investment leverage, and most physically-backed gold ETFs are contractually prohibited from lending or encumbering their underlying gold at all [S9][S8]. The right target is therefore professional funds, family offices, private investment companies, macro and commodity strategies, and gold-holding treasury vehicles whose mandate and documents permit borrowing against allocated physical gold. Gold as a strategic portfolio allocation is mainstream rather than fringe, which is what makes this segment large enough to matter [S7], but eligibility is a document-and-mandate question that must be checked per counterparty.
+
+There is a useful adjacency here. The fund-finance market already understands borrowing against portfolio value through NAV facilities, credit lines whose availability is based on the value of a fund's underlying portfolio [S10]. Argent can be framed to a fund as a narrower, cleaner, collateral-control version of that idea, specific to allocated physical gold, with per-lot pledge control and refusal logic rather than a general portfolio claim.
+
+Funds also carry a practical go-to-market advantage: their gold is already held in professional allocated custody through recognized custodians and allocated accounts, and they are sophisticated counterparties who already understand collateralized lending. The attestation edge that is hard for a random gold-holding business, is the gold real, allocated, and in custody, is largely pre-solved for a fund. That can make a fund a lower-friction first design partner than an operating company.
 
 ---
 
@@ -310,7 +311,7 @@ one complete lifecycle:
     attest -> pledge -> open line -> draw -> repay -> release
 ```
 
-This is enough to prove the product category.
+This is enough to prove the product category. Where the gold holder is a fund or portfolio holder whose gold already sits in allocated professional custody (see section 2.4), the first pilot can be lower-friction, because the custody and allocation evidence the bank relies on is already in place and the counterparty already understands collateralized lending.
 
 ### 8.4 What must be validated
 
@@ -321,6 +322,7 @@ Argent is infrastructure, and infrastructure does not by itself resolve the lega
 - how the bank defines eligible collateral, haircut, loan-to-value, margin call, and cure;
 - whether the drawdown, card, or settlement rail is conventional or Islamic;
 - for Islamic structures, which Shariah contract is used and what the bank's Shariah board requires;
+- for funds and portfolio holders, whether the fund documents, investor disclosures, borrowing limits, leverage policy, and custody arrangements permit the allocated gold to be pledged, whether proceeds may be used only for liquidity management or also for investment, and whether the structure creates reportable leverage, concentration, or liquidity-risk obligations;
 - which evidence pack each function needs: credit, operations, audit, legal, and, where relevant, Shariah review.
 
 None of these is a software problem. Each is a design-partner conversation, and each is why the first reference relationship matters more than breadth of outreach.
@@ -460,6 +462,16 @@ https://www.gold.org/gold-standards/shariah-gold
 
 [S-IF3] AAOIFI, *Shari'ah Standard No. 57 on Gold and its Trading Controls*. The standard addresses the use of gold as pledge or collateral (rahn); using gold as rahn is permissible, subject to the financing contract and the possession and control requirements being properly structured under a qualified Shariah framework. This is not a statement that any particular product is Shariah-compliant.  
 https://www.gold.org/download/file/18645/The-Shariah-Standard-on-Gold-English.pdf
+
+[S7] World Gold Council, *The relevance of gold as a strategic asset*. The World Gold Council describes gold as a strategic long-term investment and a mainstay allocation in a diversified portfolio, indicating that portfolio-level gold holding is mainstream rather than fringe.  
+https://www.gold.org/goldhub/research/relevance-of-gold-as-a-strategic-asset
+
+[S8] World Gold Council, *Physically-backed gold ETFs do not lend their gold* (February 2025). The article states that US-listed physically-backed gold ETFs, including GLD, IAU, and GLDM, do not lend their underlying gold; it is not permitted by the product design or the regulatory approval, the trust agreements do not allow securities lending, and no such lending disclosures exist.  
+https://www.gold.org/goldhub/gold-focus/2025/02/physically-backed-gold-etfs-do-not-lend-their-gold
+
+[S9] Regulatory note on UCITS borrowing (to confirm against a primary source before formal use). Under the UCITS framework, fund borrowing is generally limited to a small share of net assets and permitted only on a temporary basis rather than for investment leverage. The specific limit and conditions should be confirmed against the applicable UCITS Directive provisions and the fund's own documents.
+
+[S10] Market note on NAV credit facilities (to confirm against a primary source before formal use). In fund finance, a NAV facility is a credit line whose availability is based on the value of a fund's underlying portfolio. This is offered as an analogy for how sophisticated funds already borrow against portfolio value; the specific structure and terms vary and should be confirmed with fund-finance counsel.
 
 ---
 
