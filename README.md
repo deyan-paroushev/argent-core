@@ -123,6 +123,11 @@ you want to know. A suggested path:
 - [`docs/collateral-control.md`](docs/collateral-control.md): the collateral-control
   thesis, the bank pain points it addresses, and the institutional grounding. The
   clearest single entry point to the idea.
+- [`docs/custodian-as-security-infrastructure.md`](docs/custodian-as-security-infrastructure.md):
+  why the custodian is the physical root of trust the whole control record anchors
+  to, what allocated custody and the bar list actually provide, how the structure
+  mirrors triparty repo, and where the boundary sits between what the custodian
+  attests and what Argent records. Sourced notes, not a pitch.
 - [`docs/physical-collateral-and-trade-finance.md`](docs/physical-collateral-and-trade-finance.md):
   a neutral primer on the market this sits in, who is affected, how physical
   collateral is financed, and where the category is heading. Background reading,
