@@ -244,13 +244,25 @@ professional investors already hold physical gold in custody
 
 The UAE is therefore not just a gold market. It is a market where banks, private investors, bullion infrastructure, and digital financial services already intersect.
 
-### 7.3 Wider GCC: later expansion through wealth, family offices, and Sharia-compliant structures
+### 7.3 Wider GCC and Southeast Asia: the Islamic-finance opportunity
 
-The wider GCC is strategically relevant because gold, secured lending, private wealth, and Islamic finance are all meaningful.
+The wider GCC, and Islamic-finance markets more broadly, are strategically important, and the fit is stronger than a generic "gold in the Gulf" observation. It rests on a specific structural alignment between how Argent works and how Islamic law treats gold and collateral.
 
-Argent's control-not-title model may be helpful for Sharia-compliant structuring because the asset remains real, custody-held, and identified. The product does not create a speculative gold token or abstract exposure.
+The market is large and growing. Global Islamic finance assets reached about US$5.98 trillion in 2024, up 21 percent year on year, and are projected to reach roughly US$9.7 trillion by 2029 [S-IF1]. The GCC and Southeast Asia dominate the sector, with Saudi Arabia, the UAE, and Malaysia among the largest markets [S-IF1]. This is not a niche adjacent to Argent's thesis. It is a major pool of exactly the buyer Argent targets: institutions that hold gold and lend against it.
 
-This should not be overstated. Any Sharia-compliant product would require proper legal and structuring review. But the direction is favorable: custody-held, asset-backed, control-based finance is a better starting point for Islamic-finance discussion than a tokenized commodity exposure.
+The structural fit is specific. In Islamic finance, the concept closest to what Argent controls is rahn, a pledged asset used as security for an obligation, and the use of gold as collateral (rahn) is recognized as permissible under the standard [S-IF3]. Gold itself is treated under special rules. The AAOIFI Shari'ah Standard No. 57 on Gold, developed with the World Gold Council, requires that gold be traded on a spot basis and that ownership be physical or constructive, and in the case of constructive possession the gold must be fully allocated, evidenced by same-day settlement or a certificate specifying bar ownership [S-IF2b]. Deferred-payment and derivative structures on gold are impermissible [S-IF2b].
+
+This is precisely why Argent's control-not-title framing is an advantage rather than a hurdle. Argent does not sell gold on deferred terms, does not tokenize it, and does not create abstract exposure. The client already owns specific allocated bars held in professional custody, with the ability to take delivery, which is exactly the allocated, constructive-possession arrangement the standard recognizes as valid [S-IF2a]. Argent records the pledge, the control state, the borrowing base, drawdown, repayment, release, and refusal. The financing contract itself is structured by the Islamic bank under its own Shariah framework. That separation is the point: Argent supplies the rahn control layer, not the financing contract.
+
+The regulatory environment reinforces this. The UAE made AAOIFI standards mandatory in 2018 [S-IF2c], so in one of Argent's strongest first markets, allocated, spot-based, non-tokenized gold treatment is not a preference but a requirement. A design built around allocated, custody-held gold may be easier for an Islamic bank and its Shariah board to review than a structure based on synthetic exposure, deferred gold settlement, or unallocated token claims.
+
+### 7.4 How to speak to Islamic-finance institutions, and the hard boundary
+
+The correct positioning to an Islamic bank is as a control layer for rahn-based gold finance, not as a financing product and not as a compliance claim. The language that fits the market: Argent helps an Islamic bank offer gold-backed secured liquidity to business and private-banking clients; the client keeps allocated gold in custody; the bank structures the financing under its Shariah framework; Argent supplies the rahn control layer covering pledge, borrowing base, draw, repayment, release, default, and evidence. In Islamic-banking terms, a card attached to such a line is described as a covered card, not a credit card, and profit or service-fee language replaces interest language. Using the market's own vocabulary signals competence at no cost.
+
+The hard boundary, which must never be crossed: Argent does not claim to be Shariah-compliant. Shariah-compliance is a certified status granted by a bank's Shariah supervisory board after reviewing the actual contracts, profit model, fees, late-payment treatment, custody arrangement, and card terms. Argent is not the certifying party and cannot self-declare this status. In the UAE in particular, where AAOIFI standards are mandatory, an unearned compliance claim would be both a credibility failure and a regulatory misstatement. The only accurate framing is that Argent is designed for Shariah-compliant structuring by a partner Islamic bank, and that the bank's Shariah board approves the actual product. State the structural affinity and the intent to structure properly; never assert the certified status.
+
+A natural product extension, when a real Islamic-bank design partner is engaged, is a Shariah evidence pack: a structured record of allocated ownership, custody attestation, that no double pledge exists, that the gold was never sold or tokenized, valuation and haircut, drawdown history, and the repayment and release trail, produced for the bank's Shariah board, risk team, and auditor. This is a natural extension of the evidence certificates the engine already produces, not a new product, and it should be built only when a partner pulls it, not on speculation.
 
 ---
 
@@ -299,6 +311,19 @@ one complete lifecycle:
 ```
 
 This is enough to prove the product category.
+
+### 8.4 What must be validated
+
+Argent is infrastructure, and infrastructure does not by itself resolve the legal, custodial, and structuring questions a production facility depends on. Naming these openly is part of the pitch, because it shows the buyer that the boundary between what software solves and what the institution must decide is understood. Before a production facility, the following must be validated with the specific counterparties:
+
+- which legal pledge or security document gives the bank enforceable rights over the allocated bars;
+- which custodian statement is sufficient for the bank to rely on the bar list, and whether the custodian can operationally block release while the pledge is active;
+- how the bank defines eligible collateral, haircut, loan-to-value, margin call, and cure;
+- whether the drawdown, card, or settlement rail is conventional or Islamic;
+- for Islamic structures, which Shariah contract is used and what the bank's Shariah board requires;
+- which evidence pack each function needs: credit, operations, audit, legal, and, where relevant, Shariah review.
+
+None of these is a software problem. Each is a design-partner conversation, and each is why the first reference relationship matters more than breadth of outreach.
 
 ---
 
@@ -424,6 +449,21 @@ https://uncitral.un.org/en/mlwr
 
 [S6] UNIDROIT, *Model Law on Warehouse Receipts*. UNIDROIT notes that the model law contemplates electronic warehouse receipts, including through electronic platforms, distributed ledger technology systems, and other technological mechanisms.  
 https://www.unidroit.org/studies/model-law-on-warehouse-receipts/
+
+[S-IF1] LSEG and ICD, *Islamic Finance Development Report 2025*. Global Islamic finance assets reached about US$5.98 trillion in 2024, up 21 percent year on year, and are projected to reach roughly US$9.7 trillion by 2029, with the GCC and Southeast Asia dominating the sector and Saudi Arabia, the UAE, and Malaysia among the largest markets.  
+https://www.lseg.com/en/data-analytics/islamic-finance/islamic-market-intelligence/islamic-finance-development-report-2025
+
+[S-IF2a] World Gold Council, *Shariah-compliant gold*. Overview of the AAOIFI gold standard, stating that gold can be owned on a physical or constructive basis and that constructive possession requires full allocation, evidenced by same-day settlement or a certificate specifying bar ownership.  
+https://www.gold.org/gold-standards/shariah-gold
+
+[S-IF2b] AAOIFI, *Shari'ah Standard No. 57 on Gold and its Trading Controls* (developed with the World Gold Council). The standard requires gold to be traded on a spot basis, permits physical or constructive ownership, requires full allocation for constructive possession, and prohibits deferred-payment and derivative gold structures.  
+https://www.gold.org/download/file/18645/The-Shariah-Standard-on-Gold-English.pdf
+
+[S-IF2c] Adoption note: AAOIFI Shariah standards were made mandatory in the UAE in 2018, as reported in the World Gold Council's Shariah-gold materials. The specific adopting instrument should be confirmed against the AAOIFI or Central Bank of the UAE announcement before use in a formal document.  
+https://www.gold.org/gold-standards/shariah-gold
+
+[S-IF3] AAOIFI, *Shari'ah Standard No. 57 on Gold and its Trading Controls*. The standard addresses the use of gold as pledge or collateral (rahn); using gold as rahn is permissible, subject to the financing contract and the possession and control requirements being properly structured under a qualified Shariah framework. This is not a statement that any particular product is Shariah-compliant.  
+https://www.gold.org/download/file/18645/The-Shariah-Standard-on-Gold-English.pdf
 
 ---
 
