@@ -314,7 +314,7 @@ This is enough to prove the product category.
 
 ### 8.4 What must be validated
 
-Argent is infrastructure, and infrastructure does not by itself resolve the legal, custodial, and structuring questions a production facility depends on. Naming these openly is part of the pitch, because it shows the buyer that the boundary between what software solves and what the institution must decide is understood. Before a production facility, the following must be validated with the specific counterparties:
+Argent is infrastructure, and infrastructure does not by itself resolve the legal, custodial, and structuring questions a production facility depends on. Naming these openly matters, because the boundary between what the software solves and what the institution must decide is part of an honest account of the product. Before a production facility, the following must be validated with the specific counterparties:
 
 - which legal pledge or security document gives the bank enforceable rights over the allocated bars;
 - which custodian statement is sufficient for the bank to rely on the bar list, and whether the custodian can operationally block release while the pledge is active;
@@ -398,33 +398,29 @@ The defensibility is the combination of:
 
 ---
 
-## 12. What to lead with
+## 12. What this is, and what it is not
 
-Lead with:
+What Argent is:
 
-- custody-held physical collateral;
-- control, not tokenization;
-- gold as the clean first asset;
-- secured-credit infrastructure;
-- bank and custodian workflow;
-- no double pledge;
-- no release before repayment;
-- audit-ready evidence;
-- conservative credit control;
-- expansion to warehouse receipts and broader physical collateral.
+- infrastructure for custody-held physical collateral;
+- control, not tokenization: the asset stays in custody and title stays with the owner;
+- built around gold as the clean first asset;
+- secured-credit infrastructure that fits an existing bank and custodian workflow;
+- a control layer that refuses a double pledge and refuses release before repayment;
+- audit-ready evidence for every pledge, draw, repayment, release, and refusal;
+- conservative by design, built for controlled credit rather than maximum leverage;
+- extensible to warehouse receipts and broader physical collateral over time.
 
-Do not lead with:
+What Argent is not:
 
-- a gold token;
-- a consumer gold card;
-- spending gold;
-- replacing banks;
-- automated foreclosure;
-- maximum leverage;
-- retail speculation;
-- fully automated lending.
+- not a gold token or tokenized commodity;
+- not a consumer gold card, and not a way to spend gold;
+- not a lender, a custodian, or a payment processor;
+- not a replacement for the bank;
+- not automated foreclosure, and not fully automated lending;
+- not a retail or speculative product.
 
-The market message is:
+In one line:
 
 > Argent makes custody-held gold usable as controlled credit collateral without selling it, tokenizing it, or moving it out of custody.
 
