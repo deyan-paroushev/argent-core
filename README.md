@@ -173,6 +173,10 @@ you want to know. A suggested path:
 
 **Direction and engagement**
 
+- [`docs/go-to-market.md`](docs/go-to-market.md): the business context around the
+  engine, who the product is built for, why allocated gold is the first asset,
+  where the first commercial conversations are most credible, and how the engine
+  expands. Read this to understand the market and the customer, not the code.
 - [`docs/product-roadmap.md`](docs/product-roadmap.md): the product direction
   beyond the current build, framed so the open core points further than any single
   application without enlarging what ships today.

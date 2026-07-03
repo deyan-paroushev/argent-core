@@ -2,7 +2,7 @@
 
 **Purpose:** sharpen Argent's value proposition for investor and design-partner conversations by positioning the current Soroban engine as a control layer for commodity finance broadly, with allocated gold as the first clean proof, not as a gold-only lending application.
 
-**Status:** strategy and positioning document. It does not expand the current engine scope, and it recommends no new contract surface. It translates the existing asset-agnostic collateral-control core into commodity-finance language, and anchors that translation in the international legal and standards direction the field is already moving in. Companion reading: `physical-collateral-and-trade-finance.md` (neutral market primer), `collateral-as-locked-value.md` (the market-signal case), `collateral-control.md` (the product thesis and the four control primitives), and `protocol.md` (the technical specification).
+**Status:** strategy and positioning document. It does not expand the current engine scope, and it recommends no new contract surface. It translates the existing asset-agnostic collateral-control core into commodity-finance language, and anchors that translation in the international legal and standards direction the field is already moving in. Companion reading: `physical-collateral-and-trade-finance.md` (neutral market primer), `collateral-as-locked-value.md` (the market-signal case), `collateral-control.md` (the product thesis and the four control primitives), `go-to-market.md` (who the product is for and how it reaches market), and `protocol.md` (the technical specification).
 
 ---
 
