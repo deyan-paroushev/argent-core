@@ -2,7 +2,7 @@
 
 Notes on the gold market Argent works in: how much gold exists, who holds it, whether lending against it is already common, and where the institutional side seems to be heading. This is background research, not a pitch. Sources are linked at the end so anything here can be checked, and where a number is an estimate or a range it is written that way.
 
-Related docs: `go-to-market.md`, `collateral-control.md`, `commodity-finance-positioning.md`.
+Related docs: `collateral-control.md`, `commodity-finance-positioning.md`.
 
 ---
 
