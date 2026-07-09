@@ -185,6 +185,11 @@ you want to know. A suggested path:
 - [`docs/product-roadmap.md`](docs/product-roadmap.md): the product direction
   beyond the current build, framed so the open core points further than any single
   application without enlarging what ships today.
+- [`docs/auto-collateralisation-layer.md`](docs/auto-collateralisation-layer.md):
+  future product direction for self-triggered, policy-bound credit events over
+  custody-stable physical collateral, modelled on the Eurosystem's T2S
+  auto-collateralisation. The layer after the roadmap. Not part of the current
+  committed build scope.
 - [`docs/design-partners.md`](docs/design-partners.md): an invitation to
   institutions that want to shape the product against their real operational
   needs, and how to start a conversation.
