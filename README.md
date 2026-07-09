@@ -144,6 +144,19 @@ you want to know. A suggested path:
   direction (MLETR, the 2024 UNCITRAL-UNIDROIT Model Law on Warehouse Receipts,
   ICC DSI). Why not only gold, why not tokenization, which workflows the engine
   already maps to, and which commodities come next.
+- [`docs/collateral-failure-modes.md`](docs/collateral-failure-modes.md):
+  the documented loss record of physical-collateral finance (Qingdao, Hin Leong,
+  Kingold, Trafigura, the LME stones, and the bank retreat that followed), each
+  loss read as a failed control invariant, mapped to the specific control in the
+  core that addresses it, and paired with an explicit statement of what a control
+  record does not catch. The risk-control case for why Argent exists.
+- [`docs/collateral-eligibility-and-risk-policy.md`](docs/collateral-eligibility-and-risk-policy.md):
+  the bank-owned collateral policy Argent enforces once it is signed, eligibility,
+  valuation, haircuts, advance rates, concentration and wrong-way risk,
+  substitution, release, and escalation, mapped to the contract surfaces that
+  enforce each layer. Grounded in PFMI Principle 5, Eurosystem practice, and the
+  ISDA CDM. States the institutional boundary plainly: Argent enforces policy, it
+  does not set it.
 
 **Verify that it works**
 
