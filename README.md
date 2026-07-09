@@ -203,6 +203,16 @@ you want to know. A suggested path:
   custody-stable physical collateral, modelled on the Eurosystem's T2S
   auto-collateralisation. The layer after the roadmap. Not part of the current
   committed build scope.
+- [`docs/integration-and-interoperability.md`](docs/integration-and-interoperability.md):
+  how Argent sits beside the credit and collateral systems a bank already runs
+  (triparty agents, ISO 20022 collateral messaging, custodian and CTRM systems,
+  DFNS signing) rather than replacing them, and the read-model-first onboarding
+  path that makes adoption safe. The integration strategy and positioning note.
+- [`docs/bank-integration-and-adapter-strategy.md`](docs/bank-integration-and-adapter-strategy.md):
+  the engineering specification behind that strategy, the Bank Adapter Gateway,
+  the adapter classes, the five graduated integration modes, the canonical
+  object model, and the fail-closed write policy. The deeper build spec for the
+  integration layer. Not part of the current committed build scope.
 - [`docs/design-partners.md`](docs/design-partners.md): an invitation to
   institutions that want to shape the product against their real operational
   needs, and how to start a conversation.
