@@ -224,6 +224,8 @@ The current build is a focused integration milestone: move a tested Soroban prot
 
 This roadmap begins only after that is complete and proven. It extends Argent into a collateral book of record for physical assets under custody: collateral pools, a live position report, scheduled revaluation and margin operations, safe substitution, policy-attributable haircut metadata, and asset categories beyond gold. Much of it builds directly on primitives already shipped and tested in the open-source core. It shows that Argent has a serious institutional path beyond the first deployment.
 
+The layer after this roadmap, automation of the credit event itself, is described in `auto-collateralisation-layer.md`: policy-bound, self-triggered credit events over the pool model built here, modelled on the Eurosystem's T2S auto-collateralisation. Nothing in that document changes this roadmap's scope, sequence, or gate conditions.
+
 ---
 
 ## References

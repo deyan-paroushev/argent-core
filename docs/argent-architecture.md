@@ -257,7 +257,7 @@ The technical architecture is complete and the contracts exist now, so the curre
 - Deliverables: mainnet-deployed contracts with published contract IDs, worked transaction examples, and an operations runbook; the reusable Soroban-aware DFNS authorization adapter and policy decoder published open-source under Apache-2.0, with the standard message-purpose vocabulary of §16; the evidence-certificate pack (current-state, release, enforcement, and rewards certificates); and a pilot package for a bank, custodian, and sponsor to review.
 - Success signal (verifiable): live mainnet contract IDs a reviewer can inspect on a block explorer, a public repository containing the forkable adapter and decoder, and a governed lifecycle action executed on mainnet with its approval-to-transaction trace.
 
-Each phase ships something testable on its own, and the destination is fixed: a functional, DFNS-governed reference facility live on Stellar mainnet with the authorization adapter open-sourced. None of the pool, scheduled-revaluation, margin-call, or substitution work described in the separate product roadmap is in this build scope.
+Each phase ships something testable on its own, and the destination is fixed: a functional, DFNS-governed reference facility live on Stellar mainnet with the authorization adapter open-sourced. None of the pool, scheduled-revaluation, margin-call, or substitution work described in the separate product roadmap is in this build scope, and neither is the auto-collateralisation layer described in `auto-collateralisation-layer.md`, which is future product direction only.
 
 ## 16. Open source and non-goals
 

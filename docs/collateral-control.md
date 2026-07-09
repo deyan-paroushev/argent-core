@@ -12,7 +12,7 @@
 
 **The control layer described here.** The next set of control primitives: substitution, multi-party controlled release, conditional release on verified sale, and partial release with a dynamic borrowing base. Forward-looking, not yet built.
 
-**Longer-term.** Refinancing without custody disruption, lender assignment and participation, collateral baskets, and a secured-credit offer book. Noted here for direction only; out of scope for the near term.
+**Longer-term.** Refinancing without custody disruption, lender assignment and participation, collateral baskets, and a secured-credit offer book. Noted here for direction only; out of scope for the near term. The automation extension of this control layer, self-triggered, policy-bound credit events modelled on the Eurosystem's T2S auto-collateralisation, is described separately in `auto-collateralisation-layer.md`.
 
 The features below are ordered by institutional value. The committed build order, with its gate conditions and code-level extension points, lives in `product-roadmap.md`.
 
