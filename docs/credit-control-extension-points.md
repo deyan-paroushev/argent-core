@@ -8,7 +8,7 @@
 
 *Audience: internal roadmap reference, and the honest answer when a bank asks "can you do a two-day cure window?" The answer is: not today; it is specified, it is scoped, and it is contingent on your policy. Tell us your workout process and we will build to it.*
 
-*Companion documents: `design-partner-lender-brief.md` (what the lender sets), `bullion-collateral-reference-architecture.md` (the domain requirements), `argent-architecture.md` (authoritative where they touch).*
+*Companion documents: `bullion-collateral-reference-architecture.md` (the domain requirements), `argent-architecture.md` (authoritative where they touch).*
 
 ---
 

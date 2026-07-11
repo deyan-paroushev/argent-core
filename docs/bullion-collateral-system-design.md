@@ -7,7 +7,7 @@
 **Status:** Public product and integration architecture  
 **Audience:** banks, secured lenders, bullion desks, custodians, vault operators, collateral managers, implementation partners, legal and risk reviewers, and technical architects  
 **Research basis:** public sources reviewed through 11 July 2026  
-**Companion documents:** `argent-architecture.md`, `protocol.md`, `why-gold-secured-operational-credit.md`, `design-partner-credit-brief.md`, `threat-model-and-security-boundaries.md`
+**Companion documents:** `argent-architecture.md`, `protocol.md`, `why-gold-secured-operational-credit.md`, `credit-control-extension-points.md`, `threat-model-and-security-boundaries.md`
 
 ---
 

@@ -10,7 +10,7 @@
 
 *Audience: architects and credit-risk readers evaluating what may be pledged; implementers extending the eligibility gate. This document defines the legal-rights classification that must precede economic eligibility, and states which holdings are ineligible by construction.*
 
-*Companion documents: `bullion-collateral-reference-architecture.md` (the asset-side domain model), `design-partner-lender-brief.md` (the credit product), `argent-architecture.md` (protocol architecture, authoritative where they touch).*
+*Companion documents: `bullion-collateral-reference-architecture.md` (the asset-side domain model), `argent-architecture.md` (protocol architecture, authoritative where they touch).*
 
 ---
 
