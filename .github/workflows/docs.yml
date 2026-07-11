@@ -1,0 +1,61 @@
+name: docs
+
+# Documentation that misstates the contract is worse than no documentation: it
+# invites a reader to trust a claim, and rewards them for checking. This runs on
+# every change to either the docs or the contracts, because drift can originate
+# from either side — a doc can be written wrong, or a contract can be changed
+# out from under a doc that was right when it was written.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'contracts/**'
+      - 'scripts/check_docs.py'
+      - 'LICENSE'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'contracts/**'
+      - 'scripts/check_docs.py'
+      - 'LICENSE'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+jobs:
+  check-docs:
+    name: documentation agrees with the contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check documentation against contract source
+        run: python3 scripts/check_docs.py --verbose
+
+      # The check covers EVERY document in docs/, not a subset. If the doc set
+      # ever gets ahead of the code, record the failures in
+      # scripts/docs_baseline.txt to unblock, then burn them down.
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error::Documentation no longer agrees with the contract."
+          echo ""
+          echo "This check fails when a document:"
+          echo "  - names a contract function that does not exist"
+          echo "  - states a lifecycle sequence the contract does not enforce"
+          echo "  - describes an implemented control as missing"
+          echo "  - contains an unresolved placeholder (<COMMIT>, TODO)"
+          echo "  - references a document that is not there"
+          echo "  - claims a licence the repository does not carry"
+          echo ""
+          echo "If the CONTRACT changed, update the docs and the ground-truth"
+          echo "assertions in scripts/check_docs.py together."
+          echo "If a DOC is wrong, fix the doc."
+          echo "Do not silence the check without doing one of those two things."

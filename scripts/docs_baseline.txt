@@ -1,0 +1,10 @@
+# Known documentation failures, accepted temporarily.
+#
+# Each line waives one failure so the check can be adopted without a blocking
+# cleanup. A line here is a DEBT, not a permission: it should have an owner and
+# a plan to remove it.
+#
+# Format:  <check name> :: <substring of the failure detail>
+# Example: broken doc reference :: references 'old-name.md'
+#
+# The repository currently has NO known failures. Keep it that way.
