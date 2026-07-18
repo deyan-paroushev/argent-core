@@ -8,11 +8,15 @@ The framing that matters, stated once: DFNS is not a remote private-key box that
 
 ---
 
-## 0. What changes, and what does not
+## 0. Product and implementation boundary
 
-The on-chain logic does not change. The Soroban contracts (credit_ledger, settlement_vault, rewards_ledger), the lifecycle (framework, position, selection, immobilization, pledge, line, drawdown, the repay/release performing path, and the default/cure/enforcement path), and every contract invariant stay exactly as built and tested. DFNS does not replace any of that.
+The mature product direction is a **corporate reserve obligation facility**: one identified reserve supporting multiple purpose-bound bank obligations, with no unrestricted customer cash draw. The current Soroban contracts remain the implemented secured-credit reference branch. They prove the shared foundation - role authority, asset identity, immobilization, pledge, capacity, settlement-linked exposure reduction, release, default, cure, and enforcement evidence.
 
-What changes is the service layer. Today, each governed act is signed synchronously: the service asks a signer for a signature on the Soroban authorization-entry hash, gets it immediately, assembles the transaction, and submits. Under DFNS, signing becomes asynchronous and policy-governed. A governed act may not sign immediately; it may enter a pending state and wait for a second party's approval before DFNS signs it via MPC. The new work is the pending state and the webhook handling that surround the existing call.
+DFNS integration does not require the target obligation types to be implemented first. The same governed-intent layer is needed for both the current credit branch and future guarantee, documentary-credit, accepted-obligation, treasury, amendment, claim, reimbursement, and discharge actions. The integration should therefore be expressed in terms of **governed institutional acts**, not only drawdown signing.
+
+The current on-chain logic does not change for the reference implementation. The Soroban contracts (`credit_ledger`, `settlement_vault`, `rewards_ledger`), the existing lifecycle, and every tested invariant remain exactly as built. DFNS does not replace any of that.
+
+What changes first is the service layer. Today, each governed act is signed synchronously: the service asks a signer for a signature on the Soroban authorization-entry hash, gets it immediately, assembles the transaction, and submits. Under DFNS, signing becomes asynchronous and policy-governed. A governed act may not sign immediately; it may enter a pending state and wait for a second party's approval before DFNS signs it via MPC. The new work is the pending state and the webhook handling that surround the existing call.
 
 This is the genuinely new layer the integration builds. It is not "build multi-party signing from scratch": the Signer interface and SignerRegistry already exist in the private application/service layer (`service/src/chain/signer.ts`, not part of this open-source contract repository), with a clean signAuthEntry(payloadHash) seam and throwing placeholders for the production signers. The work is implementing one DfnsSigner behind that interface plus the approval/pending/webhook layer that institutional signing requires.
 
@@ -32,13 +36,13 @@ One distinction is load-bearing for Argent's role mapping: policies govern org-c
 
 The integration expresses Argent's role authority as DFNS wallets and policies, not only as contract-level require_auth. The contract still enforces its invariants; DFNS adds the institutional approval layer above them.
 
-Bank: org-controlled wallet. Its acts (open line, authorize release, issue default notice, record enforcement) are the institutionally sensitive ones and must be policy-governed.
+Bank: org-controlled wallet. In the current branch its acts include opening a line, authorizing release, issuing default notice, and recording enforcement. In the target facility the same role also approves product sublimits, obligation issuance, amendments, claims, settlement instructions, reimbursement treatment, and discharge. These are institutionally sensitive acts and must be policy-governed.
 
 Custodian: org-controlled wallet. Its acts (immobilize, confirm release, confirm realization) are the physical-control counter-signatures and must be governed and quorum-eligible.
 
 Enforcement / liquidation parties: org-controlled wallets, governed by the strictest policies (quorum, possibly a time delay).
 
-Owner / borrower: a deliberate choice. If their drawdowns should be policy-checked (velocity, amount limits), they are org-controlled. If they are meant to self-sign with full autonomy, they are delegated, and then their actions bypass the policy engine by design. For a bank-issued secured facility, the default is org-controlled so draws can be governed.
+Owner / facility customer: a deliberate choice. In the current reference branch, drawdown requests may be policy-checked. In the target obligation facility, the owner may request an approved instrument but cannot direct an unrestricted cash withdrawal. If its requests require institutional policy checks, use an org-controlled wallet. If it is meant to self-sign requests autonomously, use a delegated wallet and rely on contract and bank-side eligibility gates, knowing delegated wallets bypass DFNS governance by design.
 
 The decision rule: govern it with a policy means org-controlled; let the party self-sign autonomously means delegated. Pick per role, deliberately, knowing delegated bypasses governance.
 

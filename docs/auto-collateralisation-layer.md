@@ -2,7 +2,7 @@
 
 **How Argent moves from a governed collateral-control record to a policy-driven collateral mobilisation engine, using the Eurosystem's T2S auto-collateralisation as the reference design.**
 
-**Status:** product and architecture direction, not current committed build
+**Status:** funded-liquidity research extension, not the primary product and not the current implementation
 **Reference implementation:** Soroban / Stellar
 **First collateral adapter:** allocated physical gold
 **Last updated:** 2026-07-09
@@ -13,13 +13,13 @@
 
 ## Status: where this sits
 
-**Live now.** The Argent core is a governed collateral-control record: three Soroban contracts recording the secured-credit lifecycle for physical collateral in custody, with role-signed transitions for pledge, valuation, margin state, drawdown, repayment, two-step release, default, cure, and enforcement.
+**Product direction.** Argent is evolving toward a non-cash-drawable corporate reserve obligation facility: identified collateral supports guarantees, documentary credits, supplier undertakings, treasury exposure, and other purpose-bound bank obligations.
 
-**Committed next.** The DFNS-governed mainnet reference implementation, as defined in `argent-architecture.md`.
+**Implemented now.** The core is a governed secured-credit reference branch with three Soroban contracts and role-signed transitions for pledge, valuation, utilization, repayment, release, default, cure, and enforcement.
 
-**Roadmap.** The pool and position model, scheduled revaluation, and safe substitution, as defined in `product-roadmap.md`.
+**Institutionalization next.** The DFNS-governed signing, approval, reconciliation, and mainnet reference implementation defined in `argent-architecture.md`.
 
-**This document.** The layer after that: automation of the credit event itself. Everything Argent records today is initiated by a person and approved by counterparties. This note describes how the same record, under the same governance, becomes self-triggering: a permitted liquidity need mobilises pre-approved collateral automatically, within limits and policies the parties signed in advance, with every automated act recorded as a signed, auditable event.
+**This document.** A later, optional funded-liquidity extension: automation of a tightly bounded credit event when a bank and customer expressly choose funded settlement. It is not the default product path and must not introduce an unrestricted customer cash draw. Everything Argent records today is initiated by a person and approved by counterparties. This note describes how the same record, under the same governance, becomes self-triggering: a permitted liquidity need mobilises pre-approved collateral automatically, within limits and policies the parties signed in advance, with every automated act recorded as a signed, auditable event.
 
 The design is not invented. It is a translation of one of the clearest large-scale production precedents for automated collateral mobilisation: the Eurosystem's T2S auto-collateralisation (T2SAC), live since 2015 inside TARGET2-Securities. Where T2SAC mobilises securities against central bank money, the Argent auto-collateralisation layer mobilises the control state of physical collateral against a bank's credit line. The asset never moves and is never tokenized. What becomes automatic is the sequence of signed control events.
 
@@ -638,7 +638,7 @@ The following are not part of this layer unless separately approved and designed
 
 Stated in one paragraph:
 
-> Argent is a governed auto-collateralisation layer for physical reserves held in professional custody. The current build proves role-signed collateral control. The next layer makes credit events self-triggering under bank-defined policy: eligibility, valuation, earmarking, collateral selection, reservation, approval, drawdown evidence, repayment, cure, substitution, and escalation.
+> Argent is reserve-obligation infrastructure for physical reserves held in professional custody. The current build proves role-signed collateral control through a funded reference branch. Auto-collateralised credit is a later optional extension for approved settlement events, not the core customer promise and never an unrestricted cash-draw facility.
 
 Stated in one sentence:
 

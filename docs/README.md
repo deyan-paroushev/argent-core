@@ -1,64 +1,90 @@
 # Documentation
 
-Engineering and domain documentation for Argent Core.
+Engineering, protocol, market, risk, and integration documentation for Argent Core.
 
-**Start at the [root README](../README.md)** for the five-minute verification path. This index is for readers who need depth.
+**Start at the [root README](../README.md).** The repository now distinguishes clearly between:
 
-> **Implementation baseline.** Documents that make claims about contract behaviour record the commit they were verified against in their status header. Contract code evolves; a document naming a function is only as good as the commit it was checked at. `scripts/check_docs.py` enforces this in CI.
+- the **mature product direction** - reserve-backed, purpose-bound bank obligations;
+- the **implemented reference branch** - the tested secured-credit lifecycle;
+- later **research and interoperability extensions**.
 
----
+Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a document as evidence of shipped functionality.
 
-## Core
-
-| Document | Purpose |
-|---|---|
-| [`REVIEWER_QUICKSTART.md`](REVIEWER_QUICKSTART.md) | What the contracts prove, and how to check each claim yourself. |
-| [`argent-architecture.md`](argent-architecture.md) | Architecture, actor model, function map, on-chain/off-chain boundary. **Authoritative** wherever it and another document disagree. |
-| [`protocol.md`](protocol.md) | The Argent Protocol: physical-collateral control as a signed, ordered, verifiable event chain. |
-| [`TEST_SURFACE_MATRIX.md`](TEST_SURFACE_MATRIX.md) | What the 224 tests cover. |
-
-## Domain model
-
-| Document | Purpose |
-|---|---|
-| [`bullion-collateral-reference-architecture.md`](bullion-collateral-reference-architecture.md) | **Specification.** Twelve requirements bullion makes of *any* system controlling it as collateral, vendor-neutral, with a conformance checklist. Answers: what does correctness mean here? |
-| [`bullion-collateral-system-design.md`](bullion-collateral-system-design.md) | **Build plan.** Representation taxonomy, product profiles, lifecycle state machines, integration architecture, roadmap. Answers: what should be constructed, in what order? |
-| [`collateral-eligibility-and-rights-model.md`](collateral-eligibility-and-rights-model.md) | The rights gate. **Not all gold is collateral** — a holding's legal rights must be classified before it can enter a borrowing base. **Specifies a gap, not shipped code** (§9). |
-| [`collateral-control.md`](collateral-control.md), [`collateral-as-locked-value.md`](collateral-as-locked-value.md), [`custodian-as-security-infrastructure.md`](custodian-as-security-infrastructure.md) | The control model and the custodian's role. |
-
-## Credit policy and risk
-
-| Document | Purpose |
-|---|---|
-| [`credit-control-extension-points.md`](credit-control-extension-points.md) | Controls a lender may ask for that the contract does **not** enforce today, what each would take, and which should **never** be built because they are determinations a bank makes rather than computations a contract can perform. |
-| [`collateral-eligibility-and-risk-policy.md`](collateral-eligibility-and-risk-policy.md) | Eligibility and risk treatment. |
-| [`collateral-failure-modes.md`](collateral-failure-modes.md) | How this fails, and what the contract does about it. |
-| [`threat-model-and-security-boundaries.md`](threat-model-and-security-boundaries.md) | What the ledger proves, what it does not, and what it rests on. |
-
-## Positioning
-
-| Document | Purpose |
-|---|---|
-| [`why-gold-secured-operational-credit.md`](why-gold-secured-operational-credit.md) | Why borrowing against allocated gold rather than selling it is an established institutional market, and what the operating-infrastructure gap is. |
-| [`commodity-finance-positioning.md`](commodity-finance-positioning.md) | The core is asset-agnostic. Where else it binds. |
-| [`physical-collateral-and-trade-finance.md`](physical-collateral-and-trade-finance.md) | Relationship to warehouse-receipt and trade finance. |
-| [`gold-market-notes.md`](gold-market-notes.md) | Market reference. |
-
-## Integration and operations
-
-| Document | Purpose |
-|---|---|
-| [`bank-integration-and-adapter-strategy.md`](bank-integration-and-adapter-strategy.md) | How a bank connects to this. |
-| [`argent-dfns-signing-sequence.md`](argent-dfns-signing-sequence.md) | Institutional key governance. |
-| [`integration-and-interoperability.md`](integration-and-interoperability.md), [`auto-collateralisation-layer.md`](auto-collateralisation-layer.md) | Interop surfaces. |
-| [`deployment-and-runbook.md`](deployment-and-runbook.md) | Deployment. |
-| [`evidence-pack-index.md`](evidence-pack-index.md) | Evidence and audit artefacts. |
-| [`design-partners.md`](design-partners.md), [`product-roadmap.md`](product-roadmap.md) | Where this is going. |
+> **Implementation baseline.** Documents that make claims about current contract behavior are checked against the source. `scripts/check_docs.py` fails when named functions, lifecycle order, implemented controls, references, or licensing claims drift from the repository.
 
 ---
 
-## The boundary, across every document
+## Start here
 
-Custody stays with the custodian. Ownership stays with the owner. Credit exposure stays with the lender. Argent records and enforces the authorised control state — it does not create the security interest, does not tokenize the metal, does not value the collateral independently of the lender, and does not execute enforcement.
+| Document | Purpose |
+|---|---|
+| [`reserve-obligation-infrastructure.md`](reserve-obligation-infrastructure.md) | **Canonical product direction.** One reserve, many bank obligations, one authoritative capacity state. |
+| [`obligation-facility-profile.md`](obligation-facility-profile.md) | **Target facility specification.** Non-cash-drawable capacity, typed obligations, sublimits, claims, reimbursement, and release. |
+| [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) | **Scope map.** Distinguishes live implementation, target profile, domain specification, and research. |
+| [`REVIEWER_QUICKSTART.md`](REVIEWER_QUICKSTART.md) | **Implementation proof.** Verify the 224-test Soroban reference branch. |
+| [`argent-architecture.md`](argent-architecture.md) | **Architecture.** Actors, trust boundaries, contract map, Stellar and DFNS integration, and product evolution. |
+| [`protocol.md`](protocol.md) | **Protocol specification.** Event-sourced control of physical reserves, with the secured-credit profile implemented today. |
 
-Where any document and [`argent-architecture.md`](argent-architecture.md) touch, **the architecture document is authoritative.**
+---
+
+## Product and market direction
+
+| Document | Purpose |
+|---|---|
+| [`commodity-finance-positioning.md`](commodity-finance-positioning.md) | Positioning Argent as gold-backed obligation infrastructure rather than a general cash-credit product. |
+| [`physical-collateral-and-trade-finance.md`](physical-collateral-and-trade-finance.md) | How reserve control, bank undertakings, trade documents, and settlement fit together. |
+| [`why-gold-secured-operational-credit.md`](why-gold-secured-operational-credit.md) | Legacy filename retained for link stability; now explains why gold can support obligations while fiat remains available. |
+| [`design-partners.md`](design-partners.md) | Priority design partners, pilot profiles, and what each participant must validate. |
+| [`gold-market-notes.md`](gold-market-notes.md) | Market reference only; not the product definition. |
+
+---
+
+## Architecture, domain, and protocol
+
+| Document | Purpose |
+|---|---|
+| [`bullion-collateral-reference-architecture.md`](bullion-collateral-reference-architecture.md) | Vendor-neutral correctness requirements for bullion under collateral control. |
+| [`bullion-collateral-system-design.md`](bullion-collateral-system-design.md) | Representation, lifecycle, product profiles, and build plan. |
+| [`collateral-eligibility-and-rights-model.md`](collateral-eligibility-and-rights-model.md) | Rights classification before a holding may enter a bank capacity calculation. |
+| [`collateral-control.md`](collateral-control.md) | Control patterns for pledge, substitution, sale, settlement, release, and enforcement. |
+| [`collateral-as-locked-value.md`](collateral-as-locked-value.md) | Why physical reserves require instrumentation before they can support bank products. |
+| [`custodian-as-security-infrastructure.md`](custodian-as-security-infrastructure.md) | Custodian control as the physical root of trust. |
+
+---
+
+## Risk and security
+
+| Document | Purpose |
+|---|---|
+| [`collateral-eligibility-and-risk-policy.md`](collateral-eligibility-and-risk-policy.md) | Eligibility, valuation, haircut, concentration, exposure, margin, substitution, and escalation. |
+| [`collateral-failure-modes.md`](collateral-failure-modes.md) | Documented physical-collateral losses and the control invariants they imply. |
+| [`threat-model-and-security-boundaries.md`](threat-model-and-security-boundaries.md) | Protected assets, adversaries, trust assumptions, and explicit non-goals. |
+| [`credit-control-extension-points.md`](credit-control-extension-points.md) | Legacy filename; distinguishes current funded controls from target obligation controls and later candidates. |
+
+---
+
+## Institutional signing, bank integration, and interoperability
+
+| Document | Purpose |
+|---|---|
+| [`argent-dfns-signing-sequence.md`](argent-dfns-signing-sequence.md) | DFNS permissions, policy gates, approval quorums, asynchronous signing, and reconciliation. |
+| [`bank-integration-and-adapter-strategy.md`](bank-integration-and-adapter-strategy.md) | Sidecar integration with bank limits, trade-finance, treasury, custody, accounting, and evidence systems. |
+| [`integration-and-interoperability.md`](integration-and-interoperability.md) | Ledger-neutral coexistence and authoritative-system boundaries. |
+| [`auto-collateralisation-layer.md`](auto-collateralisation-layer.md) | Later funded-liquidity extension; not the primary obligation-first product. |
+
+---
+
+## Verification, evidence, deployment, and roadmap
+
+| Document | Purpose |
+|---|---|
+| [`TEST_SURFACE_MATRIX.md`](TEST_SURFACE_MATRIX.md) | Test counts and security surfaces. |
+| [`evidence-pack-index.md`](evidence-pack-index.md) | Source, testnet, certificate, and production-evidence map. |
+| [`deployment-and-runbook.md`](deployment-and-runbook.md) | Current contract deployment and operation. |
+| [`product-roadmap.md`](product-roadmap.md) | Sequenced evolution from the live reference branch to governed obligations and interoperability. |
+
+---
+
+## Governing rule
+
+For current behavior, the source code and tests govern. For product direction, `reserve-obligation-infrastructure.md` governs. For the target facility model, `obligation-facility-profile.md` governs. No document should be read as claiming that typed bank obligations are already implemented.

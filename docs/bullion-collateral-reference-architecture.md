@@ -1,5 +1,7 @@
 # Bullion collateral: a reference architecture
 
+> **Positioning status:** This reference architecture is the collateral foundation for the mature corporate reserve obligation facility. Credit-specific examples describe the implemented reference branch; they should not be read as the sole target product.
+
 > **Status:** Draft for design-partner review · **Implementation baseline:** `argent-core` @ `646878f` · **Last reviewed:** 2026-07-11
 > Claims about contract behaviour in this document were verified against `contracts/credit_ledger/` at the baseline above. Contract code evolves; re-verify before relying on any specific claim.
 

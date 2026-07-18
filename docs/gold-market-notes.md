@@ -1,5 +1,7 @@
 # Gold Market Notes
 
+> **Document role:** Market background only. Current product positioning is defined in `reserve-obligation-infrastructure.md`; the implemented code remains the secured-credit reference branch.
+
 Notes on the gold market Argent works in: how much gold exists, who holds it, whether lending against it is already common, and where the institutional side seems to be heading. This is background research, not a pitch. Sources are linked at the end so anything here can be checked, and where a number is an estimate or a range it is written that way.
 
 Related docs: `collateral-control.md`, `commodity-finance-positioning.md`.

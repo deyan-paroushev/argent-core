@@ -1,81 +1,100 @@
 # Argent Protocol Whitepaper
 
-**Event-sourced physical collateral control for assets that remain in custody.**
+**Event-sourced control of physical reserves, capacity, and bank obligations.**
 
-**Public core specification v0.1** · revised 2026-06-29  
+**Public core specification v0.2-draft** · revised 2026-07-18  
 **Reference implementation:** Soroban / Stellar  
-**First asset adapter:** allocated physical gold  
-**First application:** DFNS-governed physical collateral book of record on Stellar
+**First reserve adapter:** allocated physical gold  
+**Implemented profile:** secured-credit reference branch  
+**Target product profile:** non-cash-drawable reserve obligation facility
 
-> Public document. This whitepaper defines the open protocol core. It intentionally excludes commercial strategy, partner pipeline, pricing, private deployment plans, and institution-specific legal analysis. Those belong in a private companion document. The current build scope remains narrower: ship the Soroban reference implementation and DFNS-governed mainnet application. The protocol described here is the larger public direction that the reference implementation proves.
+> Public document. This whitepaper defines the open protocol core and distinguishes the implemented reference profile from the mature product direction. It intentionally excludes institution-specific pricing, private partner strategy, and deployment-specific legal opinions. Source code and tests govern current behavior.
 
 ---
 
 ## Abstract
 
-Argent Protocol is an open, event-sourced protocol for controlling and proving the lifecycle of physical collateral that remains in professional custody. It does not tokenize the asset, hold title, custody the asset, lend money, issue credit, or enforce legal remedies. Instead, it records the ordered chain of signed collateral-control events that make a physical asset usable as bank collateral: identity, custody attestation, immobilization, pledge, line approval, drawdown, revaluation, repayment, release, default, cure, enforcement evidence, and audit trail.
+Argent Protocol is an open, event-sourced protocol for controlling and proving the lifecycle of physical reserves that remain in professional custody. It does not tokenize the asset, hold title, custody the asset, issue a guarantee or documentary credit, lend money, create a private currency, or execute legal enforcement. It records the ordered chain of signed control events that make a physical reserve usable beneath bank products: identity, custody attestation, immobilization, eligibility, valuation, exclusive pledge, capacity, allocation, reimbursement, release, default, cure, enforcement evidence, and audit trail.
 
-The protocol is asset-agnostic by design. It governs control over any custody-stable physical commodity, that is, a physical asset held under professional physical custody (a vault, a warehouse, a bonded warehouse, or a warehouse-receipt commodity store) whose identity, custody, and uniqueness can be evidenced, so that a financial institution can underwrite operational business credit against it. The governing structure carries no commodity: allocated gold, base and critical metals, and warehouse-held commodities bind at the leaf fields with no change to the structure. The boundary is custody, not commodity: the model holds for assets that stay put and stay identifiable, and does not extend to assets that move, are consumed, spoil, or are commingled without allocation.
+The mature product direction is **reserve-backed obligation infrastructure**. One controlled reserve may support multiple purpose-bound bank obligations - guarantees, documentary credits, supplier undertakings, regulatory security, treasury exposures, and other approved instruments - while one authoritative state prevents duplicate allocation and premature release. Unused capacity is not intended to be drawable by the reserve owner as unrestricted cash. The bank remains the product issuer, the custodian remains the physical control point, and the beneficiary receives a bank obligation rather than rights over the gold.
 
-The first reference implementation is written in Soroban on Stellar. The first asset adapter is allocated physical gold because allocated custody already has mature evidence primitives: bar serial numbers, barlists, allocation records, custodian acknowledgements, settlement confirmations, and audit records. Gold is the first worked adapter, not the definition of the protocol. The instrument and eligibility model follows the ISDA Common Domain Model (CDM) collateral-criteria / treatment taxonomy so the same structure interoperates across commodities and with systems that already speak CDM. The first application uses DFNS-governed role wallets so each institution signs only the action it controls.
+The current Soroban contracts implement the first executable profile: a secured-credit lifecycle. They prove the collateral-control primitives shared by the broader facility: instrument admission, lot identity, exclusive pledge, borrowing-base computation, utilization, atomic repayment, controlled adjustment, dual-control release, default, cure, enforcement, canonical events, and replay. The obligation profile generalizes the facility and exposure objects; it does not relabel unimplemented behavior as complete.
 
-The protocol thesis is simple:
+The protocol is asset-agnostic within a strict boundary. It applies to custody-stable physical reserves whose identity, custody, uniqueness, and control can be evidenced. Allocated gold is the first adapter because it has mature bar-level identity, custody, valuation, and liquidation practices. Other custody-stable metals or warehouse-held assets may be supported only through their own rights, eligibility, valuation, and evidence profiles.
 
-> A physical holding is not yet collateral. It becomes collateral when its lender-relevant constituents, identity, custody, quality, eligibility, valuation, exclusivity, control state, and release path, are made legible to a lender. Argent operationalizes possession into collateral by recording those constituents as a shared, signed, replayable control record, without tokenizing the asset or moving it from custody.
+The protocol thesis is:
 
-Argent Protocol therefore treats collateral as an operationalized state of a holding, recorded as an event sequence, not as a tradable ownership token. DFNS governs who signs. Soroban preserves what happened. The asset stays in custody. The conceptual model in section 4 develops this transformation in full.
+> A physical holding becomes bank-usable reserve capacity when its identity, custody, rights, eligibility, valuation, exclusivity, authority, and release path are represented as a shared, signed, replayable control state.
+
+Argent therefore models the control and obligation lifecycle around the reserve, not a tradable ownership token. DFNS or an equivalent institutional signer governs who may authorize an act. Soroban preserves and enforces the shared state. Authoritative bank, custody, document, accounting, and legal systems retain their own roles.
 
 ---
 
 ## 1. Scope and status
 
-This document defines the **public protocol core**. It is intended for developers, reviewers, auditors, custodians, banks, ecosystem evaluators, and future contributors who need to understand the open architecture behind Argent.
+This document defines the **public Argent Protocol core**. It is intended for developers, reviewers, auditors, custodians, banks, trade-finance and treasury practitioners, ecosystem evaluators, and future contributors.
 
 ### 1.1 What this document covers
 
-This public whitepaper covers:
-
-- the problem Argent Protocol solves;
-- the design principles;
-- the actor and authority model;
-- the instrument-registry, admission, and governance-event model;
-- the event model;
-- the state machine;
-- the evidence model;
+- the product and protocol boundary;
+- physical-reserve identity, custody, eligibility, and capacity;
+- actor and authority separation;
+- canonical control and governance events;
+- the current secured-credit reference profile;
+- the target reserve obligation facility profile;
+- evidence, privacy, settlement, reimbursement, release, default, and enforcement;
 - the allocated-gold adapter;
 - the Soroban reference architecture;
-- the role-policy model for DFNS-governed signing;
+- DFNS-governed institutional signing;
 - security properties and residual risks;
-- implementation snippets and expected open-source components;
-- a cautious chain-portability path.
+- cautious chain and system portability.
 
 ### 1.2 What this document does not cover
 
-This document does **not** cover:
-
 - commercial pricing;
-- bank/custodian target lists;
-- private partner strategy;
+- private partner or investor pipeline;
 - deployment-specific legal opinions;
-- jurisdiction-specific enforceability analysis;
-- production KYC/AML design;
-- confidential risk models;
-- hosted UI or SaaS monetization;
-- future private integrations.
+- jurisdiction-specific enforceability conclusions;
+- production KYC, sanctions, accounting, or regulatory-capital design;
+- confidential bank risk models;
+- claims that target obligation types are already implemented.
 
-### 1.3 Relationship to the current build
+### 1.3 Relationship to the implementation
 
-The current build is narrower than this protocol vision. It is a focused implementation path: take the tested Soroban prototype to a DFNS-governed mainnet reference deployment and open-source the reusable DFNS and Soroban authorization adapter.
+The repository contains a tested Soroban implementation of the secured-credit profile. That branch is the protocol's first proof, not the complete product surface.
 
-This whitepaper shows why that build matters beyond one app. It does **not** expand the current build scope.
+The current contracts implement framework registration, instrument registration and admission, position and lot control, custodian immobilization, pledge activation, credit-line opening, utilization and reversal, repayment, collateral adjustment, revaluation and margin, release, default and cure, enforcement readiness, and enforcement recording.
 
-### 1.4 Implementation status and the protocol/contract boundary
+The next profile adds a generic master facility, product sublimits, beneficiaries, capacity reservations, typed bank obligations, contingent and crystallized exposure, presentation and claim states, reimbursement, discharge, and a no-unrestricted-cash-draw rule.
 
-The current Soroban contracts implement the core lifecycle invariants described in this document: framework registration, position registration, collateral selection, custodian immobilization, pledge activation, credit line opening, drawdown and reversal, repayment, collateral adjustment, revaluation and margin, release, default and cure, enforcement readiness, and enforcement recording.
+### 1.4 Protocol and contract naming boundary
 
-Some objects in this document, including the canonical `CollateralEvent`, the `EvidenceRef` and `EvidenceFunction` model, and the adapter schemas, are protocol-level normalization objects. They describe how the open protocol should expose, normalize, and index the underlying contract state and events for indexers, evidence certificates, and protocol-facing tooling. They are not claimed to be the exact in-contract struct names. Where a contract API name differs from a protocol name, the Soroban event mapping in section 9.3 and the reference implementation are authoritative.
+Protocol objects normalize the economic model. Contract names expose the current implementation. A protocol term such as `BankObligation` or `CapacityReservation` does not imply that an identically named Soroban struct or function exists today.
 
-**Revision (2026-06-29).** This revision of the current public core (v0.1) adds the instrument-registry and admission model: an asset class is registered once as a reusable instrument, then admitted to a framework as eligible collateral under an explicit treatment (haircut, maximum advance rate, maintenance threshold). These authority acts are recorded on a `GovernanceEventV1` stream, distinct from the per-framework `CollateralEventV1` deal stream. It also generalizes the position-uniqueness commitment from a gold-specific serials hash to an asset-agnostic `uniqueness_hash` (for the gold adapter, derived from the barlist and serial set), and states the asset-agnostic, custody-bounded thesis and the ISDA CDM alignment explicitly. The reference implementation in `credit_ledger` carries all of these. The machine-readable JSON schemas and test vectors for these objects remain the v0.2 milestone in section 21.
+Where a protocol name and contract API differ:
+
+1. the source and tests govern current behavior;
+2. `argent-architecture.md` maps implementation to protocol concepts;
+3. `obligation-facility-profile.md` defines the target extension;
+4. canonical event schemas govern wire and replay behavior where implemented.
+
+### 1.5 Protocol profiles
+
+#### Profile A - secured-credit reference profile
+
+Implemented today. A bank opens and manages a secured line against controlled collateral. The profile proves capacity, utilization, repayment, release, and adverse-path invariants.
+
+#### Profile B - reserve obligation facility
+
+Target product profile. A bank uses controlled reserve capacity to issue purpose-bound obligations. Free capacity cannot be withdrawn as unrestricted customer cash. Obligations may expire, be cancelled, be presented or claimed, crystallize into reimbursement exposure, or proceed to enforcement.
+
+#### Profile C - funded liquidity and auto-collateralisation
+
+Research extension only. Pre-approved collateral may support just-in-time funded settlement under strict policy and timing controls. This is not the primary product direction and is not part of the current implementation claim.
+
+### 1.6 Revision note
+
+This revision updates the protocol positioning from a credit-line-first product to reserve-backed obligation infrastructure while preserving the secured-credit contracts as the implemented reference profile. It adds the profile distinction, capacity-allocation direction, beneficiary and obligation concepts, and the explicit no-unrestricted-cash-draw boundary. It does not alter or overstate the current contract behavior.
 
 ---
 
@@ -85,7 +104,8 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**, 
 
 | Term | Meaning in Argent Protocol |
 |---|---|
-| Physical collateral | A physical asset held by a custodian or warehouse and used to secure credit. |
+| Physical reserve | A physical asset held under professional custody and made eligible to support bank-approved capacity. |
+| Physical collateral | A physical reserve subject to an effective security and control arrangement. |
 | Allocated gold | Specific gold bars legally assigned to an owner, identified through bar serial numbers, refiner marks, weight, fineness, and custody records. |
 | Control event | A signed protocol event that changes or proves the collateral-control state. |
 | Event mirror | The on-chain sequence that mirrors real-world collateral acts without owning or moving the asset. |
@@ -93,7 +113,10 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**, 
 | Authority | The right of a role to sign a specific event for a specific collateral reference. |
 | Role wallet | A wallet controlled by a specific actor or authority class, such as bank-release authority or custodian-control authority. |
 | Custody-native | A design where the asset remains with the existing custodian while control events are recorded and enforced through protocol state. |
-| Reference implementation | The first concrete implementation of the protocol. In v0.1, this is Soroban on Stellar. |
+| Reference implementation | The first concrete implementation of the protocol. The current Soroban contracts implement the secured-credit profile. |
+| Master facility | The bank-approved relationship under which reserve capacity may support permitted products. |
+| Bank obligation | A bank-issued guarantee, documentary credit, undertaking, accepted instrument, treasury exposure, or other approved product supported by facility capacity. |
+| Capacity reservation | A purpose-bound allocation of free facility capacity to a requested or active obligation. |
 
 ---
 
@@ -149,6 +172,24 @@ The protocol gives every party the same map of who did what, under what authorit
 
 ---
 
+### 3.4 The obligation-capacity problem
+
+A company often needs the bank's promise before it needs the bank's cash. Guarantees, documentary credits, accepted obligations, hedging limits, and regulatory security can unlock contracts, shipments, supplier terms, customer advances, and market access without an unrestricted draw into the customer's account.
+
+The target protocol profile therefore treats the pledged reserve as a capacity source for purpose-bound bank obligations. Capacity is reserved when an instrument is approved, remains encumbered while exposure is active or may crystallize, and is restored only after expiry, cancellation, discharge, or reimbursement. A valid claim or presentation may convert contingent exposure into a funded reimbursement obligation.
+
+The protocol must distinguish:
+
+- instrument face amount;
+- reserved capacity;
+- contingent exposure;
+- pending-claim exposure;
+- funded bank payment;
+- reimbursement due;
+- free reserve capacity.
+
+The customer MUST NOT be able to convert unused capacity into unrestricted cash under Profile B.
+
 ## 4. Conceptual model
 
 Argent Protocol is best understood as one transformation, supported by three ideas.
@@ -178,7 +219,7 @@ passive holding
      eligibility, valuation, exclusivity, control state, release path)
   -> on-chain, role-signed control record
   -> lender-readable collateral
-  -> operational credit capacity
+  -> operational bank-obligation capacity
 ```
 
 Stated as a thesis:
@@ -1369,17 +1410,27 @@ The protocol exists to make physical collateral **verifiable as collateral-contr
 
 ---
 
+The protocol also does not:
+
+- issue sovereign or private money;
+- create a freely transferable capacity token;
+- give beneficiaries a direct claim over the pledged bars;
+- allow an unrestricted customer cash withdrawal under the obligation profile;
+- replace the bank's credit, trade-finance, treasury, accounting, or regulatory systems.
+
 ## 23. Conclusion
 
-Argent Protocol makes physical collateral programmable without turning it into a token.
+Argent is a protocol for making the control state of custody-stable physical reserves institutionally usable. Its mature profile is not a private currency, gold token, or general cash-draw product. It is a bank-operated reserve obligation facility in which one controlled bullion pool can support multiple purpose-bound instruments while one authoritative capacity state prevents over-commitment.
 
-It does this by defining a public event model for collateral control: every material act is signed by the correct role, linked to the correct asset, bound to typed evidence, ordered in sequence, and recorded in a replayable state machine. The asset remains with the custodian. Legal title remains off-chain. Enforcement happens in law and custody. The protocol preserves the ordered facts that let every party verify what happened and what rights follow.
+The current Soroban contracts implement the secured-credit reference branch and prove the hardest shared primitives: identity, authority, exclusive pledge, eligibility, valuation, utilization, settlement-linked exposure reduction, release, default, cure, and enforcement evidence. The target obligation profile generalizes facility, exposure, beneficiary, claim, reimbursement, and discharge states without discarding that foundation.
 
-This is the public core:
+The protocol's governing proposition is:
 
-> an event-sourced, chain-portable protocol for physical collateral control, implemented first in Soroban, proven first on allocated gold, and built to make custody-stable physical assets usable as verifiable collateral without tokenizing them.
+> **One reserve. Many obligations. One authoritative capacity state.**
 
----
+And its commercial boundary is:
+
+> **Use gold to secure the promises. Keep cash for operations and final settlement.**
 
 ## References
 

@@ -1,5 +1,7 @@
 # Argent Core test surface
 
+> **Scope:** This matrix covers the implemented secured-credit reference branch. It proves the collateral-control substrate on which the target obligation facility is designed to build; it does not claim that guarantees, documentary credits, claims, or product sublimits are implemented.
+
 What the contract test suite covers, and the risk each surface addresses. Every
 row maps to tests in this repository, runnable with `cargo test --workspace`.
 

@@ -1,5 +1,7 @@
 # Collateral Eligibility and Risk Policy Framework
 
+> **Positioning status:** The policy applies to the full reserve obligation facility. Eligibility determines usable reserve capacity; product sublimits, contingent exposure, claims, reimbursement exposure, and funded settlement determine how that capacity is consumed. The current contracts implement the secured-credit reference branch.
+
 **How a bank defines eligible physical collateral, valuation, haircuts, concentration limits, substitution rules, and escalation, and how Argent enforces that policy once it is signed.**
 
 **Status:** design-partner policy framework, not current committed build

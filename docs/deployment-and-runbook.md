@@ -1,5 +1,7 @@
 # Deployment and Operations Runbook
 
+> **Implementation scope:** This runbook deploys and exercises the current secured-credit reference contracts. It does not deploy the target typed-obligation extension. The institutional signing and evidence work remains reusable across both profiles.
+
 **Argent Core V5. Soroban testnet and mainnet deployment runbook.**
 
 Status: operational runbook. This document is written for a reviewer, operator, or future maintainer who needs to build, deploy, initialize, verify and exercise the Argent Core contracts.

@@ -1,5 +1,7 @@
 # Argent: Programmable Collateral Control
 
+> **Positioning status:** This document describes the control foundation shared by all Argent profiles. The implemented profile is secured credit; the target commercial profile is a non-cash-drawable reserve obligation facility. Read current function references as evidence of the implemented branch, not as a limit on the protocol direction.
+
 **How physical collateral in custody becomes controllable, mobile, and lender-safe, without ever being tokenized.**
 
 *This is a product and thesis document, not legal, banking, or investment advice. The forward-looking features described are not production commitments. Any production deployment would require jurisdiction-specific legal review, custody agreements, bank credit policy, security review, and independent audit. The committed build scope and its engineering sequence are defined separately in `product-roadmap.md`.*

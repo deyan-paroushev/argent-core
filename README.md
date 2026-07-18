@@ -1,20 +1,86 @@
 # Argent Core
 
-**Asset-agnostic collateral-control contracts for Soroban.**
+**Gold-backed obligation infrastructure on Stellar.**
 
-The asset stays in the vault. Only the **control** over it becomes programmable. Nothing here tokenizes, custodies, or moves the physical asset.
+Argent is a Soroban-first control protocol for turning identifiable, customer-owned physical reserves into reusable, purpose-bound capacity for bank-issued obligations. The first reference asset is allocated gold. The bars remain in professional custody, the company retains title subject to the pledge, the bank remains the product issuer, and unused facility capacity is not intended to be drawable as unrestricted cash.
 
-A holder pledges a custodied physical asset. A bank opens a secured credit line against it. The asset is never sold or moved. Pledge, borrowing base, drawdown, repayment, release, default, and enforcement are recorded on Soroban as **role-signed state transitions between parties who do not fully trust each other** — owner, bank, custodian.
+> **One reserve. Many obligations. One authoritative capacity state.**
+>
+> Use gold to secure the promises. Keep cash for operations and final settlement.
 
-Argent runs on allocated gold because it is the cleanest institutional proof case. **The core is not a gold product.** The governing structure carries no commodity; the same contracts bind other custody-stable assets (base metals, critical minerals, warehouse-held commodities) at the leaf fields, with no change to the structure.
+The mature product direction is a **corporate reserve obligation facility**. One controlled bullion pool can support approved guarantees, documentary credits, supplier undertakings, regulatory security, treasury exposures, and other beneficiary-specific bank instruments. Argent coordinates reserve identity, eligibility, capacity allocation, authorization, reimbursement, release, default, and enforcement evidence without tokenizing the metal or replacing the bank, custodian, legal documents, or trade-finance system.
 
-These contracts are the first reference implementation of the [Argent Protocol](docs/protocol.md), an open specification for expressing physical-collateral control as a signed, ordered, verifiable event chain. **The durable contribution is the protocol; this Soroban implementation is the first proof of it.**
+The code in this repository is the tested **secured-credit reference branch** of that broader protocol. It proves the difficult shared primitives through real Soroban state transitions: instrument eligibility, lot identity, exclusive pledge, borrowing-base computation, utilization, atomic repayment, dual-control release, default, cure, and enforcement recording. The obligation profile generalizes those primitives; it does not discard or misrepresent the implementation that exists today.
+
+Start with:
+
+- [`docs/reserve-obligation-infrastructure.md`](docs/reserve-obligation-infrastructure.md) - the current product thesis and institutional value proposition.
+- [`docs/obligation-facility-profile.md`](docs/obligation-facility-profile.md) - the target non-cash-drawable facility model and its relationship to the current contracts.
+- [`docs/DOCUMENT_STATUS_MATRIX.md`](docs/DOCUMENT_STATUS_MATRIX.md) - which documents describe shipped code, product direction, or later extensions.
+- [`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md) - the five-minute verification path for the implementation.
 
 ---
 
-## Verify it in five minutes
+## The product boundary
 
-Every claim below is one you can check yourself. That is the point of the repository.
+### What Argent is
+
+A shared, role-signed control layer for physical reserves that remain under professional custody. It gives the participating institutions one ordered state for:
+
+- asset and lot identity;
+- custody and immobilization;
+- eligibility and valuation treatment;
+- exclusive pledge and available capacity;
+- allocation to a bank-approved obligation;
+- reimbursement, release, default, and enforcement evidence.
+
+### What Argent is not
+
+- not tokenized gold;
+- not a bank or credit originator;
+- not a custodian;
+- not a trade-finance platform;
+- not a private currency or freely transferable capacity token;
+- not an on-chain legal-enforcement engine;
+- not a replacement for bank underwriting, accounting, KYC, sanctions controls, legal opinions, or custody records.
+
+The bank issues the obligation. The custodian controls the reserve. The company remains the owner subject to the security interest. Argent governs and proves the shared capacity state.
+
+---
+
+## Two profiles, one protocol core
+
+### Target product profile - reserve-backed obligations
+
+```text
+Allocated reserve
+    -> bank-controlled pledge
+    -> approved master capacity
+    -> purpose-bound obligation reservation
+    -> bank guarantee / documentary credit / undertaking / treasury exposure
+    -> expiry, reimbursement, claim, or enforcement
+    -> capacity restored or collateral realized
+```
+
+The target facility rejects an unrestricted customer cash draw. Every utilization is tied to an approved product, purpose, amount, beneficiary, expiry or maturity, and evidence package.
+
+### Implemented reference profile - secured credit
+
+```text
+Allocated reserve
+    -> pledge
+    -> credit line
+    -> utilization
+    -> repayment
+    -> bank authorization
+    -> custodian-confirmed release
+```
+
+This branch is valuable because it already proves the shared collateral engine and the adverse paths that any obligation facility also needs. The contract names remain credit-oriented until the next domain-model extension; the repository states that boundary explicitly rather than relabeling unbuilt behavior as complete.
+
+---
+
+## Verify the implementation in five minutes
 
 ```bash
 git clone https://github.com/deyan-paroushev/argent-core
@@ -25,122 +91,104 @@ python3 scripts/check_docs.py                       # docs match the contract
 
 ### Four properties worth checking first
 
-Each is an **invariant enforced in code**, not a procedure that could be skipped under pressure. Each is one grep away.
-
-| Property | Where | If you try to violate it |
+| Property | Current proof | Failure behavior |
 |---|---|---|
-| **The custodian cannot release metal before the bank authorises it.** | `custodian_confirm_release` | The transaction is **rejected** unless the pledge is already in `ReleaseAuthorized`. Not "should not" — *cannot*. |
-| **The same bars cannot back two pledges.** | `uniqueness_hash` on the position | Uniqueness is keyed at the **lot**, not the position. This is the warehouse-receipt duplicate-financing control. |
-| **A credit line cannot open at its own margin-call level.** | `open_credit_line` | The contract enforces `ltv_bps < maintenance_bps`. Every facility starts with headroom by construction. |
-| **Repayment and exposure reduction are atomic.** | `settlement_vault` | The settlement asset moves and the drawn balance falls in one transaction, or neither does. |
+| **The same bars cannot support two active pledges.** | Lot-level `uniqueness_hash` | A second active pledge is rejected. |
+| **A facility cannot open without risk headroom.** | `open_credit_line` enforces `ltv_bps < maintenance_bps` | An unsafe line is rejected at creation. |
+| **Only the bound settlement vault can reduce exposure.** | Credit ledger authorization and vault binding | An unapproved caller cannot apply repayment. |
+| **Release requires two distinct institutional acts.** | Bank authorization followed by custodian confirmation | The custodian cannot release before the bank authorizes it. |
 
-Then read **[`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md)**.
-
----
-
-## What is on chain, and what is not
-
-The boundary is the design, and it is deliberately narrow.
-
-**On chain:** the control state. Who pledged, who immobilised, who authorised release, who confirmed it, when the line was revalued and against what price reference, who declared default.
-
-**Off chain:** the metal, the title, the credit exposure, the bar serials, the KYC, the legal documents. Sensitive detail is referenced by hash, never stored.
-
-**What these contracts do not do:** create the security interest (the pledge agreement does that), convey ownership, value the collateral independently of the lender, or execute enforcement. They record and enforce the *contractually authorised control state*. Where the record and the legal documents disagree, **the documents govern.**
+These are protocol-level controls, not operating procedures that can be skipped under pressure.
 
 ---
 
-## Why Stellar, specifically
+## Why Stellar
 
-Three protocol features do work no off-chain database can, which is the test that matters:
+Stellar/Soroban is not used as a document archive. Three features are structurally important:
 
-1. **Multi-party authorisation.** `require_auth` binds each state transition to the party that performed it. Owner, bank, and custodian each sign only their own act. The record is *evidential*, not merely informational.
-2. **Atomic settlement (SEP-41).** Repayment and exposure reduction occur in one transaction. A conventional payment rail cannot bind a value transfer to a collateral-state change atomically; Soroban can.
-3. **Shared, verifiable state.** The parties and an auditor read one role-signed control record, instead of reconciling four private systems by hand.
+1. **Role-specific authorization.** `require_auth` binds each state transition to the party that performs it. The bank, custodian, owner, verifier, and operator do not sign for one another.
+2. **Atomic value-state transitions.** Where regulated settlement value moves, the settlement transfer and exposure update can occur together or not at all.
+3. **Shared, replayable evidence.** The parties and an auditor can verify one ordered event history rather than reconciling several private records after the fact.
 
-Without Stellar, Argent is another private collateral database.
+The intended institutional signing layer is DFNS. DFNS policies and approvals govern whether an institutional role may sign; Soroban enforces whether the resulting state transition is valid. The reusable integration contribution is a Soroban-aware DFNS authorization adapter, approval-to-transaction reconciliation, and an institutional role blueprint that can support other Stellar applications requiring governed multi-party acts.
 
 ---
 
 ## Contracts
 
-| Contract | Role |
+| Contract | Implemented role |
 |---|---|
-| `credit_ledger` | The control core. Instrument registry, eligibility, pledge lifecycle, borrowing base, margin, adjustment, default, enforcement. |
-| `settlement_vault` | Atomic repayment. The settlement asset and the drawn balance move together, or not at all. |
-| `rewards_ledger` | Optional overlay. Not required by the control model. |
+| `credit_ledger` | Current collateral and secured-exposure reference branch: instruments, positions, pledge, borrowing base, utilization, margin, release, default, cure, and enforcement. |
+| `settlement_vault` | Atomic settlement-asset repayment bound to exposure reduction. |
+| `rewards_ledger` | Optional sponsor-funded rewards overlay; not part of the reserve-obligation core. |
 
-The instrument and eligibility model is shaped by the **ISDA Common Domain Model (CDM)** collateral taxonomy. An instrument is registered once as a reusable definition; a position references it. Full function map and actor model in [`docs/argent-architecture.md`](docs/argent-architecture.md).
+The next protocol extension generalizes the facility and exposure objects rather than replacing the collateral controls. See [`docs/obligation-facility-profile.md`](docs/obligation-facility-profile.md).
 
 ---
 
 ## Documentation
 
-**Three documents matter.** Everything else is reference, kept for anyone who needs to dig.
+### Canonical direction
 
-| | |
+| Document | Purpose |
 |---|---|
-| **[`REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md)** | **Start here.** What the contracts prove, and how to check each claim. |
-| **[`argent-architecture.md`](docs/argent-architecture.md)** | Architecture, actor model, function map, trust boundaries. **Authoritative** wherever it and any other document disagree. |
-| **[`protocol.md`](docs/protocol.md)** | The Argent Protocol specification. |
+| [`reserve-obligation-infrastructure.md`](docs/reserve-obligation-infrastructure.md) | Product thesis, stakeholder value, product boundary, and market category. |
+| [`obligation-facility-profile.md`](docs/obligation-facility-profile.md) | Target facility objects, states, invariants, and mapping to current contracts. |
+| [`argent-architecture.md`](docs/argent-architecture.md) | System architecture, roles, trust boundaries, and implementation relationship. |
+| [`protocol.md`](docs/protocol.md) | Open protocol specification and implemented reference profile. |
 
-<details>
-<summary><b>Reference documentation</b> — domain model, risk policy, integration, roadmap</summary>
+### Verification and operations
 
-<br>
+| Document | Purpose |
+|---|---|
+| [`REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md) | Verify the current contracts and testnet evidence. |
+| [`TEST_SURFACE_MATRIX.md`](docs/TEST_SURFACE_MATRIX.md) | What the 224 tests cover. |
+| [`argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md) | Institutional signing, policies, approvals, and role separation. |
+| [`deployment-and-runbook.md`](docs/deployment-and-runbook.md) | Deployment and operating procedures for the current reference branch. |
+| [`evidence-pack-index.md`](docs/evidence-pack-index.md) | Evidence and review artifacts. |
 
-**Domain model**
+### Domain, risk, trade finance, and integration
 
-- [`bullion-collateral-reference-architecture.md`](docs/bullion-collateral-reference-architecture.md) — twelve requirements that bullion makes of *any* system controlling it as collateral. Vendor-neutral, with a conformance checklist.
-- [`bullion-collateral-system-design.md`](docs/bullion-collateral-system-design.md) — representation taxonomy, lifecycle state machines, integration architecture.
-- [`collateral-eligibility-and-rights-model.md`](docs/collateral-eligibility-and-rights-model.md) — **not all gold is collateral.** Why a holding's legal rights must be classified before it can enter a borrowing base. *Specifies a gap; see "What is not built".*
-- [`collateral-control.md`](docs/collateral-control.md) · [`collateral-as-locked-value.md`](docs/collateral-as-locked-value.md) · [`custodian-as-security-infrastructure.md`](docs/custodian-as-security-infrastructure.md)
-
-**Credit policy and risk**
-
-- [`credit-control-extension-points.md`](docs/credit-control-extension-points.md) — controls a lender may ask for that the contract does **not** enforce, what each would take, and which should **never** be built.
-- [`collateral-eligibility-and-risk-policy.md`](docs/collateral-eligibility-and-risk-policy.md) · [`collateral-failure-modes.md`](docs/collateral-failure-modes.md) · [`threat-model-and-security-boundaries.md`](docs/threat-model-and-security-boundaries.md)
-
-**Positioning**
-
-- [`why-gold-secured-operational-credit.md`](docs/why-gold-secured-operational-credit.md) · [`commodity-finance-positioning.md`](docs/commodity-finance-positioning.md) · [`physical-collateral-and-trade-finance.md`](docs/physical-collateral-and-trade-finance.md) · [`gold-market-notes.md`](docs/gold-market-notes.md)
-
-**Integration and operations**
-
-- [`bank-integration-and-adapter-strategy.md`](docs/bank-integration-and-adapter-strategy.md) · [`argent-dfns-signing-sequence.md`](docs/argent-dfns-signing-sequence.md) · [`integration-and-interoperability.md`](docs/integration-and-interoperability.md) · [`auto-collateralisation-layer.md`](docs/auto-collateralisation-layer.md) · [`deployment-and-runbook.md`](docs/deployment-and-runbook.md) · [`evidence-pack-index.md`](docs/evidence-pack-index.md)
-
-**Testing and roadmap**
-
-- [`TEST_SURFACE_MATRIX.md`](docs/TEST_SURFACE_MATRIX.md) · [`design-partners.md`](docs/design-partners.md) · [`product-roadmap.md`](docs/product-roadmap.md)
-
-</details>
+See [`docs/README.md`](docs/README.md) and [`docs/DOCUMENT_STATUS_MATRIX.md`](docs/DOCUMENT_STATUS_MATRIX.md) for the complete map.
 
 ---
 
-## What is not built
+## What is live, what is next
 
-Stated on the front page rather than buried, because a reviewer will find it anyway and it is better to hear it from us.
+### Live and testable
 
-- **The rights gate.** The contract cannot yet reject a holding that is unallocated, non-transferable, or consent-gated — it would accept a *claim on a bank* as though it were metal. Specified in [`collateral-eligibility-and-rights-model.md`](docs/collateral-eligibility-and-rights-model.md) §9. **This is the highest-value item on the collateral-model roadmap**, because it gates every control downstream of it.
-- **Pre-call draw suspension.** Suspension *on* a margin call is automatic. A distinct threshold *before* the call is not implemented.
-- **A named commercial triangle.** The engine is proven. A pilot with a real borrower, a real custodian, and a real lender is not yet signed. That is the honest state.
+- three Soroban contracts;
+- 224 passing contract tests;
+- instrument eligibility and lot uniqueness;
+- tri-party pledge and secured-credit lifecycle;
+- canonical collateral and governance events;
+- atomic repayment;
+- controlled release, default, cure, and enforcement evidence;
+- Stellar testnet deployment and live demonstrator.
 
----
+### Next institutional layer
 
-## Documentation cannot drift
+- DFNS-governed organization wallets and approval policies;
+- reconciliation between DFNS approvals, Soroban authorization entries, transactions, and evidence;
+- mainnet reference deployment;
+- general master facility and typed bank obligations;
+- contingent versus crystallized exposure;
+- product sublimits and capacity reservations;
+- no-unrestricted-cash-draw invariant;
+- beneficiary, trade-document, and settlement adapters.
 
-`scripts/check_docs.py` runs in CI on every push. It **fails the build** when a document names a contract function that does not exist, states a lifecycle sequence the contract does not enforce, describes an implemented control as missing, or claims a licence the repository does not carry.
+### Not yet claimed
 
-It exists because it was needed. Documents in this repository once described a cure window as unimplemented when the contract enforces one. **Documentation that misstates the contract is worse than none** — it invites a reader to trust a claim, and rewards them for checking.
-
-```bash
-python3 scripts/check_docs.py --verbose
-```
+- no production bank or custodian pilot is signed;
+- no guarantee, documentary credit, or treasury instrument is issued by Argent;
+- no legal security interest is created on-chain;
+- no asset is tokenized or transferred by the protocol;
+- no public capacity token or private currency is proposed.
 
 ---
 
 ## Status
 
-Stellar testnet. **224 tests.** Three contracts, two deployed. Full lifecycle exercised end to end in a [live demonstrator](https://argent-production-4a3f.up.railway.app).
+Stellar testnet. **224 tests.** Full implemented reference lifecycle exercised end to end in the [live demonstrator](https://argent-production-4a3f.up.railway.app).
 
-Apache-2.0 — see [`LICENSE`](LICENSE).
+Apache-2.0 - see [`LICENSE`](LICENSE).

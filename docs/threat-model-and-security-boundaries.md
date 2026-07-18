@@ -1,5 +1,7 @@
 # Threat Model and Security Boundaries
 
+> **Positioning status:** The current threat model covers the implemented secured-credit reference branch. The target obligation facility adds beneficiary, instrument authenticity, amendment, presentation, claim, discharge, product-sublimit, and no-unrestricted-cash-draw threats without weakening the existing collateral controls.
+
 **Argent Core V5. Physical-collateral control on Soroban.**
 
 Status: public security-boundary document. This file describes what Argent Core is designed to protect, what it deliberately does not protect, and which trust assumptions remain off-chain.

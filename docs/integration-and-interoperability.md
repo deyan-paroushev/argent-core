@@ -1,14 +1,17 @@
-# Integration and Interoperability: How Argent Sits Beside the Systems Banks Already Run
+# Integration and Interoperability: How Argent Sits Beside the Systems Institutions Already Run
 
-**The credit and collateral infrastructure a bank already operates, the adapters that let Argent speak to it, and the onboarding path that makes adoption safe and low-friction.**
+> **Positioning status:** Argent coordinates reserve, obligation, document, and settlement states across authoritative systems. The current credit lifecycle is the implemented reference branch; the target facility is obligation-first and non-cash-drawable.
 
-**Status:** integration design and onboarding framework, not current committed build
-**Purpose:** show how Argent connects to existing bank systems rather than replacing them
-**Boundary:** Argent is an evidence-and-control layer beside the systems of record. It does not replace the triparty agent, the custodian's books, the CTRM, the messaging network, or the bank's credit core.
-**Companion documents:** `bank-integration-and-adapter-strategy.md` (the engineering specification of the adapter gateway that implements this strategy), `argent-architecture.md`, `collateral-eligibility-and-risk-policy.md`, `auto-collateralisation-layer.md`, `argent-dfns-signing-sequence.md`
-**Last updated:** 2026-07-09
+**The product, collateral, custody, trade-document, settlement, and signing infrastructure that banks already operate, and the adapters that let Argent coordinate one reserve-capacity state without replacing those systems.**
 
-*This is a design and integration note, not legal, banking, regulatory, or investment advice. It describes how Argent would connect to third-party systems and standards; it does not claim certification by, partnership with, or endorsement from any named vendor, network, or standards body. Message-format names are referenced to show the target of an adapter, not to assert conformance. Any production integration requires the counterparty's own review, security assessment, and contractual arrangements.*
+**Status:** integration design and onboarding framework; not all target obligation adapters are implemented  
+**Canonical direction:** purpose-bound bank obligations, with no unrestricted customer cash draw  
+**Implemented reference:** secured-credit collateral-control branch  
+**Boundary:** Argent is a shared reserve-control and evidence layer. It does not replace the bank product system, custodian books, trade-document platform, treasury system, accounting ledger, messaging network, or legal file.  
+**Companion documents:** `reserve-obligation-infrastructure.md`, `obligation-facility-profile.md`, `bank-integration-and-adapter-strategy.md`, `argent-architecture.md`, `argent-dfns-signing-sequence.md`  
+**Last updated:** 2026-07-18
+
+*This is a design and integration note, not legal, banking, regulatory, or investment advice. Named systems and standards illustrate authoritative institutional domains. No partnership, certification, compatibility, or endorsement is implied.*
 
 ---
 
@@ -16,7 +19,7 @@
 
 Every institution that has succeeded in this market followed one rule: do not ask the bank to change its system of record. Euroclear's Central Bank Access service lets a bank keep its existing operational setup and continue sending the instructions it sends today while the settlement complexity is handled behind the scenes. Clearstream integrated with the Eurosystem Collateral Management System so that participants use a single collateral pool without ripping out what they had. Komgo reached more than 200 banks and trading companies by digitising the workflow around existing trade-finance operations, not by becoming a new core.
 
-Argent takes the same position. It is not a triparty agent, a custodian, a CTRM, a messaging network, or a bank credit core. It is the layer none of those provides for physical collateral: a shared, role-signed, replayable control-and-evidence record of the pledge lifecycle, sitting beside the systems of record and speaking to them through adapters. The entire adoption thesis is that a bank's collateral operations, risk, and audit functions should be able to consume Argent in the formats and workflows they already use, with the least possible change to the back office.
+Argent takes the same position. It is not a triparty agent, custodian, trade-finance platform, treasury system, CTRM, messaging network, or bank core. It is the layer none of those necessarily provides across institutions: a shared, role-signed, replayable reserve-capacity record linking custody, eligibility, allocation, bank obligations, reimbursement, release, and enforcement evidence. The entire adoption thesis is that a bank's collateral operations, risk, and audit functions should be able to consume Argent in the formats and workflows they already use, with the least possible change to the back office.
 
 This is also the pattern the standards bodies are engineering toward. When SWIFT and the ISO 20022 community extended collateral messages to service digital assets, they did so explicitly to leverage existing messages so that back offices need the least possible adaptation. Argent builds with that current, not against it.
 
@@ -24,7 +27,7 @@ This is also the pattern the standards bodies are engineering toward. When SWIFT
 
 ## 2. What banks already run
 
-Physical-collateral credit sits on four established layers. Argent slots into the seams between them; it does not compete with any.
+Reserve-backed obligations sit across several established layers. Argent slots into the seams between them; it does not compete with any.
 
 ### 2.1 Triparty collateral agents (the securities benchmark)
 
@@ -44,7 +47,7 @@ Physical collateral lives in commodity trade finance, which is less mature than 
 
 Traders and lenders run commodity trading and risk management platforms (ION, Murex MX.3, and others) alongside the bank's own credit and collateral core [14], [15]. Murex MX.3 alone reports over 50,000 daily users across trading, treasury, risk, and post-trade [15]. These are systems of record for exposure and valuation. They are not shared control records across bank, custodian, and owner, and they are the source Argent reads a price and exposure feed from, not a thing Argent replaces.
 
-The through-line: securities collateral is highly mobile and standardised; physical-commodity collateral is neither, and the missing piece is a shared, signed control-and-evidence record. That is Argent, located precisely in the stack.
+The through-line: financial collateral is increasingly mobile and standardized, while physical-commodity control, bank obligations, and trade documents remain fragmented. The missing piece is one shared, signed capacity-and-evidence record across those authoritative systems. That is Argent's position in the stack.
 
 ---
 
@@ -112,11 +115,11 @@ The safest adoption path is graduated, and it is designed so a bank can derive v
 
 **Step 1: reporting overlay (bank signs nothing, controls nothing).** The bank consumes the pool risk report and position eligibility certificate from `collateral-eligibility-and-risk-policy.md` as a read-only view of shared state. It sees what is pledged, to whom, since when, with what evidence and freshness, without Argent controlling anything. This carries zero new contract risk and is exactly what a credit officer evaluates first.
 
-**Step 2: shared control record on one facility (pilot-in-a-box).** One custodian, one lender, one owner, one eligibility schedule, one pledged pool, on testnet or a ring-fenced mainnet facility. The lifecycle (registration, custody confirmation, pledge, valuation, drawdown, repayment, two-step release) runs as role-signed events, with the DFNS policy layer enforcing quorums. Value: the shared control record that the failure-modes losses show is missing.
+**Step 2: shared reserve-control record on one facility.** One custodian, one bank, one owner, one eligibility schedule, and one pledged pool. The current reference lifecycle runs as role-signed events. Value: prove the reserve identity, capacity, authorization, release, and adverse path before asking the bank to issue a new product.
 
-**Step 3: message-bridge integration.** The ISO 20022 adapter connects Argent events to the bank's collateral operations desk, so the pilot's activity flows into the systems the back office already reads.
+**Step 3: one bank-obligation adapter.** Connect capacity reservation and discharge to one guarantee, documentary-credit, or treasury product system. The bank system remains authoritative for issue, amendment, claim, and payment.
 
-**Step 4: policy enforcement and, only then, automation.** The signed collateral policy is enforced on every event; earmarking and auto-collateralisation follow only after the policy layer is proven. Policy first, earmark second, automation third.
+**Step 4: message bridge and policy enforcement.** Connect reserve and obligation events to the institution's collateral, trade-finance, treasury, and reporting workflows. Automation follows only after policy, evidence, and reconciliation are proven.
 
 At no step does the bank surrender its systems of record. Each step is independently valuable, independently reversible, and independently evaluable by risk and audit.
 
@@ -138,7 +141,7 @@ Three artifacts, most extending documents already in the repository, turn "inter
 
 - **Argent is not a triparty agent.** It does not hold accounts, settle securities, or act as a neutral collateral manager in the Euroclear or Clearstream sense. It records the control state of a bilateral bank-owner-custodian pledge.
 - **Argent does not certify conformance to any message standard.** The ISO 20022 adapter targets the formats a bank uses; it is future scope, and conformance would require the relevant testing and registration.
-- **Argent does not replace the custodian's books, the CTRM, or the bank credit core.** It reads from them and writes evidence beside them.
+- **Argent does not replace the custodian's books, bank product systems, CTRM, or accounting core.** It reads authoritative state from them and writes shared evidence beside them.
 - **Argent does not compete with document-authentication networks.** It records what authenticated documents control, and can point to and from them.
 - **Argent does not move keys or value outside the bank's governance.** The DFNS policy-and-quorum layer, optionally HSM-rooted, governs every signature.
 - **Argent does not perform legal enforcement or settlement finality.** It produces evidence and binds instructions; settlement and enforcement happen on their own rails.

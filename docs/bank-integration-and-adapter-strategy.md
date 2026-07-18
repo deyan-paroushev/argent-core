@@ -1,41 +1,71 @@
 # Bank Integration and Adapter Strategy
 
-**How Argent connects to existing bank credit, collateral, custody, trade-finance, identity, and signing infrastructure without replacing it.**
+> **Positioning status:** The integration target is a bank-operated reserve obligation facility. Credit, loan-servicing, and settlement adapters remain necessary because an obligation may crystallize into funded reimbursement exposure, but unrestricted cash draw is outside the target product.
 
-**Status:** integration strategy and design-partner framework, not current committed build  
-**Purpose:** define the safe adoption model for banks and custodians that already operate credit and collateral systems  
-**Boundary:** Argent is a collateral-control sidecar and evidence layer. It does not replace loan origination, loan servicing, collateral management, custody, credit policy, accounting, payments, or legal enforcement.  
-**Companion documents:** `integration-and-interoperability.md` (the strategy and positioning note; this file is its engineering specification), `collateral-control.md`, `collateral-failure-modes.md`, `collateral-eligibility-and-risk-policy.md`, `argent-dfns-signing-sequence.md`, `evidence-pack-index.md`, `deployment-and-runbook.md`, `threat-model-and-security-boundaries.md`  
-**Last updated:** 2026-07-09
+**How Argent connects one controlled reserve to bank guarantees, documentary credits, treasury exposure, secured credit, custody, identity, signing, and evidence systems without replacing any of them.**
 
-*This is an integration and adoption note, not legal, banking, regulatory, outsourcing, cyber, or implementation advice. It describes how a bank could pilot or integrate Argent beside existing infrastructure. Product names and vendors are referenced only to map the normal bank technology landscape. No partnership, certification, compatibility, or endorsement is implied. Production use requires bank-specific architecture review, information-security review, legal review, vendor-risk review, data-protection assessment, operational resilience review, and independent audit.*
+**Status:** integration strategy and design-partner framework; not all target obligation functions are implemented  
+**Canonical product direction:** non-cash-drawable reserve obligation facility  
+**Implemented reference:** secured-credit lifecycle on Soroban  
+**Boundary:** Argent is a reserve-control sidecar and evidence layer. It does not replace trade-finance platforms, collateral and limits systems, loan servicing, treasury, custody, accounting, payments, or legal enforcement.  
+**Companion documents:** `reserve-obligation-infrastructure.md`, `obligation-facility-profile.md`, `integration-and-interoperability.md`, `argent-dfns-signing-sequence.md`, `collateral-eligibility-and-risk-policy.md`, `evidence-pack-index.md`, `deployment-and-runbook.md`  
+**Last updated:** 2026-07-18
+
+*This is an integration and adoption note, not legal, banking, regulatory, outsourcing, cyber, or implementation advice. Product and vendor names map the normal institutional technology landscape. No partnership, certification, compatibility, or endorsement is implied. Production use requires institution-specific architecture, security, legal, vendor-risk, data-protection, resilience, accounting, and audit review.*
 
 ---
 
 ## 1. The one thing this document establishes
 
-Banks already have credit infrastructure. Argent should not replace it.
+Banks already have product, credit, collateral, custody, treasury, accounting, and settlement infrastructure. Argent should not replace it.
 
-A bank does not need Argent to originate a loan, approve a facility, post accounting entries, calculate interest, service repayments, manage treasury collateral, run documentary trade finance, or decide what collateral is eligible. Those functions already sit in loan origination systems, loan servicing platforms, limits and collateral engines, margin systems, trade-finance platforms, custody platforms, internal risk engines, data warehouses, spreadsheets, and committee workflows.
-
-Argent's institutional route is narrower and safer:
-
-> Argent becomes a collateral-control sidecar that records the role-signed lifecycle of physical collateral and exports bank-readable evidence, status, exceptions, and reconciliation data back into the systems the bank already uses.
-
-This is the adoption boundary:
+The mature product is not a standalone lending system. It is a reserve-control layer beneath purpose-bound bank obligations:
 
 ```text
-The bank keeps its loan book.
-The bank keeps its credit policy.
-The bank keeps its collateral policy.
-The custodian keeps physical control.
-The bank's systems keep accounting and servicing authority.
-Argent records and proves the shared control state around the pledged physical collateral.
+one controlled reserve
+-> bank-approved master capacity
+-> product and group sublimits
+-> guarantees / documentary credits / undertakings / treasury exposure
+-> claims, payment, reimbursement, discharge, release, or enforcement
 ```
 
-The integration goal is not straight-through replacement. It is controlled coexistence. A bank should be able to test Argent first as an evidence-only mirror, then as a shadow collateral-control ledger, then as a narrow control gate for release, borrowing-base availability, margin state, and exception handling, before any deeper system write-back is considered.
+The bank remains authoritative for:
 
-That is the safe adoption model.
+- customer and group approval;
+- facility and product limits;
+- instrument issuance and amendment;
+- documentary compliance and claim decisions;
+- pricing, accounting, capital, liquidity, and reporting;
+- reimbursement and legal enforcement decisions.
+
+The custodian remains authoritative for physical possession, segregation, immobilization, movement, release, and realization.
+
+Argent's institutional route is narrower:
+
+> **Argent records and proves the shared reserve-capacity state that existing bank and custody systems depend on but do not hold in one place.**
+
+The target product prohibits an unrestricted customer cash draw. Capacity is allocated only to a bank-approved product, purpose, amount, beneficiary, and term. A bank payment may still occur under an issued instrument, at which point the exposure becomes reimbursement due.
+
+The current contracts prove the same foundation through a secured-credit reference branch. Loan-origination and servicing adapters remain relevant for that branch and for any crystallized reimbursement exposure, but the first production integration priority shifts toward:
+
+1. limits and collateral management;
+2. guarantees and trade-finance platforms;
+3. treasury and margin systems;
+4. custody and valuation;
+5. institutional signing and approvals;
+6. accounting, evidence, and reconciliation.
+
+The safe adoption model remains staged:
+
+```text
+evidence-only mirror
+-> shadow reserve-capacity ledger
+-> governed reservation and release control
+-> one typed bank obligation
+-> broader product integration
+```
+
+No stage should require a bank to replace its system of record or accept protocol state as a substitute for legal or product authority.
 
 ---
 
@@ -120,20 +150,23 @@ Argent should adopt the same pattern for physical collateral. Physical assets do
 
 ## 4. Argent's integration thesis
 
-Argent should be presented to banks as a collateral-control sidecar.
+Argent should be presented to banks as a reserve-capacity and collateral-control sidecar.
 
 A sidecar is not the system of record for everything. It is a bounded service that records and proves one part of the workflow better than the systems around it, then reconciles with them.
 
 For Argent, the bounded domain is:
 
 ```text
-physical collateral identity
+physical reserve identity
 custody attestation
 eligibility and treatment
 policy version
 pledge activation
-borrowing-base state
-drawdown and repayment evidence
+master capacity and sublimits
+purpose-bound reservation
+bank-obligation reference
+contingent and crystallized exposure
+reimbursement evidence
 margin state
 release authorization
 custodian release confirmation
@@ -146,8 +179,8 @@ The systems around Argent keep their authority:
 
 | Domain | Existing bank or market authority | Argent role |
 |---|---|---|
-| Credit decision | bank credit workflow and committee | provide collateral-control evidence |
-| Loan book | loan servicing platform | mirror exposure-relevant events and reconcile |
+| Facility and product decision | bank credit, trade-finance, treasury, limits, and committee workflow | provide reserve-control and capacity evidence |
+| Product and exposure books | trade-finance, guarantee, treasury, and loan systems | mirror capacity and exposure-relevant events and reconcile |
 | Accounting | core banking, general ledger, loan servicing | no accounting authority |
 | Collateral policy | bank risk and collateral function | enforce signed policy version |
 | Physical custody | custodian, warehouse, vault, terminal | record custodian-signed control acts |
@@ -158,7 +191,7 @@ The systems around Argent keep their authority:
 
 The most important adoption sentence is:
 
-> Argent is not the bank's lending system. Argent is the shared control ledger for the collateral that makes the bank's lending system safer to rely on.
+> Argent is not the bank's product system. Argent is the shared reserve-capacity ledger beneath the bank obligations that existing product systems issue and administer.
 
 ---
 
@@ -175,12 +208,12 @@ It is not a core-banking system. It is not a middleware platform for every possi
 ### 5.1 Reference architecture
 
 ```text
-Bank loan origination / credit workflow
+Bank product, credit, and facility workflow
 nCino / Temenos / TCS BaNCS / internal workflow
         |
         | facility data, policy pack, approval status
         v
-Bank loan servicing / facility administration
+Bank facility, trade-finance, treasury, and servicing systems
 Loan IQ / FIS / Oracle / Temenos / Finacle / internal servicing
         |
         | facility id, limit, exposure, drawdown, repayment

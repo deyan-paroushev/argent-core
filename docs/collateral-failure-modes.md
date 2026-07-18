@@ -1,5 +1,7 @@
 # Collateral Failure Modes: the Documented Loss Record of Physical-Collateral Finance
 
+> **Positioning status:** These failure modes apply to any bank obligation secured by physical collateral, not only a loan. Duplicate allocation, false evidence, unauthorized release, stale valuation, and enforcement-time discovery can undermine guarantees, documentary credits, treasury exposure, and accepted obligations as readily as funded credit.
+
 **Why physical-collateral finance keeps failing, what the documented losses have in common, and which control invariants in the Argent core address each failure mode.**
 
 **Status:** market evidence and design rationale for the shipped core
@@ -215,7 +217,7 @@ The direction of travel after these losses supports the design, and it is worth 
 
 Post-Trafigura commentary identified the mechanism plainly: paper bills of lading and letters of credit remain susceptible to forgery, and the absence of shared visibility between banks creates the space for double financing; the same commentary pointed to digitalisation and the UK's electronic trade documents legislation as the response [23]. The LME's response to the stones incident was mandatory re-inspection of warranted nickel across its network [19]. In the gold market specifically, the LBMA's Gold Bar Integrity programme is moving the Good Delivery ecosystem toward structured digital reporting on a distributed-ledger database, with voluntary Country of Origin reporting for refiners from April 2026 becoming mandatory in 2027 and custodian vault reporting following, as documented in `auto-collateralisation-layer.md`.
 
-Each of these is a partial instance of the same lesson: records of physical collateral must be shared, digital, attributable, and reconciled on a cadence, or the nine failure modes recur. Argent is the application of that lesson to the private secured-credit relationship between a bank, an owner, and a custodian, which is precisely the relationship where the largest documented losses occurred and where no shared infrastructure yet exists.
+Each of these is a partial instance of the same lesson: records of physical collateral must be shared, digital, attributable, and reconciled on a cadence, or the nine failure modes recur. Argent applies that lesson to the relationship among a reserve owner, bank, custodian, beneficiary, verifier, and settlement systems. The implemented secured-credit branch proves the core controls; the target obligation facility extends them across guarantees, documentary credits, treasury exposure, accepted obligations, claims, reimbursement, release, and enforcement.
 
 ---
 

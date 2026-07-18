@@ -13,60 +13,62 @@
 
 ## Executive proposition
 
-Banks already offer gold accounts, certificates, physical bullion, custody, financing, leases, and repurchase transactions. Emirates NBD's bullion service is particularly instructive because it brings purchase, storage, financing, certificates, lease rates, repurchase terms, and international delivery into one bank-led product family [1], [2]. HSBC describes the mature bullion-bank model more generally as four connected capabilities: trading, financing, vaulting, and physical services [13].
+Allocated bullion can serve a company as more than an investment holding or a source of cash borrowing. Under bank-approved custody and security control, it can become a **parallel reserve layer** beneath purpose-bound bank obligations while operating fiat remains available for payroll, taxes, fees, reimbursement, and final settlement.
 
-Those services validate the market. They do not remove the infrastructure problem.
+Argent's mature product direction is therefore:
 
-A vertically integrated bank can keep bullion, client records, credit policy, control instructions, and settlement inside one institutional perimeter. The harder and more general case is open-system bullion finance:
+> **Gold-backed obligation infrastructure: one reserve, many obligations, one authoritative capacity state.**
+
+The bank may use the facility to issue approved guarantees, documentary credits, supplier undertakings, accepted maturity obligations, treasury limits, and conditional beneficiary payments. The customer does not receive a freely drawable cash balance. The gold remains in professional custody and under customer ownership, subject to the bank's perfected security and enforcement rights.
+
+The current Soroban implementation remains narrower and fully relevant:
+
+> **An implemented secured-credit reference branch that proves the shared collateral-control foundation.**
+
+That branch demonstrates asset identity, custody confirmation, exclusive pledge, eligibility, valuation, capacity, utilization, settlement-linked exposure reduction, controlled release, default, cure, and enforcement evidence. The target obligation facility generalizes the facility and exposure model; it does not discard the tested core.
+
+A vertically integrated bank can keep bullion, client records, product policy, control instructions, and settlement inside one institutional perimeter. The harder and more general case is open-system reserve orchestration:
 
 ```text
-borrower or investor
-    holds a bullion position with
-one or more custodians or account providers
-    and seeks liquidity from
-a bank or secured lender
+reserve owner or group treasury
+    holds identified bullion with
+one or more approved custodians
+    and requests purpose-bound instruments from
+a bank or regulated issuer
     while relying on
-a valuation source, dealer, insurer, and settlement bank
+valuation, trade-document, beneficiary, settlement, legal, and evidence systems
 ```
 
-Each participant holds a different part of the truth. The custodian knows what is held and whether it is blocked. The lender knows the facility, eligibility policy, exposure, margin status, and enforcement rights. The borrower knows the commercial purpose and repayment source. A dealer knows the executable liquidation route. Legal documents define rights that none of those systems can infer from a bar list alone.
+Each participant holds a different part of the truth. Argent connects those authoritative systems without replacing them.
 
-Argent's role is to connect those systems without pretending to replace them:
+> **Argent is a bullion reserve control plane: a shared, role-authorized layer that classifies the bullion right, binds custody evidence to bank policy, calculates usable obligation capacity, reserves that capacity against approved instruments, and records the complete release, reimbursement, default, and enforcement lifecycle.**
 
-> **Argent is a bullion collateral control plane: a shared, role-authorised layer that classifies the bullion right, binds custody evidence to credit policy, calculates the authorised borrowing base, governs lifecycle transitions, and produces a verifiable record across borrower, lender, and custodian.**
+The central design rule becomes:
 
-The first production profile remains narrow:
-
-> **A revolving credit facility secured by identified, allocated bullion held with an approved custodian under a tri-party control arrangement.**
-
-The architecture is broader than that first profile. It is designed to distinguish allocated bars from unallocated account claims, certificates, pooled interests, leases, repos, and tokenised representations. Those instruments may all be described commercially as “gold,” but they create different ownership, counterparty, transfer, control, settlement, and enforcement consequences. The architecture must never treat them as interchangeable.
-
-The central design rule is therefore:
-
-> **Classify the legal and custody representation first. Apply the product lifecycle second. Calculate credit only after both are known.**
-
----
+> **Classify the right first. Establish control second. Calculate capacity third. Issue the bank obligation only after all three are valid.**
 
 ## 1. Purpose
 
-This document defines the reference architecture through which an existing bullion holding can become eligible, controlled collateral for a bank credit product.
+This document defines the reference architecture through which an existing bullion holding can become an eligible, controlled reserve beneath a bank-operated obligation facility. The current secured-credit branch is retained as the implemented reference profile.
 
-It answers six questions:
+It answers seven questions:
 
 1. What type of bullion right does the client actually hold?
 2. What evidence makes that right eligible for a specific lender?
 3. How does the custodian or account provider place the holding under effective control?
 4. How is borrowing capacity calculated, monitored, and changed?
 5. How do release, substitution, movement, default, and liquidation operate without breaking coverage?
-6. How does Argent connect to existing bank, custody, market-data, settlement, and document systems?
+6. How are contingent exposure, crystallized reimbursement exposure, and funded settlement kept distinct?
+7. How does Argent connect to existing bank, custody, trade-finance, market-data, settlement, and document systems?
 
-The document also separates three product classes that must not be collapsed into one state machine:
+The document also separates four product classes that must not be collapsed into one state machine:
 
-- **secured credit:** the borrower retains normal-course ownership and grants security or control;
+- **reserve obligation facility:** the owner retains the asset while the bank issues purpose-bound obligations against approved capacity;
+- **secured credit:** the borrower retains normal-course ownership and grants security or control; this is the implemented reference branch;
 - **repo:** the transaction is structured around sale and repurchase obligations;
 - **lease or metal loan:** metal is delivered or credited and equivalent metal must be returned.
 
-Argent may eventually support all three. The current contract core and the first design-partner implementation are for secured credit against allocated collateral.
+Argent may eventually support all four. The current contract core is the secured-credit reference branch. The preferred commercial design-partner direction is the non-cash-drawable reserve obligation facility against allocated collateral.
 
 ---
 
@@ -106,21 +108,21 @@ access to gold
 
 ### 2.2 The Argent infrastructure roadmap
 
-Argent should not reproduce that product suite as a bank, dealer, or custodian. It should provide the reusable control infrastructure beneath the credit and collateral parts of the suite:
+Argent should not reproduce that product suite as a bank, dealer, or custodian. It should provide the reusable control infrastructure beneath the reserve, obligation, collateral, and settlement parts of the suite:
 
 ```text
 holding classification
 → evidence validation
-→ lender eligibility
+→ bank eligibility
 → custody control
-→ borrowing base
-→ draw and repayment
-→ margin and substitution
-→ release or enforcement
+→ usable reserve capacity
+→ product sublimit and obligation reservation
+→ issue / amend / expire / claim / reimburse
+→ margin, substitution, release, or enforcement
 → reconciliation and evidence
 ```
 
-The difference is strategic. Emirates NBD is an example of a bank offering bullion products. Argent should enable banks and custodians to launch or interoperate such products, especially where the bullion, lender, and custodian do not sit inside one organisation.
+The difference is strategic. Emirates NBD is an example of a bank offering bullion products. Argent should enable banks and custodians to launch or interoperate reserve-backed obligation products, especially where the bullion, bank, beneficiary, and custodian do not sit inside one organisation.
 
 ---
 
@@ -134,7 +136,10 @@ This reference architecture covers:
 - gold first, with silver and other precious metals as later instrument adapters;
 - allocated bars held with professional custodians;
 - account-based and certificate-based holdings as classified future profiles;
-- revolving and term credit facilities;
+- a non-cash-drawable master obligation facility;
+- guarantees, documentary credits, supplier undertakings, accepted obligations, and treasury sublimits;
+- contingent, crystallized, and funded exposure states;
+- revolving and term credit facilities as a reference and optional product branch;
 - bar-level eligibility and whole-bar operations;
 - dynamic valuation, haircut, advance rate, and margin state;
 - tri-party control and multi-party authorisation;
@@ -159,7 +164,9 @@ Argent does not:
 9. execute physical delivery or liquidation;
 10. assume that a digital record conveys title;
 11. treat all gold representations as equivalent;
-12. allow the operator to authorise borrower, bank, or custodian actions on their behalf.
+12. allow the operator to authorise owner, bank, custodian, beneficiary, or verifier actions on their behalf;
+13. issue a private currency, freely transferable capacity token, or direct claim over the pledged bars;
+14. permit an unrestricted customer cash draw under the target obligation profile.
 
 The architecture records and governs the **authorised control state**. Legal rights remain grounded in the relevant agreement, account terms, custody record, and governing law.
 
@@ -262,7 +269,7 @@ The architecture classifies each holding along three separate dimensions:
 
 | Representation | Typical record | Core risk | Argent treatment |
 |---|---|---|---|
-| Allocated bar holding | bar list and allocated account | bar identity, title, custody, prior lien | First production profile |
+| Allocated bar holding | bar list and allocated account | bar identity, title, custody, prior lien | Implemented reference collateral profile |
 | Pooled allocated interest | units or percentage of a segregated pool | beneficial ownership, pool rules, allocation and redemption | Future rights adapter |
 | Unallocated account | XAU balance | account-provider credit exposure; no specific bar | Separate account-claim profile |
 | Bank certificate | certificate or digital confirmation | issuer terms, transferability, consent, underlying allocation | Certificate adapter only after legal classification |
@@ -585,15 +592,16 @@ status
 
 For allocated bars, this is immobilisation. For certificates, it may be redemption and transfer blocking. For account claims, it may be an account control or assignment acknowledgement.
 
-### 9.8 `Facility`, `Pledge`, and `CreditLine`
+### 9.8 `Facility`, `Pledge`, `BankObligation`, and `CreditLine`
 
 These remain separate:
 
-- the `Facility` establishes the contractual and participant perimeter;
+- the `Facility` establishes the contractual, participant, capacity, and product-sublimit perimeter;
 - the `Pledge` binds collateral control to the secured party;
-- the `CreditLine` records approved limit, drawn exposure, availability, status, and margin state.
+- the target `BankObligation` records instrument type, beneficiary, commercial purpose, notional, reserved capacity, expiry or maturity, claim conditions, and lifecycle state;
+- the implemented `CreditLine` records approved limit, drawn exposure, availability, status, and margin state for the reference branch.
 
-One facility may eventually have multiple positions, instruments, custodians, or lines. The first design-partner profile may remain one pool and one line for simplicity.
+One facility may have multiple positions, obligations, custodians, and product sublimits. A first obligation-facility pilot may remain one reserve pool, one bank, one custodian, and two obligation types for simplicity.
 
 ### 9.9 `ValuationObservation` and `BorrowingBaseSnapshot`
 
@@ -651,9 +659,37 @@ A facility must not claim to be enforceable merely because default functions exi
 
 ## 10. Product profiles
 
+### 10.0 Profile O - corporate reserve obligation facility
+
+**Status:** target commercial profile.
+
+An owner pledges identified allocated bullion under bank-approved custody. The bank establishes a master capacity limit and product sublimits. The owner may request only approved, purpose-bound instruments for named beneficiaries or defined treasury exposures. There is no unrestricted cash draw.
+
+Supported obligation families may include:
+
+- documentary and deferred-payment letters of credit;
+- bid, performance, advance-payment, retention, warranty, customs, and regulatory guarantees;
+- supplier undertakings, accepted drafts, or other maturity obligations;
+- approved treasury, hedging, and margin exposures;
+- group sublimits for approved subsidiaries.
+
+An obligation begins as contingent or conditional exposure. A valid presentation, maturity, claim, or settlement event may cause the bank to pay, creating a reimbursement obligation. Capacity returns only after expiry, cancellation, discharge, or reimbursement. Failure to reimburse may lead to cure and enforcement.
+
+The controlling invariant is:
+
+```text
+active reserved capacity
++ crystallized reimbursement exposure
++ funded exposure
++ pending-claim buffer
+<= approved eligible reserve capacity
+```
+
+This profile reuses the current collateral identity, control, valuation, refusal, release, and enforcement primitives while generalizing the facility and exposure objects.
+
 ### 10.1 Profile A — allocated-bullion secured credit
 
-**Status:** first production profile; supported by the current control core.
+**Status:** implemented reference profile; supported by the current control core.
 
 ```text
 owner designates identified bars
@@ -1493,7 +1529,8 @@ The current Soroban core already provides more of this architecture than the ini
 | Owner designation | `select_lot_for_collateral` |
 | Custodian control | `confirm_and_immobilize` and custody-control record |
 | Pledge activation | `activate_pledge` |
-| Credit facility | `open_credit_line`, draw, reversal, repayment, suspension and resume |
+| Secured-credit reference facility | `open_credit_line`, draw, reversal, repayment, suspension and resume |
+| Target obligation facility | Not yet implemented: general `MasterFacility`, typed obligations, product sublimits, contingent exposure, claim, amendment, discharge, and no-cash-draw controls |
 | Valuation and margin | `revalue_and_check`, `LineValuation`, `MarginState` |
 | Whole-bar adjustments | `CollateralAdjustment`: top-up, substitution, partial release |
 | Release | bank authorisation plus custodian confirmation |
@@ -1548,7 +1585,21 @@ Already represented:
 - immobilisation and pledge;
 - line, draw, repayment, valuation, margin, adjustment, release, default, cure, and enforcement evidence.
 
-### Phase 1 — Existing-holding activation
+### Phase 1 - Master obligation facility model
+
+**Objective:** generalize the current credit line into a bank-operated master facility without changing the proven collateral-control core.
+
+Deliverables:
+
+1. `MasterFacility` and product-sublimit model;
+2. typed `BankObligation`;
+3. contingent, crystallized reimbursement, and funded exposure separation;
+4. reserve, issue, amend, expire, claim, reimburse, discharge, and release lifecycle;
+5. named-beneficiary and commercial-purpose requirements;
+6. no-unrestricted-cash-draw invariant;
+7. current credit branch retained as an optional obligation type.
+
+### Phase 2 - Existing-holding activation
 
 **Objective:** answer the bank's most important onboarding question: “How does a holding already in our vault, account, or client portfolio become eligible credit collateral?”
 
@@ -1566,7 +1617,7 @@ Deliverables:
 
 This is the strongest immediate next step.
 
-### Phase 2 — Production-relevant tri-party pilot
+### Phase 3 - Production-relevant multi-party pilot
 
 **Objective:** prove operational interoperability rather than only contract logic.
 
@@ -1582,7 +1633,7 @@ Deliverables:
 - operating model, support, incident, and audit procedures;
 - measured implementation and servicing economics.
 
-### Phase 3 — Certificate and account-control adapter
+### Phase 4 - Certificate and account-control adapter
 
 **Objective:** support bank-issued gold rights where product terms permit collateralisation.
 
@@ -1597,7 +1648,7 @@ Deliverables:
 
 This phase should start with one named product and governing terms, not a generic “certificate” type.
 
-### Phase 4 — Collateral pool and cross-vault mobility
+### Phase 5 - Collateral pool and cross-vault mobility
 
 **Objective:** operate multi-bar, multi-location collateral efficiently.
 
@@ -1611,7 +1662,7 @@ Deliverables:
 - multi-custodian reconciliation;
 - lender-specific allocation and duplicate-encumbrance controls.
 
-### Phase 5 — Repo and lease product profiles
+### Phase 6 - Repo and lease product profiles
 
 **Objective:** extend shared bullion evidence and control into distinct wholesale transaction lifecycles.
 
@@ -1626,7 +1677,7 @@ Deliverables:
 
 Repo and lease should remain separate modules even where they reuse instrument, holding, valuation, party, document, and settlement components.
 
-### Phase 6 — Multi-bank bullion collateral network
+### Phase 7 - Multi-bank bullion collateral network
 
 **Objective:** let eligible bullion remain portable across approved custodians and lenders without requiring one bank to own the full product stack.
 
@@ -1666,13 +1717,17 @@ Use the existing design-partner brief:
 - one borrower;
 - eight allocated one-kilogram bars;
 - one approved custodian;
-- one revolving credit line;
-- lender-defined advance and margin policy;
+- one non-cash-drawable master facility;
+- one documentary or supplier-payment obligation;
+- one performance, customs, or regulatory guarantee;
+- bank-defined reserve, product-sublimit, and margin policy;
 - daily or event-driven valuation;
-- one partial repayment;
-- one whole-bar substitution or release;
-- one simulated margin cure;
+- one expiry or reimbursement-based capacity release;
+- one whole-bar substitution or partial release;
+- one simulated valid claim and reimbursement;
 - one tabletop enforcement test.
+
+Where a pilot partner needs the implemented reference workflow first, the existing revolving credit lifecycle remains available as the technical control baseline.
 
 ### 22.3 Reference workflow
 
@@ -1685,12 +1740,13 @@ Use the existing design-partner brief:
 6. Request custodian immobilisation
 7. Reconcile controlled schedule
 8. Calculate opening borrowing base
-9. Lender activates pledge and line
-10. Record draw and settlement reference
-11. Revalue and monitor margin
-12. Repay and execute whole-bar adjustment
-13. Release or perform enforcement tabletop
-14. Export final evidence and reconciliation report
+9. Bank activates pledge and master facility
+10. Request and reserve capacity for an approved obligation
+11. Bank issues the instrument to a named beneficiary
+12. Revalue and monitor reserve coverage
+13. Expire, reimburse, amend, or validate a claim
+14. Release capacity or perform enforcement tabletop
+15. Export final evidence and reconciliation report
 ```
 
 ### 22.4 Pilot acceptance criteria
@@ -1702,7 +1758,7 @@ The pilot should not be judged only by transaction success. It succeeds when:
 3. all parties reconcile the same controlled bar schedule;
 4. the bank can explain every eligibility and borrowing-base output;
 5. stale or conflicting evidence blocks the relevant action;
-6. draw and repayment references reconcile with the bank's cash records;
+6. instrument issuance, expiry, claim, settlement, and reimbursement references reconcile with the bank's systems;
 7. whole-bar substitution or release completes without a coverage gap;
 8. a margin cure works under the approved policy;
 9. the enforcement counterparty and cash waterfall are identified and tested;
@@ -1727,32 +1783,37 @@ The market evidence can tempt Argent to expand too quickly. The following are no
 - a generic “gold API” that hides legal and custody differences;
 - automatic liquidation without a named dealer, legal authority, and settlement route.
 
-The next product milestone is not breadth. It is proof that an existing external holding can be classified, controlled, financed, monitored, adjusted, and released or enforced through production-relevant institutional interfaces.
+The next product milestone is not breadth. It is proof that an existing external holding can be classified, controlled, assigned to approved bank obligations, monitored, reimbursed, released, or enforced through production-relevant institutional interfaces.
 
 ---
 
 ## 24. Strategic position
 
-Emirates NBD demonstrates the value of a bank bringing bullion products under one roof [1], [2]. HSBC demonstrates the mature connection between trading, financing, vaulting, and physical services [13]. Standard Chartered demonstrates the broader corporate and investment-banking context in which precious metals sit alongside cash, derivatives, structured products, and cross-border commodities activity [21]. UOB demonstrates the continuing importance of formats, denominations, physical conversion, and bank buy/sell procedures [14]. Swissquote demonstrates the client expectation for online management, real-time margin visibility, multi-currency credit, and interest charged on utilisation [15]. DBS, the World Gold Council, and Euroclear demonstrate that tokenisation is one industry answer to fractional ownership and collateral mobility [10], [16], [17].
+Bullion banks demonstrate that gold can sit beneath trading, financing, vaulting, certificates, repo, leases, and physical services. Trade-finance banks demonstrate that commercial access often depends on guarantees, documentary credits, supplier undertakings, and treasury limits rather than immediate cash borrowing. Tokenized-collateral initiatives demonstrate that the decisive economic problem is mobility and allocation of collateral function, not issuance of another token.
 
-Argent's strongest position is the open-system alternative:
+Argent's strongest position is the open-system reserve layer connecting those ideas:
 
-> **Argent lets a bank activate bullion as controlled collateral without requiring the bank to custody every bar, issue every gold product, or convert the underlying asset into a freely transferable token.**
+> **Argent lets a bank activate identified bullion as reusable obligation capacity without requiring the bank to custody every bar, sell the gold, issue a gold token, or grant the customer an unrestricted cash draw.**
 
-Its durable advantage does not come from the statement that gold can secure credit. Banks already know that. It comes from making the cross-institution control sequence:
+Its durable advantage does not come from the statement that gold can secure credit. Banks already know that. It comes from making the cross-institution sequence:
 
-- representation-aware;
+- rights-aware;
 - policy-attributable;
 - custody-confirmed;
 - continuously valued;
+- beneficiary- and purpose-bound;
+- product-sublimit aware;
+- claim- and reimbursement-aware;
 - whole-bar aware;
 - integration-friendly;
 - exception-managed;
-- and independently evidential.
+- independently evidential.
 
-That is the architecture through which a gold-credit demonstrator can become reusable bank infrastructure.
+The current secured-credit contracts prove the substrate. The mature commercial product applies that substrate to a wider obligation surface while preserving one capacity state.
 
----
+> **One reserve. Many obligations. One authoritative capacity state.**
+
+That is the architecture through which a gold-credit demonstrator becomes reusable bank infrastructure for trade, assurance, treasury, and final settlement support.
 
 ## 25. Architecture decisions to resolve with a design partner
 

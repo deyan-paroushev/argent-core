@@ -1,5 +1,7 @@
 # Collateral eligibility and rights model — the allocated-bullion profile
 
+> **Positioning status:** Rights classification and eligibility are upstream of every Argent product. In the target facility they determine obligation capacity and product eligibility; in the current implementation they determine secured-credit capacity.
+
 > **Status:** Draft for design-partner review · **Implementation baseline:** `argent-core` @ `646878f` · **Last reviewed:** 2026-07-11
 > Claims about contract behaviour in this document were verified against `contracts/credit_ledger/` at the baseline above. Contract code evolves; re-verify before relying on any specific claim.
 

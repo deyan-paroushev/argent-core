@@ -1,5 +1,7 @@
 # Collateral as Locked Value: the Missing Instrument in Physical-Commodity Finance
 
+> **Positioning status:** Locked value can support more than funded borrowing. Argent’s mature direction uses controlled reserve capacity primarily for purpose-bound bank obligations while retaining secured credit as an implemented reference and optional branch.
+
 **Why the constraint in financing physical commodities is instrumentation, not asset quality, and what the market signals say about the gap Argent fills.**
 
 *This document is evidence-led. It reads the market's own signals, from central banks, standard-setters, the largest collateral-infrastructure providers, and the academic literature, and lets them define the problem before naming where Argent sits. It is not investment advice, and it does not claim a single addressable market figure. Figures are cited inline; where sources disagree, the disagreement is stated. The closing section separates Argent's specific position from the neutral reading that precedes it. Companion reading: `physical-collateral-and-trade-finance.md` (the neutral market primer), `collateral-control.md` (the product thesis), and `protocol.md` (the technical specification).*

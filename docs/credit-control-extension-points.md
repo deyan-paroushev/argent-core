@@ -1,205 +1,501 @@
-# Candidate credit controls
+# Obligation and Credit Control Extension Points
 
-> **Status:** Draft for design-partner review · **Implementation baseline:** `argent-core` @ `646878f` · **Last reviewed:** 2026-07-11
-> Claims about contract behaviour in this document were verified against `contracts/credit_ledger/` at the baseline above. Contract code evolves; re-verify before relying on any specific claim.
+**Legacy filename retained for link stability.**
 
+This document distinguishes:
 
-**Credit controls that a lender may ask for, which the contract does not enforce today. What each would take to build, and why none of them should be built before a design partner states their policy.**
+- controls already enforced by the current secured-credit reference branch;
+- controls required by the target reserve obligation facility;
+- later controls that a bank may request;
+- controls that Argent should never attempt to own.
 
-*Audience: internal roadmap reference, and the honest answer when a bank asks "can you do a two-day cure window?" The answer is: not today; it is specified, it is scoped, and it is contingent on your policy. Tell us your workout process and we will build to it.*
-
-*Companion documents: `bullion-collateral-reference-architecture.md` (the domain requirements), `argent-architecture.md` (authoritative where they touch).*
-
----
-
-## 0. Why these are candidates and not commitments
-
-Certain credit controls appear repeatedly in draft facility documents: a draw-suspension threshold between the advance rate and the margin call, a fixed cure period, a multi-condition release test. They are plausible. They are also **guesses** until a lender states its policy.
-
-A real lender arrives with an advance rate, a suspension trigger, and a cure window driven by its own workout process, its own risk appetite, and its own supervisor. Hard-coding a plausible number now means ripping it out when the first design partner says what they actually use. Worse, it means shipping a document that asserts a control the contract does not enforce, which is the one failure mode these documents exist to prevent.
-
-> **Rule.** The controls listed in Section 1 **are implemented**. The candidate extensions in Sections 2 to 4 are **not implemented** unless explicitly stated otherwise. Every threshold shown as a candidate is **illustrative** — the numbers belong to the lender, and the design belongs to the pilot.
-
-**These are also not all the same kind of thing**, and conflating them produces bad roadmap decisions. Three categories:
-
-| Category | Meaning | Cost |
-|---|---|---|
-| **Configuration** | The machinery exists; a parameter or band is missing | Low |
-| **Capability gap** | The contract genuinely cannot do this; new mechanism required | Real, and raises a design question |
-| **Off-chain policy** | It looks like a feature but is a determination the bank makes before signing | **Should not be built at all** |
+**Status:** engineering design and extension register, not a claim that all listed controls are implemented.
 
 ---
 
-## 1. What exists today
+## 0. Product context
 
-Stated first, because the gaps only make sense against it.
+The current contracts implement collateral identity, eligibility, pledge, borrowing base, utilization, repayment, release, default, cure, and enforcement.
 
-| Control | Status |
-|---|---|
-| **Advance rate** (`ltv_bps`) | **Enforced.** Bank-set per line. |
-| **Maintenance threshold** (`maintenance_bps`) | **Enforced.** Bank-set per line. |
-| **Advance < maintenance invariant** | **Enforced.** A line cannot open at or above its own margin-call level. |
-| **Eligibility ceiling** (`max_ltv_bps`) | **Enforced** per framework/instrument. A line's advance rate cannot exceed it. |
-| **Haircut** (`haircut_bps`) | **Enforced** per framework/instrument, applied before LTV. |
-| **Utilisation ≤ borrowing base** | **Enforced.** An over-draw is rejected (`InsufficientCapacity`). |
-| **Two-band margin computation** | **Enforced.** `revalue_and_check` computes an `action_band` (= raw value × maintenance) and a `warning_band` (= action band × `warning_bps`), yielding `MarginState` ∈ {`Covered`, `Warning`, `Called`}. |
-| **Stale-price rejection** (`max_age_secs`) | **Enforced.** A revaluation on a stale price fails. |
-| **Price-confidence tolerance** (`conf_tol_bps`) | **Enforced.** |
-| **Line suspension** | **Two mechanisms, both enforced.** (1) *Automatic:* `revalue_and_check` sets `LineStatus::Suspended` when the margin state becomes `Called`, and `record_drawdown` requires an active line — so **a called facility cannot draw**. (2) *Discretionary:* `bank_suspend_line` lets the bank suspend at any time for any reason. |
-| **Cure window / enforcement standstill** | **Enforced.** `issue_default_notice` sets a `cure_deadline_ledger` (rejected if not in the future), stored as `cure_expiry_ledger`. `record_enforcement` **fails** with `CurePeriodNotExpired` before it lapses. `cure_default` carries no expiry guard, so a late cure is accepted until enforcement is recorded — the deadline binds the bank, not the borrower. |
-| **Three-party adjustment sequence** | **Enforced.** Owner requests → custodian confirms → bank approves. |
+The mature product direction is a non-cash-drawable master facility for bank-issued obligations. That profile requires additional controls around:
 
-**The system is more capable here than it is usually given credit for.** The two-band margin computation in particular is real: a warning band genuinely sits below the call level, so a borrower's first notification is not the call. The gaps below are narrower than they first appear.
+- beneficiaries;
+- product type and purpose;
+- capacity reservation;
+- product and group sublimits;
+- contingent, pending, and crystallized exposure;
+- claims and presentations;
+- reimbursement;
+- discharge;
+- no unrestricted customer cash draw.
+
+The current code should not be relabeled as if those controls already exist.
 
 ---
 
-## 2. Configuration: cheap, and clearly lender-owned
+## 1. Controls enforced today
 
-### 2.1 The warning threshold: stored policy, and expressed as an LTV
+### 1.1 Instrument and framework eligibility
 
-**Today:** `warning_bps` is a **parameter passed on every `revalue_and_check` call**. It is not a field on any stored type. And it is a **factor applied to the action band**, not an LTV threshold in its own right:
+A position cannot enter the active lifecycle unless its instrument is registered and admitted to the framework under bank-approved treatment.
 
-```
-action band  = raw_value  × maintenance_bps / 10_000
-warning band = action band × warning_bps    / 10_000
-```
+### 1.2 Lot uniqueness and exclusive pledge
 
-**Two problems, and the second is easy to miss.**
+The same physical lot cannot support two active pledges.
 
-**First, it is not stored policy.** The warning band is facility policy, but it is supplied per-call. Nothing prevents two revaluations of the same line from using different warning bands, and nothing records what the policy *was*. A lender reviewing the facility cannot read its own early-warning threshold from the record; it can only read what was passed at each revaluation.
+### 1.3 Initial risk headroom
 
-**Second, it is a factor, not a threshold.** Because `warning_bps` multiplies the *action band* rather than the collateral value, it is **not the same kind of quantity as `ltv_bps` and `maintenance_bps`.** An invariant of the form `ltv_bps < warning_bps < maintenance_bps` would be **type-incoherent** — it compares a factor against two LTV thresholds. A lender cannot read "8,500" and know what warning level that implies without also knowing the maintenance threshold and doing the arithmetic.
+A credit line cannot open at or above its maintenance threshold.
 
-**The fix, and it should be both:** store the warning level on the credit line, **and express it as an LTV threshold** (`warning_ltv_bps`) rather than as a factor on the action band:
+### 1.4 Capacity limit
 
-```
-warning band = raw_value × warning_ltv_bps / 10_000
+Utilization cannot exceed current available secured capacity.
 
-invariant:  ltv_bps < warning_ltv_bps < maintenance_bps
+### 1.5 Valuation freshness and margin state
+
+Revaluation and margin logic refuse stale or invalid inputs and can suspend the line on a call.
+
+### 1.6 Controlled collateral adjustment
+
+The enforced order is:
+
+```text
+owner requests
+-> custodian confirms
+-> bank approves
 ```
 
-Now all three are the same quantity — an LTV in basis points — the invariant is coherent, and a lender can read its own three thresholds directly off the facility record and audit them without arithmetic.
+Post-adjustment coverage is checked.
 
-**Cost:** low. One stored field, one validation, one fewer call parameter, and a change to how the warning band is derived.
+### 1.7 Atomic repayment
 
-**Status:** this is a **policy-normalisation improvement**, not a feature request — it makes an existing control readable, auditable, and stable across revaluations. It is the one item here worth doing regardless of what any design partner says, because it is about the coherence of the model rather than about anyone's credit policy.
+Only the bound settlement vault can apply repayment, and value movement and exposure reduction occur atomically.
 
-### 2.2 A pre-call draw-suspension band
+### 1.8 Dual-control release
 
-**Asked for as:** *"No further utilisation at 65% LTV"* — a band between the advance rate and the margin call at which the line stops lending but is not yet called.
+The bank authorizes release and the custodian confirms it. Repayment alone does not release the reserve.
 
-**What already exists, and it is stronger than usually described.** There are **two** suspension mechanisms today:
+### 1.9 Default, cure, and enforcement order
 
-- **Automatic, on margin call.** `revalue_and_check` sets the line to `LineStatus::Suspended` when the margin state becomes `Called`. And because `record_drawdown` requires an active line, **a called facility cannot accept a further draw.** Suspension on breach is not a procedure someone must remember; it is an automatic consequence of revaluation.
-- **Discretionary, at any time.** `bank_suspend_line` lets the bank suspend for any reason it judges sufficient — stale evidence, a title question, a sanctions hit — independent of any threshold.
-
-**So the accurate statement is:** a margin call **automatically** suspends further drawdown, and the bank **additionally** holds a manual suspension authority.
-
-**What is genuinely missing:** a *distinct pre-call suspension threshold* sitting between `Warning` and `Called`. Today `Warning` is informational — it changes the reported margin state but does not itself stop a draw. A lender wanting "stop lending at 65%, call at 70%" would need that intermediate band.
-
-**The fix:** a stored `suspend_ltv_bps` between `warning_ltv_bps` and `maintenance_bps`, with `record_drawdown` rejecting a draw when the last valuation placed utilisation above it.
-
-**The design question a partner must settle:** should the pre-call band *block* the draw, or merely *flag* it for the bank to decide? Blocking is the stronger control; flagging preserves workout discretion. Lenders differ, and this is theirs to choose.
-
-**Cost:** low. One stored field, one guard in `record_drawdown`.
-**Illustrative number:** 65% LTV. **A placeholder, not a recommendation.**
+The contract enforces a cure window and blocks premature or duplicate enforcement recording.
 
 ---
 
-## 3. The cure window: implemented, with one open question
+## 2. Controls required for the reserve obligation facility
 
-**Asked for as:** *"Cure period: two business days, subject to a shorter period for severe market, title, custody, or sanctions events."*
+### 2.1 Generic master facility
 
-**This is implemented.** A ledger-sequence-based enforcement standstill exists today:
+**Need:** separate the reserve pool and facility from one credit-line object.
 
-| Step | Mechanism |
-|---|---|
-| Bank issues a default notice | `issue_default_notice` takes a **`cure_deadline_ledger`** and a notice hash |
-| The deadline must be real | A deadline at or before the current ledger is **rejected** (`CureDeadlineNotFuture`) |
-| The deadline is stored | Persisted on the line as **`cure_expiry_ledger`** |
-| The bank cannot enforce early | `record_enforcement` **fails** with **`CurePeriodNotExpired`** if the current ledger is below the deadline |
-| The borrower may still cure late | `cure_default` carries **no expiry guard** — a cure is accepted right up until enforcement is actually recorded |
+**Required state:**
 
-Read the last two rows together, because the design is deliberate and borrower-favourable: **the deadline binds the bank, not the borrower.** The bank is barred from enforcing until the window lapses; the borrower is not barred from curing after it. The window is a standstill on enforcement, not a guillotine on cure.
+- approved aggregate capacity;
+- free capacity;
+- reserved capacity;
+- active contingent exposure;
+- pending claim or presentation;
+- crystallized reimbursement exposure;
+- margin reserve;
+- release eligibility.
 
-**What remains genuinely open** is not the mechanism but the *unit*:
+**Status:** proposed.
 
-> A facility agreement will say **"two business days."** The contract knows only **ledger sequence.** Something must map one to the other.
+### 2.2 Product sublimits
 
-That mapping is a real decision with real consequences:
+**Need:** a bank must constrain use by product, entity, currency, jurisdiction, beneficiary class, tenor, or group member.
 
-- **Ledger sequence** is what the contract can enforce, and it is tamper-proof — but it drifts against wall-clock time and knows nothing of weekends, holidays, or a Gulf/European calendar mismatch.
-- **Business days** is what the legal document will actually say, and what a workout desk will actually operate on — but it requires an off-chain calendar, and therefore a party who computes and submits the resulting ledger deadline.
+Examples:
 
-**The open question for a design partner:** who computes the ledger deadline from the contractual business-day period, and is that computation itself evidence? A bank that says "two business days" and a contract that enforces "ledger sequence N + 34,560" must agree, and the agreement must be auditable.
+- guarantees only;
+- documentary credits only;
+- one subsidiary;
+- one currency;
+- one beneficiary class;
+- maximum long-dated exposure.
 
-**Cost:** low, and mostly off-chain. The enforcement standstill already works.
+**Status:** proposed.
 
-**What to evaluate with a lender:** not *whether* to build a cure window, but whether the **lenient design** — cure accepted after the deadline, until enforcement is recorded — matches their workout practice. Some lenders will want a hard cut-off; that would be a change, and it should be a considered one.
+### 2.3 Pre-issuance capacity reservation
+
+**Need:** capacity must be held before a bank obligation becomes effective.
+
+Reservation states should include:
+
+```text
+requested
+-> validated
+-> reserved
+-> committed
+-> released / expired / refused
+```
+
+The reservation must have an expiry so abandoned applications do not block capacity indefinitely.
+
+**Status:** proposed.
+
+### 2.4 No unrestricted cash draw
+
+**Need:** target product safety and economic boundary.
+
+Free facility capacity must not become a general customer balance or transferable capacity token.
+
+Permitted payment must identify:
+
+- bank-approved obligation;
+- beneficiary;
+- amount;
+- purpose;
+- settlement condition;
+- external product reference;
+- capacity reservation.
+
+**Status:** proposed and highest-priority product invariant after facility generalization.
+
+### 2.5 Beneficiary control
+
+**Need:** every obligation must be linked to an approved named beneficiary or authoritative beneficiary class.
+
+Controls:
+
+- identity and sanctions status;
+- no customer self-payment unless explicitly allowed by the product and bank;
+- amendment of beneficiary only by bank-authorized process;
+- settlement only to the authoritative beneficiary or permitted holder.
+
+**Status:** proposed.
+
+### 2.6 Product-purpose binding
+
+**Need:** capacity cannot be used for an unspecified purpose.
+
+Representative fields:
+
+- product type;
+- commercial contract or transaction reference;
+- issue date;
+- expiry or maturity;
+- governing rules or legal context;
+- reimbursement source;
+- evidence package.
+
+**Status:** proposed.
+
+### 2.7 Contingent versus crystallized exposure
+
+**Need:** a guarantee not yet called is not the same state as a bank-paid claim.
+
+The facility should distinguish:
+
+- contingent notional;
+- bank-recognized capacity consumption;
+- pending claim;
+- paid amount;
+- reimbursement due;
+- overdue reimbursement;
+- default and enforcement exposure.
+
+**Status:** proposed.
+
+### 2.8 Claim and presentation state
+
+**Need:** bank obligations may change state through an external presentation, demand, maturity, or settlement event.
+
+Argent must not determine legal validity itself. It records:
+
+- presentation or claim identity;
+- evidence reference;
+- bank-authorized decision;
+- payment or refusal reference;
+- capacity and reimbursement effect.
+
+**Status:** proposed.
+
+### 2.9 Obligation amendment control
+
+**Need:** amendments may change amount, expiry, beneficiary, conditions, or capacity.
+
+Required order:
+
+```text
+amendment requested
+-> bank risk and capacity check
+-> additional capacity reserved if required
+-> authoritative instrument amended
+-> protocol state updated
+```
+
+An amendment must not reduce collateral or release capacity before the amended instrument is effective and correctly represented.
+
+**Status:** proposed.
+
+### 2.10 Discharge and release control
+
+**Need:** reserve capacity should return only after the bank confirms that the obligation is discharged.
+
+Discharge evidence may include:
+
+- expiry without valid claim;
+- return or cancellation;
+- beneficiary release;
+- full reimbursement;
+- bank system closure;
+- final settlement.
+
+**Status:** proposed.
 
 ---
 
-## 4. Off-chain policy that only looks like a feature
+## 3. Bank-owned configuration controls
 
-**Asked for as:** a seven-condition release/substitution test — lender authorises; custodian confirms allocation; remaining pool passes eligibility, concentration, and coverage; no unresolved margin, default, sanctions, title, or evidence exception; no temporary shortfall; custodian confirms completion; the resulting bar list is recorded.
+These controls belong to bank policy and should be versioned and evidenced rather than hard-coded as universal law.
 
-**This should mostly not be built.** Read the conditions and sort them:
+### 3.1 Product capacity factors
 
-| Condition | Where it belongs |
-|---|---|
-| Lender authorises the action | **Contract.** `bank_approve_adjustment` — enforced. |
-| Custodian confirms bars allocated and immobilised | **Contract.** `custodian_confirm_adjustment` — enforced. |
-| Resulting bar list and base recorded | **Contract.** Enforced. |
-| No temporary collateral shortfall | **Contract.** The adjustment is atomic; there is no interim state. |
-| Remaining pool passes **coverage** | **Contract — already enforced.** `bank_approve_adjustment` recomputes the borrowing base from the *proposed* quantity, price, haircut and line LTV, and **rejects the adjustment** with `AdjustmentUndercovered` if the resulting base falls below the drawn balance. Available capacity, bar-set evidence and the uniqueness lock are updated atomically. |
-| Remaining pool passes **eligibility and concentration** | **Off-chain.** Concentration rules (max per refiner, per vault, per jurisdiction) are lender policy. |
-| No unresolved **sanctions, title, or evidence** exception | **Off-chain, and must stay there.** These are determinations, not computations. A contract cannot know whether a sanctions screen cleared. |
+A bank may consume different internal capacity for equal face amounts depending on:
 
-> **The principle.** The contract enforces the *sequence* and the *arithmetic*. The bank makes the *determinations*. A control that requires judgement is a control the bank signs for — and the signature is the evidence that it made the judgement.
+- product type;
+- tenor;
+- currency;
+- beneficiary;
+- jurisdiction;
+- claim probability;
+- collateral volatility;
+- regulatory treatment.
 
-Building a "sanctions clear" flag into the contract would create the illusion of an enforced control while actually enforcing nothing but that someone set a boolean. That is worse than not having it, because it invites reliance.
+### 3.2 Concentration
 
-**Cost:** none for coverage — it is already enforced. The remaining conditions (eligibility, concentration, sanctions, title, evidence) should be documented as lender pre-conditions in the facility agreement, **not built**.
+Limits may apply by:
+
+- owner or group;
+- custodian;
+- vault;
+- jurisdiction;
+- refiner;
+- product type;
+- maturity bucket;
+- currency;
+- beneficiary;
+- valuation source.
+
+### 3.3 Warning and action bands
+
+The bank may define:
+
+- warning threshold;
+- new-issue suspension threshold;
+- margin-call threshold;
+- cure period;
+- forced-reduction threshold;
+- enforcement threshold.
+
+### 3.4 Evidence freshness
+
+Different evidence may have different maximum ages:
+
+- valuation;
+- custody statement;
+- insurance;
+- legal opinion;
+- sanctions screening;
+- beneficial ownership;
+- assay or inspection.
+
+### 3.5 Role and approval policy
+
+Each action may require:
+
+- initiator role;
+- approver groups;
+- quorum;
+- amount threshold;
+- auto-reject timeout;
+- independent release or enforcement authority;
+- bank and custodian separation.
 
 ---
 
-## 5. Summary: what to build, and when
+## 4. High-value later controls
 
-| Item | Category | Build when |
-|---|---|---|
-| Warning level stored on the line, expressed as `warning_ltv_bps` | Configuration / **policy normalisation** | **Now.** It makes an existing control readable and auditable, independent of any partner's policy. |
-| Pre-call draw-suspension band (between `Warning` and `Called`) | Configuration | **When a lender wants to stop lending *before* the call level.** Suspension *on* call is already automatic. |
-| Business-day → ledger-sequence mapping for the existing cure window | Off-chain convention | **When a lender states its workout calendar.** The enforcement standstill itself is already implemented. |
-| Coverage test on the proposed resulting set | **Already implemented** | — `bank_approve_adjustment` rejects an under-covered adjustment (`AdjustmentUndercovered`). |
-| Eligibility / concentration on release | Off-chain policy | **Do not build.** Lender policy, documented in the facility agreement. |
-| Sanctions / title / evidence exceptions | Off-chain policy | **Do not build.** These are determinations. The bank signs; the signature is the control. |
+### 4.1 Dynamic guarantee reduction
+
+Capacity may reduce as verified project milestones are completed.
+
+Risk:
+
+- milestone evidence may be disputed;
+- the beneficiary and bank must authorize reduction;
+- protocol evidence cannot replace legal amendment.
+
+### 4.2 Controlled collateral optimization
+
+Select the lowest-cost eligible collateral combination based on:
+
+- haircut;
+- liquidity;
+- concentration;
+- vault;
+- currency;
+- tenor;
+- substitution cost.
+
+Risk:
+
+- optimization must not create a legal or operational unsecured interval.
+
+### 4.3 Selective-disclosure capacity proof
+
+Prove sufficient bank-approved free capacity without exposing:
+
+- total reserve;
+- bar serials;
+- unrelated obligations;
+- bank risk policy.
+
+Risk:
+
+- the proof must be bound to a current policy, valuation, and facility state.
+
+### 4.4 Electronic trade-document trigger
+
+Use authoritative electronic bill-of-lading or warehouse-receipt state as an input to a bank decision.
+
+Risk:
+
+- control, title, integrity, and legal recognition belong to the document system and law;
+- a document hash alone is insufficient.
+
+### 4.5 Group sublimits
+
+Allow a parent reserve to support approved subsidiaries.
+
+Risk:
+
+- corporate benefit;
+- third-party security;
+- transfer pricing;
+- reimbursement allocation;
+- insolvency and priority;
+- group concentration.
+
+### 4.6 Multi-bank portability
+
+Move a facility from one bank to another through ordered release and re-pledge.
+
+Risk:
+
+- never allow simultaneous competing security;
+- intercreditor and priority complexity;
+- bank and custodian coordination.
 
 ---
 
-## 6. How to answer a bank that asks for these
+## 5. Controls that should remain outside Argent
 
-Plainly, and without pretending:
+Argent should not decide:
 
-> *"Not today. The advance rate, maintenance threshold, eligibility ceiling, haircut, and the two-band margin computation are enforced in the contract now. A suspension band and a cure window are specified and scoped, but not implemented — deliberately, because the thresholds and the cure mechanics belong to your credit policy, not to ours. Tell us your workout process and we will build to it, and you will be able to read the result in the code."*
+- whether to approve the customer;
+- whether to issue a guarantee or documentary credit;
+- whether a claim or presentation is legally valid;
+- regulatory capital or liquidity treatment;
+- accounting classification;
+- sanctions or AML disposition;
+- asset market value independently of an approved source;
+- legal perfection;
+- corporate benefit;
+- physical truth beyond signed source evidence;
+- final enforcement rights.
 
-That is a stronger answer than "yes" (untrue, and discoverable in an afternoon by anyone who reads the repo) and stronger than "no" (which concedes ground you have not lost).
-
----
-
-## 7. Provenance of the illustrative numbers
-
-The 65% suspension threshold, 72% enforcement trigger, and two-business-day cure period appear in a draft design-partner credit brief. They are **reasonable placeholders and nothing more.** No lender has stated them, no policy has been approved, and the contract does not enforce them.
-
-They are recorded here so that:
-
-1. the credit brief can point at this document rather than asserting the controls itself;
-2. a design partner can see we have thought about what they will ask for; and
-3. nobody, internally or externally, mistakes a placeholder for a commitment.
+The protocol may require authoritative evidence of those decisions. It should not replace the authority that owns them.
 
 ---
 
-## Boundary reminder
+## 6. Controls that should never be built
 
-The lender sets credit policy. Argent enforces the policy the lender sets, and records the acts the parties sign. It does not set advance rates, does not decide when a line is suspended, and does not judge whether a cure is adequate. Where this document and `argent-architecture.md` touch, the architecture document is authoritative.
+### 6.1 Freely transferable capacity token
 
-**Section 1 describes controls that are implemented. Sections 2 to 4 describe candidate extensions that are not.** Verify any claim against `contracts/credit_ledger/` at the implementation baseline stated above before relying on it.
+Why not:
+
+- could resemble private money or an unauthorized financial claim;
+- separates capacity from bank underwriting and beneficiary purpose;
+- creates transfer, holder, insolvency, and securities questions;
+- undermines the no-cash-draw boundary.
+
+### 6.2 Operator override of institutional roles
+
+Why not:
+
+- destroys separation of duties;
+- makes the shared evidence operator-controlled;
+- creates unacceptable custody and bank risk.
+
+### 6.3 Automatic physical enforcement by smart contract
+
+Why not:
+
+- the contract cannot possess or sell physical gold;
+- enforcement is governed by law, documents, custody, and human authority;
+- disputes and insolvency can alter the path.
+
+### 6.4 Public disclosure of full reserve data
+
+Why not:
+
+- commercial sensitivity;
+- security and theft risk;
+- client confidentiality;
+- bank secrecy and data protection;
+- unnecessary for most verification.
+
+### 6.5 Cross-chain duplication of the reserve claim
+
+Why not:
+
+- duplicate state and bridge risk;
+- conflicting encumbrance representations;
+- unclear authority;
+- weakens the one-authoritative-state principle.
+
+---
+
+## 7. Prioritization
+
+### Immediate
+
+1. DFNS institutional signing and reconciliation.
+2. Generic facility and capacity view.
+3. Pre-issuance reservation.
+4. Product and group sublimits.
+5. No unrestricted cash draw.
+
+### First obligation product
+
+6. Guarantee lifecycle.
+7. Claim, payment, reimbursement, and discharge.
+
+### Next
+
+8. Documentary credit lifecycle and bank-system adapter.
+9. Selective-disclosure evidence.
+10. Group treasury profile.
+
+### Later
+
+11. Treasury exposure.
+12. electronic trade documents;
+13. optimization and automation;
+14. funded auto-collateralisation where explicitly required.
+
+---
+
+## 8. Status rule
+
+Every proposed control must be labeled as one of:
+
+- implemented in current contracts;
+- implemented in service only;
+- specified but not built;
+- external bank or custodian control;
+- research only;
+- prohibited by product design.
+
+This prevents product positioning from outrunning the implementation.

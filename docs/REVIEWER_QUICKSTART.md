@@ -1,26 +1,53 @@
 # Reviewer quickstart
 
-This repository is the Argent Core V5 contract engine: three Soroban contracts
-that enforce the control state around physically-held collateral. The gold stays
-in the vault. The control over it goes on chain.
+This repository contains the current Argent Core V5 Soroban engine: three contracts that enforce and evidence control state around physically held collateral.
 
-Argent Core V5 is the current Soroban reference implementation of the public Argent Protocol v0.1 (see `protocol.md`). It uses `CollateralEventV1` and `GovernanceEventV1` as the first stable event schemas.
+The **product direction** is broader than the current contract names. Argent is evolving into gold-backed obligation infrastructure: one controlled reserve supporting multiple purpose-bound bank obligations, with no unrestricted customer cash draw. The code in this repository is the tested **secured-credit reference branch** that proves the shared collateral foundation.
+
+Read the product thesis at `reserve-obligation-infrastructure.md` and the target domain model at `obligation-facility-profile.md`. Use this document to verify what is actually implemented today.
+
+> **Do not infer typed guarantees, documentary credits, or treasury obligations from the current contracts.** Those are the next protocol profile, not a relabeling of shipped code.
+
+---
 
 ## What V5 proves
 
-1. An asset class is registered once as a reusable instrument, then admitted to a framework as eligible collateral under an explicit treatment (haircut, maximum advance rate, maintenance threshold). A position cannot be registered against an unregistered or unadmitted instrument.
-2. The same lot cannot back two active pledges.
-3. Only the bound settlement vault can reduce a drawn balance.
-4. Repayment moves token settlement and updates credit exposure together.
-5. Release requires bank authorization and then custodian confirmation.
-6. Deal acts emit a canonical, replayable CollateralEventV1; authority acts (instrument registration, admission, party and admin changes) emit a CollateralEventV1-parallel GovernanceEventV1.
-7. Both event schemas are inspectable through the contract spec.
+1. An asset class is registered once as a reusable instrument and admitted to a framework under explicit eligibility treatment.
+2. A position cannot be registered against an unregistered or unadmitted instrument.
+3. The same physical lot cannot support two active pledges.
+4. A credit line cannot open above the bank-approved instrument ceiling or without margin headroom.
+5. Only the bound settlement vault can reduce drawn exposure.
+6. Repayment moves settlement value and updates credit exposure atomically.
+7. Release requires bank authorization followed by custodian confirmation.
+8. Default, cure, enforcement readiness, and enforcement recording follow an enforced order.
+9. Deal acts emit canonical `CollateralEventV1` events.
+10. Authority acts emit parallel `GovernanceEventV1` events.
+11. Contract state can be rebuilt from the event stream.
+
+These properties are reusable for the obligation facility because any guarantee, documentary credit, supplier undertaking, or treasury exposure still depends on identified collateral, exclusive allocation, governed exposure, controlled release, and an enforceable adverse path.
+
+---
+
+## What V5 does not yet prove
+
+The current contracts do not yet implement:
+
+- a generic master obligation facility;
+- product and subsidiary sublimits;
+- beneficiary-specific capacity reservations;
+- typed guarantees, documentary credits, accepted instruments, or treasury exposures;
+- contingent, pending-claim, and crystallized exposure classes;
+- issue, amend, cancel, expire, present, claim, and discharge states;
+- the target no-unrestricted-cash-draw invariant;
+- electronic trade-document or bank trade-finance adapters.
+
+The repository states these gaps explicitly so reviewers can distinguish demonstrated engineering from the commercial product extension.
+
+---
 
 ## Run the suite
 
-The settlement vault imports the compiled `credit_ledger.wasm`, so the credit
-ledger must be built to WASM before the settlement-vault integration tests can
-compile. Build it once, then run the workspace suite:
+The settlement vault imports the compiled `credit_ledger.wasm`, so the credit ledger must be built to WASM before the settlement-vault integration tests compile.
 
 ```bash
 cd contracts
@@ -30,48 +57,105 @@ cargo test --workspace
 
 Expected:
 
-```
+```text
 credit_ledger:    162 passed
 rewards_ledger:    45 passed
 settlement_vault:  17 passed
 ```
 
-224 tests, 0 failed, on soroban-sdk 23.5.3.
+**224 tests, 0 failed**, on soroban-sdk 23.5.3.
 
-If the `wasm32v1-none` target is missing, add it with
-`rustup target add wasm32v1-none` and rebuild.
+If the `wasm32v1-none` target is missing:
+
+```bash
+rustup target add wasm32v1-none
+```
+
+Then rebuild and rerun the suite.
+
+---
+
+## Run the documentation conformance check
+
+```bash
+python3 scripts/check_docs.py --verbose
+```
+
+The checker prevents documentation from naming nonexistent contract functions, reversing enforced lifecycle order, describing implemented controls as missing, or linking to absent local documents.
+
+---
 
 ## Key tests to inspect
 
-The guarantees above are each pinned by a test. To read the proof directly:
+### Eligibility and capacity
 
 - `register_position_refuses_instrument_not_admitted`
 - `open_credit_line_refused_when_ltv_exceeds_instrument_ceiling`
+- `open_credit_line_refuses_ltv_not_below_maintenance`
+
+### Exclusivity and release
+
 - `refuses_double_pledge_of_same_bars`
-- `unapproved_vault_cannot_apply_repayment`
+- `refuses_second_credit_line_against_same_pledge`
 - `refuses_confirm_release_before_bank_authorizes`
 - `repayment_does_not_release_collateral`
+- `refuses_release_with_outstanding_balance`
+
+### Settlement and exposure
+
+- `unapproved_vault_cannot_apply_repayment`
+- `duplicate_payment_ref_does_not_move_tokens_twice`
+
+### Default and enforcement
+
+- `cure_restores_line`
+- `refuses_enforce_before_cure_expiry`
+- `enforcement_cannot_be_recorded_twice`
+
+### Events and replay
+
 - `batch3_collateral_event_v1_topic_marker_is_pinned`
 - `batch4_spec_matches_wire_contract`
 - `replay_fold_rebuilds_framework_position_pledge_line`
 - `contract_spec_contains_governance_event_v1`
 
-The first two are the V5 instrument-eligibility gate. The next four are the
-institutional impossibilities. The last four show that the canonical event
-streams are well-formed and that contract state can be rebuilt from events alone.
+---
 
-## Live V5 contracts (Stellar testnet)
-
-The engine in this repository is deployed and exercised end to end on testnet:
+## Live V5 contracts - Stellar testnet
 
 - Credit ledger: `CA5PIUK6ZQZD5CRLKHWUWWFWK6LZATVWUVWR4B6HR3CNAFENZK6JE4GZ`
 - Settlement vault: `CB45EGGKMQPINDHAFQRDSBAT4MSFNVSTQODBAGMGUPQH6CHIHCI4WZI5`
 
-Any act can be verified on the public explorer at stellar.expert.
+The public demonstrator and explorer evidence are linked from the root README and `evidence-pack-index.md`.
+
+---
+
+## Why the existing branch matters to the new product
+
+The mature facility changes the commercial use of capacity, not the physical-collateral control requirements.
+
+| Current secured-credit proof | Reuse in obligation facility |
+|---|---|
+| instrument and lot identity | reserve eligibility and identity |
+| pledge exclusivity | no duplicate obligation allocation |
+| borrowing base | approved reserve capacity |
+| available limit | free obligation capacity |
+| draw utilization | capacity consumed by a bank obligation |
+| repayment | reimbursement after bank payment |
+| dual-control release | release after all obligations are discharged |
+| default and enforcement | adverse path after unpaid reimbursement |
+| canonical event stream | facility and obligation evidence |
+
+The next design step generalizes the facility object and adds obligation lifecycles. It does not require rebuilding the reserve identity, authorization, release, or enforcement foundation.
+
+---
 
 ## Where to read next
 
-- `docs/TEST_SURFACE_MATRIX.md`: what each surface covers and the risk it addresses.
-- `docs/argent-architecture.md`: how the three contracts fit together.
-- `docs/argent-dfns-signing-sequence.md`: the production signing model: each party signs with its own authority; the contract enforces roles, the signer enforces who can sign.
-- `docs/protocol.md`: the protocol specification.
+- `DOCUMENT_STATUS_MATRIX.md` - the scope and status of every document.
+- `reserve-obligation-infrastructure.md` - the current product thesis.
+- `obligation-facility-profile.md` - the target technical model.
+- `argent-architecture.md` - the full architecture and boundary.
+- `argent-dfns-signing-sequence.md` - the institutional signing model.
+- `protocol.md` - the protocol specification and current reference profile.
+- `TEST_SURFACE_MATRIX.md` - test coverage by risk surface.

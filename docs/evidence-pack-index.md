@@ -1,5 +1,7 @@
 # Evidence Pack Index
 
+> **Positioning status:** Evidence in the current repository proves the secured-credit reference branch. A production obligation facility adds evidence for product terms, beneficiary identity, issuance, amendment, presentation, claim, expiry, reimbursement, and discharge.
+
 **Argent Core V5. Reviewer and design-partner evidence index.**
 
 This document exists so a reviewer can verify the prototype without relying on any narrative. Argent's claim is not "trust us." The claim is that the contracts, tests, build artifacts, deployed testnet contracts, event trail, and certificates can be opened and checked. Repo-checkable values are filled in below. On-chain items point to where a reviewer confirms them against the live testnet deployment, which runs the same open-source engine in this repository.
@@ -17,7 +19,7 @@ This document exists so a reviewer can verify the prototype without relying on a
 | Contract suite | `credit_ledger`, `settlement_vault`, `rewards_ledger` |
 | Deployment | `credit_ledger` and `settlement_vault` deployed to testnet; `rewards_ledger` tested, not deployed (separate optional overlay) |
 | Test count | 224 passing tests: 162 credit ledger, 45 rewards ledger, 17 settlement vault |
-| Current reference implementation | Argent Core V5, public Argent Protocol v0.1 |
+| Current reference implementation | Argent Core V5, Argent Protocol v0.2-draft with secured-credit reference profile |
 | Event schemas | `CollateralEventV1`, `GovernanceEventV1` |
 | Core boundary | Physical asset remains off-chain and in custody; chain records signed control state, not title transfer. |
 

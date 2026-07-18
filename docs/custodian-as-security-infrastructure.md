@@ -1,5 +1,7 @@
 # The Custodian as Security Infrastructure
 
+> **Positioning status:** The custodian’s security-infrastructure role applies equally to guarantees, documentary credits, treasury exposure, and funded credit. The mature product is a reserve obligation facility, not merely a lending workflow.
+
 Notes on why the custodian is the piece that makes Argent work. Argent records and enforces a control lifecycle over physical gold, but that record only means something if it is anchored to a real, independent statement that the gold exists, is allocated, and is held. That statement comes from the custodian. This document sets out what a custodian actually is, why it sits at the root of the whole design, and where the boundary lies between what the custodian provides and what Argent provides. Sources are linked at the end.
 
 Related docs: `collateral-control.md`, `threat-model-and-security-boundaries.md`.
