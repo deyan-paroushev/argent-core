@@ -76,6 +76,19 @@ provenance and integrity
 
 The final arrow is Argent's proposed category. See `shared-gold-infrastructure-and-argent.md`.
 
+## What the full Gold as a Service paper adds
+
+The full World Gold Council and BCG paper provides useful market-structure context, but none of it should be presented as Argent's TAM.
+
+- The paper estimates approximately 220,000 tonnes of above-ground gold, worth more than US$30 trillion at the cited 2025 prices.
+- It describes more than 90% of wholesale OTC precious-metals trading as clearing through unallocated Loco London accounts and cites more than US$160 billion of daily Loco London gold trading in 2025.
+- Those figures show the scale and liquidity of gold, but also underline that much of the market is not allocated, individually identified bullion. Rights, custody, and control profiles remain decisive for Argent eligibility.
+- The paper states that Gold as a Service would be an upstream, issuer-facing platform. Issuers retain their customer propositions, interfaces, pricing, distribution, and implementations.
+- Its stated assurance relates to physical gold and legal entitlements. Argent's bank-facility layer begins with separate pledgeability, control, eligibility, reservation, and obligation decisions.
+- The paper's funded-loan example supports the relevance of Argent's current secured-credit reference branch. The non-cash-drawable obligation facility remains the more differentiated extension.
+
+The market lesson is not that all gold becomes usable collateral. It is that shared infrastructure may make authoritative reserve facts easier to consume, allowing bank applications to focus on the specific rights and controls they add.
+
 ## Short version
 
 Gold is held at large scale, on the order of US$9 trillion in investor bullion, with a pledge-relevant institutional OTC pool of roughly 5,000 to 10,000 tonnes, and that base has been growing. Lending against gold already exists across private banks, bullion dealers, and the wholesale market, so the demand is established; what is fragmented is the control record around it. And the larger institutional infrastructure, from DTCC to a World Gold Council collateral pilot, has been moving toward collateral mobility and control. What none of this settles is adoption: whether a given bank or lender will take up a particular product is a commercial question that market data cannot answer, only a real counterparty can.

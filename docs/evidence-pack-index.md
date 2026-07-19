@@ -220,11 +220,14 @@ If a future design partner supplies reserve data through a provenance, pooled-go
 - source-system identifier and correlation record;
 - evidence freshness and expiry rule;
 - backing, custody, allocation, or entitlement scope;
+- assurance provider, scope, timestamp, expiry, and reconciliation-tolerance status;
+- economic, legal, and operational equivalence class where the source defines one;
 - explicit `does_prove` and `does_not_prove` statement;
 - discrepancy and outage drill;
 - proof that no duplicate token, balance, or ownership record was created on Stellar;
 - privacy and disclosure classification for source records;
-- bank and legal approval for the reserve profile.
+- bank and legal approval for the reserve profile;
+- proof that reserve verification, legal pledgeability, operational control, and facility issuability were evaluated separately.
 
 Do not include a full shared bar list, customer ledger, production ownership file, or confidential operator data in a public evidence pack. A sanitized assertion and reproducible verification path are sufficient for public review.
 

@@ -306,11 +306,28 @@ Argent
        obligation allocation, claims, reimbursement, release, enforcement
 ```
 
-> **Gold infrastructure proves the reserve. Argent governs what the bank may issue against it.**
+> **Trusted gold infrastructure can establish and continuously assure the reserve within its defined scope. Argent governs what the bank may issue against it.**
 
-Argent should consume signed assertions or references from bank-approved upstream authorities. It should not copy or mint a second representation of a gold token, account balance, pooled interest, or bar record. A verified upstream position still needs separate bank approval for legal rights, control, valuation, concentration, product use, and enforcement.
+Argent should consume signed assertions or references from bank-approved upstream authorities. It should not copy or mint a second representation of a gold token, account balance, pooled interest, or bar record. The full Gold as a Service paper makes the relevant boundary explicit: upstream assurance may cover physical gold and legal entitlements, while product implementation and customer proposition remain with the issuer. A verified upstream position still needs separate bank approval for legal pledgeability, operational control, valuation, concentration, product use, and enforcement.
 
 The first profile remains allocated, individually identified bullion. Pooled beneficial interests and qualifying digital-gold entitlements are later candidate profiles, each requiring its own legal and risk treatment. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
+### 7.2 Fungible reserve units, specific facility rights
+
+Shared gold infrastructure may make qualifying units interchangeable within an accepted economic, legal, and operational equivalence class. Argent does not make facility rights fungible.
+
+A security interest, capacity reservation, guarantee, documentary credit, or treasury exposure remains specific to the customer, bank, product, amount, beneficiary, purpose, and expiry. No upstream transferability or product fungibility authorizes re-pledge, reassignment, or cross-facility reuse.
+
+The four gates are:
+
+```text
+reserve verified
+-> legally pledgeable
+-> operationally controllable
+-> facility issuable
+```
+
+---
 
 ## 8. One authoritative capacity and deliverability state
 

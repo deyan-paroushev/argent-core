@@ -462,7 +462,10 @@ Candidate sources include a custodian API, LBMA Gold Bar Integrity or another pr
 
 Required controls:
 
-- explicit `ReserveProfile` and authoritative source;
+- explicit `ReserveProfile`, authoritative source, and assurance scope;
+- separate reserve-verification, legal-pledgeability, operational-control, and facility-issuability gates;
+- source assurance expiry and reconciliation-tolerance status;
+- economic, legal, and operational equivalence classes where relevant;
 - freshness, tolerance, and discrepancy handling;
 - no duplicate asset representation;
 - fail closed for new issue when upstream data is stale or inconsistent;
@@ -470,7 +473,7 @@ Required controls:
 - minimum-disclosure evidence and role-specific access;
 - separate legal and risk approval for every new profile.
 
-This workstream requires a stable upstream interface, one bank-approved profile, and a design partner. It is outside the current mainnet-delivery scope unless separately approved. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+This workstream requires a stable upstream interface, one bank-approved profile, and a design partner. A parallel ecosystem activity may contribute a bank-obligation control profile to emerging shared gold infrastructure discussions, but no integration or partnership should be claimed before a formal interface and counterpart exist. It is outside the current mainnet-delivery scope unless separately approved. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
 
 ## 14. Stage 11 - automation and conditional orchestration
 

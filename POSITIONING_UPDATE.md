@@ -1,6 +1,6 @@
 # Argent positioning update
 
-**Date:** 18 July 2026
+**Date:** 19 July 2026
 
 Argent has matured from a credit-line-first presentation into **gold-backed obligation infrastructure**.
 
@@ -44,3 +44,19 @@ Argent occupies the final layer. It should consume authoritative reserve asserti
 The repository now adds `docs/shared-gold-infrastructure-and-argent.md` and aligns architecture, reserve profiles, interoperability, privacy, eligibility, capacity, market, custodian, bank-adapter, and roadmap documents. The first profile remains allocated, individually identified bullion. Pooled and digital-gold interests are later candidate profiles requiring separate bank, legal, custody, operator, insolvency, and enforcement analysis.
 
 No World Gold Council, LBMA, Gold Bar Integrity, Pooled Gold Interests, Wholesale Digital Gold, Standard Gold Unit, or Gold as a Service affiliation or integration is claimed. No current contract or mainnet-delivery commitment has changed.
+
+
+## July 2026 refinement - full Gold as a Service assurance boundary
+
+Review of the complete World Gold Council and BCG white paper adds a narrower and more useful boundary than the press release alone:
+
+- Gold as a Service is intended as an upstream, issuer-facing platform rather than a consumer product;
+- issuers retain the customer proposition, commercial terms, pricing, distribution, interface, and implementation;
+- the platform's stated assurance relates to physical gold and legal entitlements;
+- market-level fungibility depends on economic, legal, and operational equivalence;
+- the platform is intended to enable third-party products and services above the common foundation;
+- the paper's funded collateral example validates the current secured-credit reference branch but does not supply a bank-obligation lifecycle.
+
+The core now preserves four explicit gates: reserve verified, legally pledgeable, operationally controllable, and facility issuable. It also separates potentially fungible reserve units from specific, purpose-bound and non-transferable facility rights.
+
+Canonical documents, adapters, privacy rules, runbooks, threat controls, evidence requirements, market notes, and the roadmap have been aligned. No current contract, mainnet-delivery commitment, World Gold Council relationship, or production integration is claimed.

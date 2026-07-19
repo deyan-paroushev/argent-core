@@ -564,7 +564,9 @@ It must return:
 - evidence freshness and discrepancy state;
 - supported control, freeze, transfer, redemption, or realisation capabilities.
 
-The source remains authoritative for reserve facts. Argent remains authoritative for facility reservation and obligation state. A successful response does not itself create a pledge or eligibility decision.
+The source remains authoritative for reserve facts within its stated assurance scope. Argent remains authoritative for facility reservation and obligation state. A successful response does not itself create a pledge, prove that the interest is legally pledgeable or operationally controllable, or create a bank eligibility decision.
+
+The target profile preserves four gates: reserve verified, legally pledgeable, operationally controllable, and facility issuable. Asset-layer fungibility does not make the resulting facility reservation transferable.
 
 ### Custodian system
 

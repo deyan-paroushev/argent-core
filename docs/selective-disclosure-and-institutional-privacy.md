@@ -264,6 +264,43 @@ An Argent evidence record should contain the source-system identifier, assertion
 
 See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
 
+### 6.6 Assurance scope and transparency boundary
+
+The World Gold Council's full Gold as a Service paper distinguishes infrastructure-level assurance from issuer responsibility. Argent should preserve the same boundary in every derived statement.
+
+An upstream assertion may prove, within its own scope, that:
+
+- physical backing is current;
+- custody and reconciliation are current;
+- a named holder has a defined ownership or entitlement;
+- a redemption or realisation pathway exists.
+
+It does not automatically prove that:
+
+- the interest is legally pledgeable to the bank;
+- a security interest is perfected;
+- the bank accepted the reserve or facility treatment;
+- capacity is free, reserved, or issuable;
+- a guarantee, documentary credit, or other obligation exists.
+
+Platform-level public transparency may be appropriate for aggregate reserves, supply, assurance status, or control-tower health. Customer-specific bar lists, balances, ownership records, facility limits, reservations, beneficiaries, and obligations remain restricted unless a lawful and purpose-bound disclosure requires them.
+
+Every Argent statement derived from shared gold infrastructure should therefore include:
+
+```text
+source_authority
+assurance_scope
+assurance_timestamp
+assurance_expiry
+source_tolerance_status
+does_prove
+does_not_prove
+```
+
+No verifier should be able to mistake an upstream backing assertion for an Argent facility decision or a legal opinion.
+
+---
+
 ## 7. Evidence-package architecture
 
 ### 7.1 Evidence manifest
@@ -275,6 +312,7 @@ Each evidence package should have a manifest containing:
 - document types, not necessarily plaintext names;
 - canonical hashes;
 - issuer or source identity;
+- source assurance scope, timestamp, expiry, and tolerance status where applicable;
 - creation and expiry times;
 - classification;
 - permitted roles and purposes;

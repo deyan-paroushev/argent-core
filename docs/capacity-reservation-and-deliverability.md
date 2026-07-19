@@ -122,6 +122,7 @@ Argent coordinates systems that remain authoritative for different facts.
 | Domain | Authoritative source | Argent responsibility |
 |---|---|---|
 | Physical existence and custody | Custodian or vault system | record signed custody and control evidence; detect disagreement |
+| Shared-gold assurance | Bank-approved gold platform, product operator, or assurance provider | record the assurance scope, equivalence class, reconciliation status, and expiry; do not expand the source's claim |
 | Ownership and security documents | Legal and bank files; applicable registry | bind evidence references and agreed control state |
 | Eligibility and limits | Bank risk, credit, collateral, and limits systems | enforce the bank-approved result and policy version |
 | Product issuance | Bank guarantee, trade-finance, treasury, or facility system | reserve capacity before issue; reconcile issue outcome |
@@ -161,6 +162,26 @@ If the upstream source becomes stale or reports a discrepancy:
 5. never release capacity solely because the upstream record disappeared or changed.
 
 See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
+### 4.2 Four gates from reserve assurance to facility issuability
+
+A bank should not move directly from an upstream `VERIFIED` flag to an issuable obligation. The target profile separates four gates:
+
+1. **Reserve verified** - the upstream source confirms backing, custody, quantity, and ownership or entitlement within a stated assurance scope.
+2. **Legally pledgeable** - the customer's rights can support the required security interest, control arrangement, and enforcement path.
+3. **Operationally controllable** - the custodian or account operator can block, freeze, earmark, substitute, release, and realise the interest as required.
+4. **Facility issuable** - the bank accepts the reserve for this applicant, product, beneficiary, amount, currency, jurisdiction, tenor, evidence package, and operating route.
+
+```text
+reserve verified
+-> legally pledgeable
+-> operationally controllable
+-> facility issuable
+```
+
+Failure at any gate prevents new issuance. Passing one gate never implies that a later gate has passed. Economic, legal, or operational equivalence at an upstream gold-product layer does not make a bank facility reservation transferable or fungible.
+
+---
 
 ## 5. Capacity equations
 
@@ -371,6 +392,9 @@ A production preflight should evaluate the following dimensions.
 ### 8.1 Reserve checks
 
 - reserve exists and remains admitted;
+- upstream assurance scope covers the facts the bank relies on;
+- economic, legal, and operational equivalence classes are accepted for the requested profile;
+- source reconciliation remains within its stated tolerance and the assurance has not expired;
 - custody attestation is current;
 - required bar, lot, or pool identity is valid;
 - security interest remains active;
@@ -461,6 +485,12 @@ Representative refusal or hold outcomes:
 - `ISSUING_SYSTEM_UNAVAILABLE`
 - `ISSUE_STATUS_AMBIGUOUS`
 - `RECONCILIATION_REQUIRED`
+- `ASSURANCE_SCOPE_INSUFFICIENT`
+- `LEGAL_RIGHTS_NOT_PLEDGEABLE`
+- `OPERATIONAL_CONTROL_UNAVAILABLE`
+- `SOURCE_ASSURANCE_EXPIRED`
+- `SOURCE_TOLERANCE_BREACHED`
+- `EQUIVALENCE_CLASS_NOT_ACCEPTED`
 
 Reason codes should identify the controlling domain without disclosing private risk logic to unauthorized recipients.
 
@@ -615,7 +645,9 @@ The response should include:
 - reason codes;
 - policy version;
 - evidence and approval references;
-- whether issue submission is permitted.
+- whether issue submission is permitted;
+- reserve-verification, legal-pledgeability, operational-control, and facility-issuability gate status;
+- upstream assurance scope, provider, expiry, and tolerance status when an external gold platform is used.
 
 ### 13.3 Issue callback
 
@@ -752,7 +784,8 @@ The privacy model is specified in [`selective-disclosure-and-institutional-priva
 - issue callbacks and external finality reconciliation;
 - reservation expiry, cancellation, renewal, and amendment;
 - contingent, pending-claim, crystallized, and discharged exposure classes;
-- selective disclosure and role-specific views.
+- selective disclosure and role-specific views;
+- a `SharedGoldAssuranceSnapshot` or equivalent source-correlation object that records assurance scope without duplicating the upstream gold record.
 
 This is a domain-model and integration extension, not a replacement of the collateral-control foundation.
 
@@ -808,6 +841,9 @@ A conforming implementation should demonstrate:
 - [ ] policy changes are versioned and revalidated at the required control point;
 - [ ] reason codes do not expose unauthorized bank policy data;
 - [ ] corrections use new events rather than rewriting history;
+- [ ] upstream verification, legal pledgeability, operational control, and facility issuability are separate gates;
+- [ ] an upstream assurance assertion states its scope, provider, expiry, and tolerance status;
+- [ ] upstream fungibility never makes a facility reservation transferable or reusable outside bank-approved state transitions;
 - [ ] the originating system receives a definitive machine-readable outcome;
 - [ ] privacy controls satisfy the companion privacy specification.
 

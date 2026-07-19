@@ -39,7 +39,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | [`why-gold-secured-operational-credit.md`](why-gold-secured-operational-credit.md) | Legacy filename retained for link stability; now explains why gold can support obligations while fiat remains available. |
 | [`design-partners.md`](design-partners.md) | Priority design partners, pilot profiles, and what each participant must validate. |
 | [`gold-market-notes.md`](gold-market-notes.md) | Market reference only; not the product definition. |
-| [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | Market and interoperability map covering Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, Gold as a Service, and Argent. |
+| [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | Market, assurance-boundary, and interoperability map covering Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, Gold as a Service, and Argent. |
 
 ---
 

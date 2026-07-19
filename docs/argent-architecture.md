@@ -600,7 +600,11 @@ Bank product authority
     issuance, amendment, presentation, claim, payment and discharge
 ```
 
-A future `SharedGoldInfrastructureAdapter` is a read-first integration. It verifies and correlates upstream facts but does not create legal ownership, create a security interest, decide bank eligibility, mirror a token or account balance onto Stellar, or override the custodian or bank-product system.
+A future `SharedGoldAssuranceAdapter` is a read-first integration. It verifies and correlates upstream facts and records the source's assurance scope, equivalence class, expiry, and tolerance status. It does not create legal ownership, create a security interest, decide bank eligibility, mirror a token or account balance onto Stellar, or override the custodian or bank-product system.
+
+The full World Gold Council and BCG paper makes the upstream boundary explicit: assurance may relate to physical gold and legal entitlements, while customer proposition, distribution, interface, and implementation remain issuer responsibilities. Argent begins where that assurance ends. It establishes the bank-specific encumbrance, eligibility, reservation, and obligation state.
+
+An upstream unit may be fungible within an approved economic, legal, and operational equivalence class. Argent facility rights remain specific to the bank, customer, product, amount, beneficiary, purpose, and expiry.
 
 If upstream reserve data is stale or discrepant, new issuance fails closed and active exposure enters reconciliation. Active collateral is not automatically released.
 

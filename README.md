@@ -7,10 +7,12 @@ Argent is a Soroban-first control protocol for turning identifiable, customer-ow
 > **One reserve. Many obligations. One authoritative capacity state.**
 >
 > Use gold to secure the promises. Keep cash for operations and final settlement.
+>
+> Trusted reserve infrastructure can establish and continuously assure the reserve within its defined scope. Argent establishes the bank-usable capacity and obligation state.
 
 The mature product direction is a **corporate reserve obligation facility**. One controlled bullion pool can support approved guarantees, documentary credits, supplier undertakings, regulatory security, treasury exposures, and other beneficiary-specific bank instruments. Argent coordinates reserve identity, eligibility, capacity allocation, authorization, reimbursement, release, default, and enforcement evidence without tokenizing the metal or replacing the bank, custodian, legal documents, or trade-finance system.
 
-Argent is designed to sit above authoritative gold-market infrastructure rather than duplicate it. Provenance, ownership, custody, physical backing, and digital-gold product records may come from a custodian, LBMA Gold Bar Integrity, a future shared gold platform, or another bank-approved authority. Argent remains authoritative for facility encumbrance, capacity reservation, bank-obligation allocation, and release state. See [`docs/shared-gold-infrastructure-and-argent.md`](docs/shared-gold-infrastructure-and-argent.md).
+Argent is designed to sit above authoritative gold-market infrastructure rather than duplicate it. Provenance, ownership, custody, physical backing, and digital-gold product records may come from a custodian, LBMA Gold Bar Integrity, a future shared gold platform, or another bank-approved authority. The full World Gold Council and BCG paper clarifies that upstream assurance may cover physical gold and legal entitlements while product implementation remains with the issuer. Argent begins at the bank-specific boundary: legal pledgeability, operational control, eligibility, facility encumbrance, capacity reservation, bank-obligation allocation, and release state. See [`docs/shared-gold-infrastructure-and-argent.md`](docs/shared-gold-infrastructure-and-argent.md).
 
 The code in this repository is the tested **secured-credit reference branch** of that broader protocol. It proves the difficult shared primitives through real Soroban state transitions: instrument eligibility, lot identity, exclusive pledge, borrowing-base computation, utilization, atomic repayment, dual-control release, default, cure, and enforcement recording. The obligation profile generalizes those primitives; it does not discard or misrepresent the implementation that exists today.
 

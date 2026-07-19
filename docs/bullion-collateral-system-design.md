@@ -328,7 +328,7 @@ The gold market is developing upstream infrastructure that Argent should consume
 - Wholesale Digital Gold and Pooled Gold Interests for a proposed transferable proprietary pooled-gold structure;
 - Gold as a Service for proposed shared custody, issuance, reconciliation, assurance, compliance, and redemption operations across digital gold products.
 
-These systems may prove where gold came from, what interest a customer owns, whether physical backing and custody are current, or what digital units exist. Argent answers whether the bank controls an eligible interest, how much facility capacity remains, which obligation reserves it, and when release or enforcement is valid.
+These systems may prove where gold came from, what interest a customer owns, whether physical backing and custody are current, or what digital units exist. The full Gold as a Service paper states that its assurance would relate to physical gold and legal entitlements, while issuer interfaces and implementations remain outside that assurance. Argent answers the next questions: whether the interest is legally pledgeable, operationally controllable, accepted by the bank, how much facility capacity remains, which obligation reserves it, and when release or enforcement is valid.
 
 The target taxonomy adds:
 
@@ -339,7 +339,7 @@ ReserveProfile
 - DIGITAL_GOLD_ENTITLEMENT
 ```
 
-Only `ALLOCATED_BAR_SET` is within the current reference implementation. The other profiles require separate legal, insolvency, custody, valuation, control, and enforcement analysis. They must not be treated as fungible merely because each is described as physically backed.
+Only `ALLOCATED_BAR_SET` is within the current reference implementation. The other profiles require separate legal, insolvency, custody, valuation, control, and enforcement analysis. They must not be treated as fungible merely because each is described as physically backed. Even where an upstream system establishes economic, legal, and operational equivalence between gold units, the bank facility's security interest and reservation remain specific and non-transferable.
 
 See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
 

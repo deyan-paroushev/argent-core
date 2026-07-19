@@ -151,7 +151,10 @@ The service is trusted operationally for:
 | Unauthorized evidence disclosure | encrypted storage, purpose-bound access, tenant isolation, access logging, and disclosure receipt | privileged insider or endpoint compromise remains possible |
 | Selective proof is mistaken for legal or physical truth | explicit `does_prove` and `does_not_prove` semantics; authoritative-source reference | verifier may still over-rely without legal and operational review |
 
-| Upstream reserve source is compromised or supplies false backing data | bank-approved source list, signed assertions, freshness checks, independent custody/legal evidence, discrepancy state | a compromised authoritative provider remains a concentrated trust risk |
+| Upstream reserve source is compromised or supplies false backing data | bank-approved source list, signed assertions, assurance-scope validation, freshness checks, independent custody/legal evidence, discrepancy state | a compromised authoritative provider remains a concentrated trust risk |
+| Upstream assurance is interpreted beyond its scope | explicit assurance scope plus `does_prove` and `does_not_prove`; separate pledgeability, control, and issuability gates | recipients may still over-rely without legal and operational review |
+| Asset-layer fungibility is mistaken for transferable facility capacity | equivalence-class metadata, purpose-bound reservations, non-transferability rule, bank-approved amendment path | external systems may still mislabel or aggregate positions incorrectly |
+| Source reconciliation tolerance is breached but new issue continues | tolerance status is a hard preflight input; stop new reservation and issuance; open exception | manual override can reintroduce risk and requires governed authority |
 | Reserve-profile confusion treats issuer claim as proprietary gold | explicit `ReserveProfile`, rights gate, operator and insolvency analysis, profile-specific policy | legal character can vary by jurisdiction and product terms |
 | Same digital entitlement is represented again on Stellar | reference-only adapter and prohibition on duplicate asset representation | external operators may still issue conflicting units outside Argent |
 | Upstream record becomes stale or disappears during active exposure | stop new issue, retain reservation and exposure, open reconciliation, require bank-directed resolution | prolonged source outage may require manual margin, substitution, or enforcement |
@@ -159,8 +162,6 @@ The service is trusted operationally for:
 | Upstream platform and custodian disagree | no silent overwrite, exception state, authority-specific evidence, manual resolution | physical and legal resolution may be slow and jurisdiction-dependent |
 
 See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) for the authority and adapter boundary.
-
-No privacy mechanism changes the hierarchy of authority:
 
 No privacy mechanism changes the hierarchy of authority: the custodian controls physical truth, the bank controls product issuance, and governing law controls legal effect.
 

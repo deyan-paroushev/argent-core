@@ -463,6 +463,7 @@ keep reservation committed
 
 Production reconciliation should compare:
 
+- upstream reserve assurance scope, expiry, tolerance status, and authoritative record;
 - bank facility and product system;
 - custodian or vault control book;
 - DFNS approval state;
@@ -480,6 +481,32 @@ The daily or intraday report should show:
 - assigned owner and escalation deadline.
 
 A disagreement must be visible. Argent must not silently overwrite the bank or custodian record.
+
+### 17.1 Shared-gold assurance discrepancy procedure
+
+When a facility depends on an external gold platform or product operator, the operator should monitor at least:
+
+```text
+RESERVE_DATA_STALE
+SOURCE_ASSURANCE_EXPIRED
+SOURCE_TOLERANCE_BREACHED
+CUSTODY_MISMATCH
+OWNERSHIP_OR_ENTITLEMENT_MISMATCH
+ENCUMBRANCE_MISMATCH
+BACKING_MISMATCH
+EXTERNAL_STATUS_UNKNOWN
+```
+
+Required response:
+
+1. stop new reservations and issuance;
+2. preserve active obligations, reservations, and encumbrances;
+3. block release unless the bank and authoritative reserve source confirm the release condition;
+4. query the source and custodian using stable correlation identifiers;
+5. apply margin, cure, substitution, or enforcement procedures under bank instruction;
+6. record the definitive resolution as a new event and evidence item.
+
+Do not automatically delete or free capacity because an upstream assertion disappeared. Loss of evidence is an exception state, not proof that the collateral or obligation ceased to exist.
 
 ## 18. Privacy and evidence operations
 
@@ -523,6 +550,8 @@ Ledger availability does not imply that the bank, custodian, document examiner, 
 - [ ] duplicate request and callback behavior tested;
 - [ ] ambiguous issue status tested without blind resubmission;
 - [ ] product-system and Soroban reconciliation tested;
+- [ ] upstream assurance scope, expiry, tolerance breach, and discrepancy paths tested where an external gold source is used;
+- [ ] source outage does not release active capacity or collateral;
 - [ ] role-specific views and evidence permissions tested;
 - [ ] privacy and metadata-leakage review completed;
 - [ ] manual exception and disaster-recovery procedures rehearsed;

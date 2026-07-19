@@ -177,27 +177,44 @@ Responsibilities:
 
 The custodian remains the physical root of truth.
 
-### 5.4 Shared gold infrastructure adapter
+### 5.4 `SharedGoldAssuranceAdapter`
 
 This optional upstream adapter consumes authoritative reserve assertions from a custodian, provenance system, pooled-gold register, digital-gold product operator, or future shared gold platform.
 
-Responsibilities:
+The adapter should produce a source-correlation object such as:
 
-- reserve profile and authoritative record identifier;
-- owner or entitlement-holder identifier;
-- custody, backing, allocation, and redemption state;
-- quantity, purity or economic-gold equivalent, and location;
-- provenance and assurance references;
-- existing hold or encumbrance indication where the source can provide it;
-- evidence timestamp, freshness, and discrepancy status.
+```text
+SharedGoldAssuranceSnapshot
+- reserve_profile
+- authoritative_record_id
+- source_product_id
+- owner_or_entitlement_holder
+- custodian_or_product_operator
+- quantity_and_unit
+- purity_or_economic_gold_equivalent
+- backing_and_allocation_status
+- assurance_provider
+- assurance_scope
+- assurance_timestamp
+- assurance_expiry
+- source_tolerance_status
+- economic_equivalence_class
+- legal_equivalence_class
+- operational_equivalence_class
+- redemption_or_realisation_pathway
+- known_hold_or_encumbrance_status
+- discrepancy_status
+```
 
 Required boundary:
 
-- the upstream system remains authoritative for its reserve facts;
-- Argent remains authoritative for facility encumbrance, reservation, obligation allocation, and release state;
-- a verified upstream record does not create a pledge or force bank eligibility;
+- the upstream system remains authoritative for physical backing, custody, ownership or entitlement, reconciliation, and redemption within its published scope;
+- participating issuers remain responsible for their product interface, commercial terms, distribution, and implementation;
+- Argent remains authoritative for facility encumbrance, bank eligibility treatment, reservation, obligation allocation, and release state;
+- a verified upstream record does not create a pledge, prove perfection, or force bank eligibility;
+- asset-layer fungibility does not make a facility reservation transferable or reusable;
 - no upstream token, balance, or pooled interest is duplicated as a competing asset representation on Stellar;
-- stale or discrepant data stops new reservation and issuance but does not silently erase active exposure.
+- stale, expired, tolerance-breached, or discrepant data stops new reservation and issuance but does not silently erase active exposure.
 
 See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
 

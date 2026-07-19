@@ -15,7 +15,7 @@ The gold market is developing shared infrastructure for provenance, ownership, c
 - bank-obligation lifecycle;
 - claims, reimbursement, release, default, and enforcement evidence.
 
-> **Gold infrastructure proves the reserve. Argent governs what the bank may issue against it.**
+> **Trusted gold infrastructure can establish and continuously assure the reserve within its defined scope. Argent governs what the bank may issue against it.**
 
 ---
 
@@ -45,7 +45,38 @@ The design is organised around three layers:
 
 The World Gold Council describes the platform as being developed with industry input. Its published current scope is separate from Pooled Gold Interests, although the paper notes that a later evolution could leverage PGI. It is therefore an emerging upstream infrastructure initiative, not a live Argent dependency.
 
-### 2.4 Argent - encumbrance, capacity, and bank obligations
+### 2.4 What the full white paper clarifies
+
+The full World Gold Council and BCG white paper narrows the boundary in several ways that are material to Argent:
+
+- the World Gold Council states that it intends to create and operate Gold as a Service, while also describing the paper as an exploration and invitation for industry input rather than a closed technical blueprint;
+- Gold as a Service is not intended to be the end-customer product. The participating issuer retains the product proposition, commercial terms, pricing, distribution, brand, interface, and customer relationship;
+- digital interfaces, distribution channels, and token implementation remain issuer responsibilities;
+- the platform's stated assurance relates to the physical gold and its legal entitlements. It does not, by itself, establish a bank security interest, a collateral eligibility decision, a facility limit, or the lifecycle of a bank obligation;
+- the platform is intended to support a third-party ecosystem of complementary services built above the common reserve and product infrastructure;
+- market-level fungibility requires economic, legal, and operational equivalence. Similar labels or physical backing alone are insufficient;
+- the paper's illustrated collateral use case is a funded loan against digitally locked gold. That validates Argent's implemented secured-credit reference branch, while leaving bank guarantees, documentary credits, and other non-cash-drawable obligations as a distinct application layer.
+
+The consequence is a precise assurance boundary:
+
+```text
+Gold as a Service or another reserve platform may establish, within its scope:
+    physical backing
+    custody
+    ownership or entitlement
+    reconciliation
+    redemption pathway
+
+Argent must separately establish:
+    bank eligibility
+    security interest and control
+    facility and sublimit treatment
+    purpose-bound reservation
+    bank-obligation state
+    claim, reimbursement, release, or enforcement state
+```
+
+### 2.5 Argent - encumbrance, capacity, and bank obligations
 
 Argent sits above the reserve system and below the bank-product system:
 
@@ -79,6 +110,24 @@ Argent does not need to become a digital-gold issuer to benefit from better gold
 | Bank obligation | What has the bank issued, amended, claimed, paid, or discharged? | Bank trade-finance or treasury system | Reconcile authoritative callbacks and maintain the shared lifecycle. |
 
 No single ledger should claim authority over every row.
+
+---
+
+### 3.1 Asset-layer fungibility and facility specificity
+
+The upstream asset layer and the downstream facility layer solve different problems.
+
+A shared gold platform may aim to make qualifying digital-gold units economically, legally, and operationally interchangeable across products or venues. A bank facility must still create a specific encumbrance for a specific customer, bank, product, amount, purpose, beneficiary, and expiry.
+
+```text
+Asset layer
+    units may become fungible within an approved equivalence class
+
+Facility layer
+    security interests, reservations, approvals, and obligations remain specific
+```
+
+Upstream fungibility must never be interpreted as permission to transfer, reuse, or re-pledge an Argent reservation. Facility capacity is purpose-bound and non-transferable unless the bank, legal documents, and protocol state explicitly authorize a change.
 
 ---
 
@@ -149,13 +198,22 @@ redemption_or_realisation_rights
 existing_encumbrance_status
 evidence_timestamp
 policy_eligibility_status
+assurance_provider
+assurance_scope
+assurance_expiry
+source_product_id
+source_tolerance_status
+economic_equivalence_class
+legal_equivalence_class
+operational_equivalence_class
+redemption_or_realisation_pathway
 ```
 
 The adapter result is evidence for a bank decision. It does not itself create a pledge.
 
 ---
 
-## 5. Shared-gold infrastructure adapter
+## 5. `SharedGoldAssuranceAdapter`
 
 A future adapter should be read-first and authority-preserving.
 
@@ -184,6 +242,10 @@ OWNERSHIP_UNCONFIRMED
 BACKING_UNCONFIRMED
 CONTROL_UNAVAILABLE
 ENCUMBRANCE_UNKNOWN
+ASSURANCE_SCOPE_INSUFFICIENT
+LEGAL_EQUIVALENCE_UNCONFIRMED
+OPERATIONAL_EQUIVALENCE_UNCONFIRMED
+RECONCILIATION_TOLERANCE_BREACHED
 ```
 
 ### 5.3 Rules
@@ -219,6 +281,18 @@ authoritative reserve quantity
 | Capacity | Facility limit versus reservations and active exposure | Reject over-allocation; investigate replay or adapter error. |
 | Bank product | Argent obligation state versus bank-product status | Preserve reservation during ambiguity; reconcile before release. |
 | Approval | Institutional approval versus Soroban action and evidence | Quarantine unmatched or unauthorised actions. |
+| Source assurance | Stated assurance scope, expiry, reconciliation tolerance, and upstream product state | Stop new use when scope is insufficient or tolerance is breached; preserve active exposure and escalate. |
+
+The safe response to an upstream discrepancy is:
+
+```text
+discrepancy detected
+-> block new reservations
+-> block new issuance
+-> preserve active obligations and encumbrances
+-> block release unless the bank and authoritative source confirm it
+-> reconcile, margin, substitute, cure, or enforce under the facility documents
+```
 
 A mismatch is an event to manage, not an excuse to let one system silently overwrite another.
 
@@ -269,6 +343,29 @@ If upstream platforms expand into lending, encumbrance, capacity, and obligation
 
 ---
 
+### 8.5 Funded reference branch and obligation-layer differentiation
+
+The full paper's one-click collateral example shows a customer pledging part of a digital-gold holding for a cash loan and unlocking it after repayment. This is close to Argent's implemented secured-credit lifecycle and independently validates that the reference branch addresses a recognized market use.
+
+Argent's differentiated product direction remains broader and more conservative:
+
+```text
+verified gold reserve
+-> bank-controlled capacity
+-> named, purpose-bound obligation
+-> no unrestricted customer cash draw
+```
+
+Gold-backed lending may become easier as shared infrastructure matures. Argent should therefore own the harder bank-specific obligation layer rather than compete only on reserve evidence or generic cash lending.
+
+### 8.6 Potential ecosystem contribution
+
+The World Gold Council explicitly invites technology providers and market participants to help shape and pilot the proposed infrastructure. A relevant future contribution from Argent would be a bank-obligation control profile showing how an upstream reserve assertion can support a guarantee, documentary credit, or treasury obligation without creating a second gold token or ownership record.
+
+This is a strategic engagement opportunity, not a claimed relationship or committed integration.
+
+---
+
 ## 9. Implementation sequence
 
 ### Phase 1 - explicit reserve-source metadata
@@ -307,7 +404,7 @@ These phases are outside the current secured-credit reference implementation and
 
 ### Ecosystem
 
-> Gold infrastructure proves the reserve. Argent governs what the bank may issue against it.
+> Trusted gold infrastructure can establish and continuously assure the reserve within its defined scope. Argent governs what the bank may issue against it.
 
 ### Required disclaimer
 

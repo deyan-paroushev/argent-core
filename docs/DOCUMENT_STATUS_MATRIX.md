@@ -85,7 +85,7 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 | `physical-collateral-and-trade-finance.md` | **Domain and market analysis** | How reserves, bank undertakings, documents, and settlement interact in trade finance. |
 | `why-gold-secured-operational-credit.md` | **Legacy filename, updated content** | Why gold is useful as a parallel assurance reserve; funded credit is treated as one reference branch, not the primary product. |
 | `gold-market-notes.md` | **Market reference** | Gold-market context; not the product definition. |
-| `shared-gold-infrastructure-and-argent.md` | **Market and interoperability analysis** | Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, Gold as a Service, and the complementary Argent layer. |
+| `shared-gold-infrastructure-and-argent.md` | **Market and interoperability analysis** | Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, Gold as a Service, upstream assurance limits, reserve equivalence, and the complementary Argent bank-utility layer. |
 | `design-partners.md` | **Canonical direction** | Priority bank, custodian, bullion, trade-finance, and corporate design-partner profiles. |
 
 ---

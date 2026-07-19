@@ -771,21 +771,25 @@ signer role
 
 The adapter should tolerate a low-tech pilot. A custodian may not expose an API in the first design-partner phase. A signed statement plus hash plus role signature is enough to test the control logic.
 
-### 7.9 Shared gold infrastructure adapter
+### 7.9 Shared gold assurance adapter
 
 A future adapter may consume a signed reserve assertion from a custodian, provenance database, pooled-gold register, digital-gold operator, or shared gold platform.
 
 It should map:
 
-- `reserve_profile` and authoritative record ID;
+- `reserve_profile`, authoritative record ID, and source product ID;
 - owner or entitlement holder;
 - custodian or product operator;
 - quantity, purity or economic-gold equivalent;
 - backing, allocation, redemption, and control capabilities;
-- evidence timestamp, expiry, and discrepancy status;
-- known holds or encumbrances within the source system's scope.
+- assurance provider, scope, timestamp, expiry, and reconciliation-tolerance status;
+- economic, legal, and operational equivalence class where the source defines one;
+- known holds or encumbrances within the source system's scope;
+- explicit `does_prove` and `does_not_prove` semantics.
 
-The gateway must not treat upstream verification as bank eligibility or legal perfection. It must not duplicate an upstream token, account balance, or ownership record on Stellar. A stale or discrepant assertion blocks new risk-increasing actions and opens reconciliation while active exposure remains controlled.
+The gateway must not treat upstream verification as bank eligibility, legal pledgeability, operational control, or legal perfection. It must not duplicate an upstream token, account balance, or ownership record on Stellar. A stale, expired, tolerance-breached, or discrepant assertion blocks new risk-increasing actions and opens reconciliation while active exposure remains controlled.
+
+The bank adapter should preserve four separate gates: reserve verified, legally pledgeable, operationally controllable, and facility issuable.
 
 ### 7.10 Valuation adapter
 
