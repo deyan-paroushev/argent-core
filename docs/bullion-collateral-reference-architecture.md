@@ -252,6 +252,31 @@ The implementation reflected here treats commodity, unit, and grade as instrumen
 
 ---
 
+### 9.1 Upstream infrastructure and profile conformance
+
+A conforming architecture may consume reserve evidence from a custodian, Gold Bar Integrity, a pooled-gold register, a digital-gold operator, or another shared platform. It must preserve the boundary between reserve authority and facility authority.
+
+For every source, the system must identify:
+
+- the `ReserveProfile`;
+- authoritative ownership or entitlement record;
+- authoritative custody and backing record;
+- legal and redemption character;
+- evidence timestamp and expiry;
+- supported freeze, pledge, transfer, and realisation controls;
+- known encumbrance scope;
+- discrepancy and outage behaviour.
+
+The architecture must not:
+
+- treat a pooled or digital interest as an allocated bar set;
+- mirror an upstream asset into a second competing token;
+- let an upstream `verified` flag substitute for bank eligibility or legal perfection;
+- release active collateral because an upstream record becomes unavailable;
+- expose shared bar lists or customer balances publicly.
+
+The market-layer analysis is in [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 10. A conformance checklist
 
 For evaluating any system claiming to control bullion collateral. Each is answerable yes or no, and a "no" is a specific, named gap.

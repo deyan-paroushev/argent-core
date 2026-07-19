@@ -210,6 +210,26 @@ Before production or any external design-partner data is used, the evidence pack
 
 The canonical requirements are in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md). Advanced selective credentials or zero-knowledge proofs should not be listed as production evidence until the deployed implementation, verifier behavior, key lifecycle, and security review are independently reproducible.
 
+### 10.1 Shared gold infrastructure evidence
+
+If a future design partner supplies reserve data through a provenance, pooled-gold, digital-gold, or shared gold platform, the evidence pack should include:
+
+- reserve profile and authoritative source;
+- interface and schema version;
+- signed assertion or authenticated response sample;
+- source-system identifier and correlation record;
+- evidence freshness and expiry rule;
+- backing, custody, allocation, or entitlement scope;
+- explicit `does_prove` and `does_not_prove` statement;
+- discrepancy and outage drill;
+- proof that no duplicate token, balance, or ownership record was created on Stellar;
+- privacy and disclosure classification for source records;
+- bank and legal approval for the reserve profile.
+
+Do not include a full shared bar list, customer ledger, production ownership file, or confidential operator data in a public evidence pack. A sanitized assertion and reproducible verification path are sufficient for public review.
+
+This remains target evidence until an actual adapter and design partner exist. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 11. What must not be included
 
 Never include: private keys; seed phrases; DFNS API keys; Railway or service secrets; unredacted KYC or client data; payment credentials; unredacted custody agreements or legal documents; non-public bank or custodian emails; or production credentials for RPC or indexer services. Use role labels, opaque references, and evidence commitments where integrity and correlation are required, but do not rely on a raw hash alone to protect confidential or guessable information.

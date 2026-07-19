@@ -52,6 +52,12 @@ The direction the precious-metals industry is taking supports the same view: the
 
 This matters for Argent in two ways. It confirms that the trusted layer the whole market is investing in is custody and bar data, not a replacement for the custodian, which is the same premise Argent rests on. And it points at a future in which custodian attestations about specific bars become more standardized and machine-readable, which is precisely the kind of input a control record like Argent's anchors to. Argent operates at a different layer from GBI, GBI is about provenance and integrity of the bar itself, Argent is about the control lifecycle (pledge, draw, release) around a bar used as collateral, but both depend on, and both strengthen, the same thing: trusted, structured custody data.
 
+The World Gold Council and BCG's March 2026 Gold as a Service proposal extends the same principle beyond provenance. It envisages shared infrastructure linking physical sourcing, custody, inventory, insurance, audit, logistics, and redemption to digital issuance and product lifecycle, with continuous reconciliation between physical and digital records. The product issuer would retain customer terms, pricing, brand, and distribution.
+
+This reinforces Argent's boundary. A shared gold platform may become authoritative for reserve existence, backing, custody, or entitlement. Argent remains the bank-facility layer for security interest, eligibility treatment, capacity reservation, obligation allocation, claims, reimbursement, release, and enforcement.
+
+The custodian remains essential in both architectures. Shared infrastructure can standardise and expose custody facts; it does not make physical control disappear.
+
 ## What this means for building and selling Argent
 
 Because the custodian is the root, the custodian conversation is arguably the highest-leverage one in bringing Argent to production, alongside the lender conversation. Several things follow.
@@ -99,3 +105,5 @@ https://goldenarkreserve.com/blog/allocated-vs-unallocated-gold-key-differences/
 
 [S-GBI] LBMA, *Gold Bar Integrity Ecosystem*. The GBI Ecosystem digitally traces gold through the supply chain to confirm provenance and provide transparency. Its GBI Database, built on distributed-ledger technology by aXedras (appointed March 2024), collects London vault-holdings and refiner data. As of the start of 2026, all Good Delivery refiners use the database. The published timeline includes custodians reporting aggregated vault holdings from December 2026, intent to move to bar-level reporting for custodians in 2027, and an ultimate goal of near real-time reporting.  
 https://www.lbma.org.uk/gold-bar-integrity-ecosystem
+
+[S-GAAS] World Gold Council and Boston Consulting Group, *Digital Gold: The Case for a Shared Infrastructure* and *Gold as a Service: A proposition for the industry*, 19 March 2026. https://www.gold.org/goldhub/research/digital-gold-case-shared-infrastructure

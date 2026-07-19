@@ -115,7 +115,9 @@ Certain holdings must be rejected by the gate rather than haircut by the credit 
 
 | Rejected | Because |
 |---|---|
-| **Unallocated / pooled gold accounts** | The holder has a claim on an institution, not title to identified bars. Nothing specific for a bar-level security to attach to. *May be eligible under an account-control profile with claim-on-bank credit treatment — not this one.* |
+| **Unallocated gold account** | The holder generally has a contractual claim on an institution, not title to identified bars. Nothing specific exists for the current bar-level security profile to attach to. *May be eligible only under a separate account-control profile with explicit claim-on-provider credit treatment.* |
+| **Pooled proprietary gold interest** | A beneficial or co-ownership interest in vaulted gold may be legally stronger than an unallocated claim, but it is not an allocated bar set. *Candidate only under a separate `POOLED_GOLD_INTEREST` profile with authoritative unit records, insolvency analysis, control, redemption, and enforcement rules.* |
+| **Digital gold entitlement** | A token, digital account, or certificate may represent a proprietary interest or merely an issuer claim. *Candidate only under a separate `DIGITAL_GOLD_ENTITLEMENT` profile after legal mapping, backing, operator, control, transfer, freeze, and enforcement analysis.* |
 | **Non-transferable certificates** | If it cannot be assigned, the security cannot be perfected. |
 | **Consent-gated instruments where consent is not held** | A pledge void until a third party agrees is not a pledge. Consent must be **obtained and committed**, not assumed. |
 | **Metal in the issuing counterparty's own vault** | If the entity that issued the claim also holds the metal, there is no independent custodian and no separation of duties for *this* profile. *A bank-internal deployment is a distinct profile with a distinct trust model.* |
@@ -126,6 +128,20 @@ Certain holdings must be rejected by the gate rather than haircut by the credit 
 > **Rule.** Ineligibility is a **rejection**, not a discount. A haircut is a price for volatility and liquidity risk. It is not a price for the possibility that the collateral does not legally exist.
 
 ---
+
+### 3.1 Reserve-profile gate
+
+The same economic description - "physically backed gold" - can conceal materially different rights. Before valuation, the bank must classify the holding under a supported reserve profile:
+
+```text
+ALLOCATED_BAR_SET
+POOLED_GOLD_INTEREST
+DIGITAL_GOLD_ENTITLEMENT
+```
+
+The current profile supports only `ALLOCATED_BAR_SET`. A pooled or digital interest is not accepted by relabelling it as a bar position. It needs its own evidence schema and bank policy for legal ownership or claim character, insolvency remoteness or issuer credit risk, authoritative ownership and supply records, backing assurance, pledge or freeze control, redemption or realisation, existing liens, jurisdiction, and enforcement.
+
+World Gold Council initiatives such as Pooled Gold Interests and Gold as a Service are important market references, but they remain external structures. Their records may become authoritative inputs; they do not automatically satisfy Argent eligibility.
 
 ## 4. What the current model already commits to, and what it does not
 

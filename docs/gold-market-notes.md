@@ -56,6 +56,26 @@ First, the Depository Trust and Clearing Corporation, the core post-trade utilit
 
 Second, and more directly about gold, Euroclear (a central-securities-depository group) ran a pilot in 2024 with Digital Asset, the World Gold Council, and the law firm Clifford Chance that used gold, alongside gilts and Eurobonds, as collateral over distributed-ledger technology, with 27 participants including banks, custodians, and central counterparties [S-WGC1]. The World Gold Council's own market-structure lead described the aim as overcoming the restrictions on moving and storing physical metal so gold can be used within financial markets [S-WGC1]. Worth noting: that pilot mobilizes gold by creating a tokenized digital twin of it, which is a different technical route from keeping the metal untokenized in custody and recording control over it. Both approaches are aimed at the same underlying need, gold that can serve as usable collateral.
 
+## Shared gold infrastructure is becoming a distinct market layer
+
+Across the World Gold Council's Gold247 programme and its 2026 Gold as a Service initiative, several market problems are separated that should not be collapsed into one blockchain product:
+
+- Gold Bar Integrity strengthens provenance, refiner assurance, and vault reporting;
+- Wholesale Digital Gold and Pooled Gold Interests propose a new legal and operational form of proprietary pooled gold;
+- Standard Gold Unit addresses common digital representation of gold value;
+- Gold as a Service proposes shared infrastructure for custody coordination, digital issuance, reconciliation, compliance, assurance, liquidity, and redemption.
+
+This is direct validation of a shared-infrastructure thesis, but not direct validation of Argent adoption. Argent's distinct layer is the bank-facility state above them: security interest, eligibility treatment, capacity, purpose-bound reservation, bank obligation, reimbursement, release, and enforcement.
+
+```text
+provenance and integrity
+-> ownership and entitlement
+-> shared gold-product infrastructure
+-> bank-usable capacity and obligations
+```
+
+The final arrow is Argent's proposed category. See `shared-gold-infrastructure-and-argent.md`.
+
 ## Short version
 
 Gold is held at large scale, on the order of US$9 trillion in investor bullion, with a pledge-relevant institutional OTC pool of roughly 5,000 to 10,000 tonnes, and that base has been growing. Lending against gold already exists across private banks, bullion dealers, and the wholesale market, so the demand is established; what is fragmented is the control record around it. And the larger institutional infrastructure, from DTCC to a World Gold Council collateral pilot, has been moving toward collateral mobility and control. What none of this settles is adoption: whether a given bank or lender will take up a particular product is a commercial question that market data cannot answer, only a real counterparty can.
@@ -91,3 +111,9 @@ https://www.theblock.co/post/382331/dtcc-subsidiary-tokenization-service-us-secu
 
 [S-WGC1] Euroclear, *Using DLT to enhance collateral mobility*, and the Digital Asset / World Gold Council / Clifford Chance pilot (June to July 2024). A pilot with 27 participants, including banks, custodians, and central counterparties, used gold alongside gilts and Eurobonds as collateral over distributed-ledger technology. The pilot mobilizes gold by creating a tokenized digital twin; the World Gold Council framed the aim as overcoming restrictions on moving and storing physical metal.  
 https://www.euroclear.com/newsandinsights/en/Format/Whitepapers-Reports/dlt-to-enhance-collateral-mobility.html
+
+[S-WGC2] World Gold Council and BCG, *Digital Gold: The Case for a Shared Infrastructure*, 19 March 2026. https://www.gold.org/goldhub/research/digital-gold-case-shared-infrastructure
+
+[S-WGC3] World Gold Council, *Gold247*. https://www.gold.org/what-we-do/gold247
+
+[S-WGC4] World Gold Council, Linklaters, and Hilltop Walk Consulting, *Pooled Gold Interests and Wholesale Digital Gold - A New Vision for the Gold Market*, 2025. https://www.gold.org/what-we-do/gold247/linklaters-white-paper

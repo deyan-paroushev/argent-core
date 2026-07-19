@@ -454,6 +454,24 @@ No asset becomes eligible merely because it is tokenized or recorded on a ledger
 
 ---
 
+### Shared gold infrastructure adapter
+
+A later Stage 10 workstream may consume a signed, bank-approved upstream reserve assertion without recreating the gold ownership or product ledger.
+
+Candidate sources include a custodian API, LBMA Gold Bar Integrity or another provenance authority, a pooled proprietary gold register, a qualifying digital-gold product operator, or a future Gold as a Service interface.
+
+Required controls:
+
+- explicit `ReserveProfile` and authoritative source;
+- freshness, tolerance, and discrepancy handling;
+- no duplicate asset representation;
+- fail closed for new issue when upstream data is stale or inconsistent;
+- preserve active exposure until the bank and source authority reconcile;
+- minimum-disclosure evidence and role-specific access;
+- separate legal and risk approval for every new profile.
+
+This workstream requires a stable upstream interface, one bank-approved profile, and a design partner. It is outside the current mainnet-delivery scope unless separately approved. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 14. Stage 11 - automation and conditional orchestration
 
 ### Candidates

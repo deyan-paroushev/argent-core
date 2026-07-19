@@ -65,6 +65,8 @@ Defines the reusable asset class or instrument definition.
 Representative fields:
 
 - asset class;
+- reserve profile (`ALLOCATED_BAR_SET`, later `POOLED_GOLD_INTEREST` or `DIGITAL_GOLD_ENTITLEMENT`);
+- authoritative reserve source and record identifier;
 - form and grade;
 - unit convention;
 - accepted identity scheme;
@@ -547,6 +549,22 @@ Authoritative for:
 - external messages and beneficiary communications.
 
 Every request and callback should preserve the originating request ID, idempotency key, reservation ID, product-system reference, lifecycle version, timestamp, and reason code. A timeout or missing callback places the request in reconciliation; it does not prove rejection or permit blind resubmission.
+
+### Shared gold infrastructure system
+
+A future reserve adapter may consume provenance, custody, backing, allocation, beneficial-ownership, or digital-product assertions from a bank-approved shared gold platform.
+
+It must return:
+
+- `reserve_profile`;
+- `authoritative_record_id`;
+- owner or entitlement-holder reference;
+- custody or product-operator reference;
+- quantity and backing status;
+- evidence freshness and discrepancy state;
+- supported control, freeze, transfer, redemption, or realisation capabilities.
+
+The source remains authoritative for reserve facts. Argent remains authoritative for facility reservation and obligation state. A successful response does not itself create a pledge or eligibility decision.
 
 ### Custodian system
 

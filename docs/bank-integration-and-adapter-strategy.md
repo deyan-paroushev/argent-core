@@ -771,7 +771,23 @@ signer role
 
 The adapter should tolerate a low-tech pilot. A custodian may not expose an API in the first design-partner phase. A signed statement plus hash plus role signature is enough to test the control logic.
 
-### 7.9 Valuation adapter
+### 7.9 Shared gold infrastructure adapter
+
+A future adapter may consume a signed reserve assertion from a custodian, provenance database, pooled-gold register, digital-gold operator, or shared gold platform.
+
+It should map:
+
+- `reserve_profile` and authoritative record ID;
+- owner or entitlement holder;
+- custodian or product operator;
+- quantity, purity or economic-gold equivalent;
+- backing, allocation, redemption, and control capabilities;
+- evidence timestamp, expiry, and discrepancy status;
+- known holds or encumbrances within the source system's scope.
+
+The gateway must not treat upstream verification as bank eligibility or legal perfection. It must not duplicate an upstream token, account balance, or ownership record on Stellar. A stale or discrepant assertion blocks new risk-increasing actions and opens reconciliation while active exposure remains controlled.
+
+### 7.10 Valuation adapter
 
 Purpose: enforce freshness and policy-bound valuation without making Argent a pricing provider.
 
@@ -803,7 +819,7 @@ borrowing-base change
 
 The bank chooses the price source. Argent enforces the bank's freshness and policy rules.
 
-### 7.10 Identity and authority adapter
+### 7.11 Identity and authority adapter
 
 Purpose: map real legal entities and authorised signers to Argent roles.
 
@@ -828,7 +844,7 @@ valid until
 
 The long-term direction should be compatible with LEI and vLEI because the vLEI is explicitly about computational verification of identity, authority, and role [18].
 
-### 7.11 DFNS signing adapter
+### 7.12 DFNS signing adapter
 
 Purpose: make every on-chain act decodeable, approvable, and attributable before signature.
 
@@ -854,7 +870,7 @@ broadcast state
 
 The adapter must decode the pending Soroban call and compare it to the bank policy before approval. It must reject opaque payloads. It must reconcile pending approvals with broadcast transactions and indexed events.
 
-### 7.12 Stellar and Soroban indexer adapter
+### 7.13 Stellar and Soroban indexer adapter
 
 Purpose: archive Soroban events and transaction state beyond the short RPC query window.
 

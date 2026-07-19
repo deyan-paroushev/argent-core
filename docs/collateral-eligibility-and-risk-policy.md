@@ -115,6 +115,31 @@ The safest V1 default:
 
 Pooled or fractional claims may be valuable, but they carry separate legal and operational treatment and are not assumed equivalent to identified allocated bars.
 
+### 4.1.1 Reserve-profile eligibility
+
+The policy must distinguish the legal and operating form of the reserve:
+
+```text
+ALLOCATED_BAR_SET
+POOLED_GOLD_INTEREST
+DIGITAL_GOLD_ENTITLEMENT
+```
+
+`ALLOCATED_BAR_SET` is the first and current reference profile. The other profiles require separate policy approval and may carry different haircuts, concentration limits, operator limits, liquidity assumptions, and enforcement conditions.
+
+For a pooled or digital entitlement, policy must answer at least:
+
+- Is the holder's right proprietary or an unsecured issuer claim?
+- What happens on custodian, issuer, platform, or account-provider insolvency?
+- Which system is authoritative for ownership, supply, custody, and backing?
+- Can the interest be blocked, pledged, frozen, transferred, redeemed, or realised?
+- Is physical backing continuously reconciled, and within what tolerance?
+- Can the bank or control agent obtain a first-ranking and enforceable interest?
+- Is the operator approved, audited, insured, and operationally resilient?
+- Does any token or account depend on a bridge, omnibus wallet, or another concentrated technical dependency?
+
+A World Gold Council or LBMA-linked initiative is a relevant market reference, not automatic eligibility. The bank's own legal, credit, operational, and technology approval remains decisive.
+
 ### 4.2 Custodian and vault eligibility
 
 The custodian is the physical root of trust. The policy defines accepted custodians and vaults before collateral is admitted, by at least: legal identity and regulatory status, jurisdiction, custody terms, segregation or allocation model, insolvency and client-asset protection, release-control procedure, lien and set-off limitations, insurance, audit frequency, reporting cadence and format, incident-notification requirement, sanctions and AML expectations, and business-continuity process. Argent does not decide whether a custodian is acceptable; it records whether the bank admitted that custodian under a specific policy and whether the custodian signed the relevant custody-control events.

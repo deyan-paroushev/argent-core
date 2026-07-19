@@ -320,6 +320,29 @@ The architecture preserves this distinction at the data-model level so a product
 
 ---
 
+### 5.4 Emerging reserve infrastructure and profile boundary
+
+The gold market is developing upstream infrastructure that Argent should consume rather than duplicate:
+
+- Gold Bar Integrity for provenance, refiner assurance, and progressively richer vault reporting;
+- Wholesale Digital Gold and Pooled Gold Interests for a proposed transferable proprietary pooled-gold structure;
+- Gold as a Service for proposed shared custody, issuance, reconciliation, assurance, compliance, and redemption operations across digital gold products.
+
+These systems may prove where gold came from, what interest a customer owns, whether physical backing and custody are current, or what digital units exist. Argent answers whether the bank controls an eligible interest, how much facility capacity remains, which obligation reserves it, and when release or enforcement is valid.
+
+The target taxonomy adds:
+
+```text
+ReserveProfile
+- ALLOCATED_BAR_SET
+- POOLED_GOLD_INTEREST
+- DIGITAL_GOLD_ENTITLEMENT
+```
+
+Only `ALLOCATED_BAR_SET` is within the current reference implementation. The other profiles require separate legal, insolvency, custody, valuation, control, and enforcement analysis. They must not be treated as fungible merely because each is described as physically backed.
+
+See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 6. Actors and responsibilities
 
 | Actor | Authoritative responsibility | Argent interaction |

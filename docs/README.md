@@ -22,6 +22,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | [`obligation-facility-profile.md`](obligation-facility-profile.md) | **Target facility specification.** Non-cash-drawable capacity, typed obligations, sublimits, claims, reimbursement, and release. |
 | [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) | **Capacity orchestration.** Available versus issuable capacity, atomic reservation, preflight, callbacks, and reconciliation. |
 | [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) | **Institutional privacy.** Role-specific views, minimized ledger state, encrypted evidence, and selective disclosure. |
+| [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | **Gold-infrastructure boundary.** How Argent consumes upstream provenance, ownership, custody, backing, and digital-gold records without duplicating them. |
 | [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) | **Scope map.** Distinguishes live implementation, target profile, domain specification, and research. |
 | [`REVIEWER_QUICKSTART.md`](REVIEWER_QUICKSTART.md) | **Implementation proof.** Verify the 224-test Soroban reference branch. |
 | [`argent-architecture.md`](argent-architecture.md) | **Architecture.** Actors, trust boundaries, contract map, Stellar and DFNS integration, and product evolution. |
@@ -38,6 +39,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | [`why-gold-secured-operational-credit.md`](why-gold-secured-operational-credit.md) | Legacy filename retained for link stability; now explains why gold can support obligations while fiat remains available. |
 | [`design-partners.md`](design-partners.md) | Priority design partners, pilot profiles, and what each participant must validate. |
 | [`gold-market-notes.md`](gold-market-notes.md) | Market reference only; not the product definition. |
+| [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | Market and interoperability map covering Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, Gold as a Service, and Argent. |
 
 ---
 
@@ -53,6 +55,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | [`collateral-control.md`](collateral-control.md) | Control patterns for pledge, substitution, sale, settlement, release, and enforcement. |
 | [`collateral-as-locked-value.md`](collateral-as-locked-value.md) | Why physical reserves require instrumentation before they can support bank products. |
 | [`custodian-as-security-infrastructure.md`](custodian-as-security-infrastructure.md) | Custodian control as the physical root of trust. |
+| [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | Authority and profile boundary for upstream gold provenance, ownership, custody, backing, and digital-product infrastructure. |
 
 ---
 
@@ -73,7 +76,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 |---|---|
 | [`argent-dfns-signing-sequence.md`](argent-dfns-signing-sequence.md) | DFNS permissions, policy gates, approval quorums, asynchronous signing, and reconciliation. |
 | [`bank-integration-and-adapter-strategy.md`](bank-integration-and-adapter-strategy.md) | Sidecar integration with bank limits, trade-finance, treasury, custody, accounting, and evidence systems. |
-| [`integration-and-interoperability.md`](integration-and-interoperability.md) | Ledger-neutral coexistence and authoritative-system boundaries. |
+| [`integration-and-interoperability.md`](integration-and-interoperability.md) | Ledger-neutral coexistence and authoritative-system boundaries, including future shared-gold infrastructure adapters. |
 | [`auto-collateralisation-layer.md`](auto-collateralisation-layer.md) | Later funded-liquidity extension; not the primary obligation-first product. |
 
 ---

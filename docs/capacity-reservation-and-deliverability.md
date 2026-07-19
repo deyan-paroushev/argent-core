@@ -135,6 +135,33 @@ A ledger record does not override a bank product system, custody book, legal reg
 
 ---
 
+### 4.1 Upstream reserve authority and profile
+
+Capacity calculation may begin with an allocated bar set or, in a later profile, an approved pooled or digital-gold entitlement. The source record must be explicit.
+
+```text
+ReserveProfile
+- ALLOCATED_BAR_SET
+- POOLED_GOLD_INTEREST
+- DIGITAL_GOLD_ENTITLEMENT
+```
+
+The current implementation proves only `ALLOCATED_BAR_SET`.
+
+A reserve adapter must identify the authoritative reserve record, owner or entitlement holder, custody or account provider, quantity, quality, backing, location, legal and redemption character, evidence freshness, discrepancy state, and any hold or encumbrance information the source can provide.
+
+An upstream `VERIFIED` result means the source facts were verified within that system's scope. It does not mean the bank has accepted the reserve, that a security interest exists, or that capacity is issuable.
+
+If the upstream source becomes stale or reports a discrepancy:
+
+1. reject new reservations and issuance;
+2. preserve active reservation and obligation state;
+3. open a reconciliation exception;
+4. apply bank-directed margin, cure, substitution, or enforcement procedures;
+5. never release capacity solely because the upstream record disappeared or changed.
+
+See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 5. Capacity equations
 
 ### 5.1 Eligible reserve value

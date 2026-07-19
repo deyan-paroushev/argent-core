@@ -287,6 +287,31 @@ The protocol must make those limitations visible rather than market gold as risk
 
 ---
 
+### 7.1 Relationship to emerging shared gold infrastructure
+
+The gold market is developing upstream infrastructure that can make reserve information more structured, trusted, and interoperable:
+
+- LBMA Gold Bar Integrity for provenance, refiner assurance, and progressively richer vault reporting;
+- Wholesale Digital Gold and Pooled Gold Interests for a proposed proprietary, transferable pooled-gold structure;
+- the World Gold Council and BCG proposal for Gold as a Service, connecting physical custody with digital product issuance, reconciliation, assurance, and redemption.
+
+These initiatives validate the need for shared operating infrastructure but do not replace Argent's bank-specific state.
+
+```text
+Gold-market infrastructure
+    -> provenance, ownership, custody, backing, digital product records
+
+Argent
+    -> security interest, bank eligibility, capacity, reservation,
+       obligation allocation, claims, reimbursement, release, enforcement
+```
+
+> **Gold infrastructure proves the reserve. Argent governs what the bank may issue against it.**
+
+Argent should consume signed assertions or references from bank-approved upstream authorities. It should not copy or mint a second representation of a gold token, account balance, pooled interest, or bar record. A verified upstream position still needs separate bank approval for legal rights, control, valuation, concentration, product use, and enforcement.
+
+The first profile remains allocated, individually identified bullion. Pooled beneficial interests and qualifying digital-gold entitlements are later candidate profiles, each requiring its own legal and risk treatment. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 8. One authoritative capacity and deliverability state
 
 The central system object is not a tokenized bar and not a customer cash balance. It is the facility's authoritative capacity state, together with the evidence needed to determine whether that capacity is usable for the requested bank instrument.

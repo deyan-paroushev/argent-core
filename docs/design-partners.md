@@ -55,9 +55,26 @@ Providers of:
 - bank integration;
 - institutional signing;
 - valuation and proof-of-reserve data;
+- shared gold infrastructure, provenance, pooled-gold, or digital-gold operators;
 - accounting and evidence systems.
 
 ---
+
+### Shared gold infrastructure and reserve-data providers
+
+Potential partners include custodians, provenance systems, pooled-gold registers, digital-gold product operators, and future shared gold platforms that can provide an authoritative reserve assertion without asking Argent to duplicate their ownership or product ledger.
+
+A useful design-partner conversation must establish:
+
+- what facts the provider is authoritative for;
+- whether the customer holds allocated bars, a proprietary pooled interest, or an issuer claim;
+- how ownership, backing, custody, and redemption are reconciled;
+- whether a pledge, block, freeze, or control instruction is supported;
+- how discrepancies, outages, and stale records are handled;
+- what minimum assertion can be shared with the bank and Argent;
+- whether a stable production interface exists.
+
+This is a future integration category. No World Gold Council, LBMA, Gold Bar Integrity, Pooled Gold Interests, Wholesale Digital Gold, Standard Gold Unit, or Gold as a Service partnership or integration is claimed.
 
 ## What Argent is
 

@@ -177,7 +177,31 @@ Responsibilities:
 
 The custodian remains the physical root of truth.
 
-### 5.4 Valuation and collateral-policy adapter
+### 5.4 Shared gold infrastructure adapter
+
+This optional upstream adapter consumes authoritative reserve assertions from a custodian, provenance system, pooled-gold register, digital-gold product operator, or future shared gold platform.
+
+Responsibilities:
+
+- reserve profile and authoritative record identifier;
+- owner or entitlement-holder identifier;
+- custody, backing, allocation, and redemption state;
+- quantity, purity or economic-gold equivalent, and location;
+- provenance and assurance references;
+- existing hold or encumbrance indication where the source can provide it;
+- evidence timestamp, freshness, and discrepancy status.
+
+Required boundary:
+
+- the upstream system remains authoritative for its reserve facts;
+- Argent remains authoritative for facility encumbrance, reservation, obligation allocation, and release state;
+- a verified upstream record does not create a pledge or force bank eligibility;
+- no upstream token, balance, or pooled interest is duplicated as a competing asset representation on Stellar;
+- stale or discrepant data stops new reservation and issuance but does not silently erase active exposure.
+
+See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
+### 5.5 Valuation and collateral-policy adapter
 
 Responsibilities:
 
@@ -188,7 +212,7 @@ Responsibilities:
 - maintenance, margin, and cure state;
 - policy version and exception authority.
 
-### 5.5 Trade-document adapter
+### 5.6 Trade-document adapter
 
 Responsibilities:
 
@@ -200,7 +224,7 @@ Responsibilities:
 
 A document hash proves integrity against a supplied document. It does not by itself prove legal possession, control, or transfer.
 
-### 5.6 Settlement and reimbursement adapter
+### 5.7 Settlement and reimbursement adapter
 
 Responsibilities:
 
@@ -213,7 +237,7 @@ Responsibilities:
 
 Soroban finality proves a Soroban transaction. It does not automatically prove finality in a bank ledger, payment system, court process, or custody book.
 
-### 5.7 DFNS and signer adapter
+### 5.8 DFNS and signer adapter
 
 Responsibilities:
 
@@ -226,7 +250,7 @@ Responsibilities:
 - webhook or polling reconciliation;
 - approval-to-auth-entry and transaction evidence.
 
-### 5.8 Soroban event and state adapter
+### 5.9 Soroban event and state adapter
 
 Responsibilities:
 

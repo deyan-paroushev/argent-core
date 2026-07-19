@@ -584,6 +584,28 @@ Argent sits beside existing systems rather than replacing them. It should:
 
 This supports incremental adoption: evidence-only mirror, shadow state, controlled decision gate, limited write-back, then governed production. Institutions should be able to begin with one product and one integration route without re-platforming their core systems.
 
+### 13.5 Emerging gold-infrastructure boundary
+
+Argent may receive reserve assertions from existing custodians and, later, from shared gold-market infrastructure. The architecture separates three authority layers:
+
+```text
+Upstream reserve authority
+    provenance, ownership or entitlement, custody, physical backing
+
+Argent shared control state
+    security interest, eligibility decision, capacity, reservation,
+    obligation allocation, release and enforcement sequence
+
+Bank product authority
+    issuance, amendment, presentation, claim, payment and discharge
+```
+
+A future `SharedGoldInfrastructureAdapter` is a read-first integration. It verifies and correlates upstream facts but does not create legal ownership, create a security interest, decide bank eligibility, mirror a token or account balance onto Stellar, or override the custodian or bank-product system.
+
+If upstream reserve data is stale or discrepant, new issuance fails closed and active exposure enters reconciliation. Active collateral is not automatically released.
+
+Candidate target reserve profiles are `ALLOCATED_BAR_SET`, `POOLED_GOLD_INTEREST`, and `DIGITAL_GOLD_ENTITLEMENT`. Only the first is current. See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 14. Evidence and audit model
 
 Every accepted transition should be reconstructable from:

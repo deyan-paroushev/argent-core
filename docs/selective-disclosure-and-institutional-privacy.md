@@ -244,6 +244,26 @@ Do not publish an exact reserve value merely to prove sufficiency.
 
 ---
 
+### 6.5 Privacy across shared gold infrastructure
+
+An upstream gold platform may maintain shared bar lists, custody data, beneficial ownership, token supply, customer balances, or redemption records. "Shared" in that context does not mean public.
+
+Argent should consume the minimum signed assertion needed for the facility decision, such as:
+
+- this owner or entitlement holder controls an eligible position;
+- the position represents at least the stated quantity or value;
+- backing, allocation, and custody are current;
+- no conflicting hold is known within the source system's scope;
+- the assertion is valid until a stated time or version change.
+
+Detailed source records should remain with the authoritative custodian, register, or product operator unless a bank, auditor, supervisor, or enforcement process has a documented need to access them.
+
+Privacy controls must prevent publication of a full shared bar list, correlation across unrelated products, inference of total holdings from a reservation, cross-context reuse of an assertion, and a public proof being mistaken for a complete title or backing opinion.
+
+An Argent evidence record should contain the source-system identifier, assertion type, policy version, timestamp, expiry, commitment, and disclosure log. It should not become a shadow gold registry.
+
+See [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md).
+
 ## 7. Evidence-package architecture
 
 ### 7.1 Evidence manifest
