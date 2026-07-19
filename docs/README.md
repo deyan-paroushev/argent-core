@@ -20,6 +20,8 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 |---|---|
 | [`reserve-obligation-infrastructure.md`](reserve-obligation-infrastructure.md) | **Canonical product direction.** One reserve, many bank obligations, one authoritative capacity state. |
 | [`obligation-facility-profile.md`](obligation-facility-profile.md) | **Target facility specification.** Non-cash-drawable capacity, typed obligations, sublimits, claims, reimbursement, and release. |
+| [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) | **Capacity orchestration.** Available versus issuable capacity, atomic reservation, preflight, callbacks, and reconciliation. |
+| [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) | **Institutional privacy.** Role-specific views, minimized ledger state, encrypted evidence, and selective disclosure. |
 | [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) | **Scope map.** Distinguishes live implementation, target profile, domain specification, and research. |
 | [`REVIEWER_QUICKSTART.md`](REVIEWER_QUICKSTART.md) | **Implementation proof.** Verify the 224-test Soroban reference branch. |
 | [`argent-architecture.md`](argent-architecture.md) | **Architecture.** Actors, trust boundaries, contract map, Stellar and DFNS integration, and product evolution. |
@@ -43,6 +45,8 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 
 | Document | Purpose |
 |---|---|
+| [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) | Reservation and deliverability model for converting eligible reserve value into usable bank capacity. |
+| [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) | Data classification, evidence privacy, role projections, and disclosure products. |
 | [`bullion-collateral-reference-architecture.md`](bullion-collateral-reference-architecture.md) | Vendor-neutral correctness requirements for bullion under collateral control. |
 | [`bullion-collateral-system-design.md`](bullion-collateral-system-design.md) | Representation, lifecycle, product profiles, and build plan. |
 | [`collateral-eligibility-and-rights-model.md`](collateral-eligibility-and-rights-model.md) | Rights classification before a holding may enter a bank capacity calculation. |
@@ -79,12 +83,12 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | Document | Purpose |
 |---|---|
 | [`TEST_SURFACE_MATRIX.md`](TEST_SURFACE_MATRIX.md) | Test counts and security surfaces. |
-| [`evidence-pack-index.md`](evidence-pack-index.md) | Source, testnet, certificate, and production-evidence map. |
-| [`deployment-and-runbook.md`](deployment-and-runbook.md) | Current contract deployment and operation. |
+| [`evidence-pack-index.md`](evidence-pack-index.md) | Source, testnet, certificate, production-evidence, privacy-classification, and disclosure-evidence map. |
+| [`deployment-and-runbook.md`](deployment-and-runbook.md) | Current contract deployment plus clearly marked target reservation, reconciliation, privacy, and service-level operations. |
 | [`product-roadmap.md`](product-roadmap.md) | Sequenced evolution from the live reference branch to governed obligations and interoperability. |
 
 ---
 
 ## Governing rule
 
-For current behavior, the source code and tests govern. For product direction, `reserve-obligation-infrastructure.md` governs. For the target facility model, `obligation-facility-profile.md` governs. No document should be read as claiming that typed bank obligations are already implemented.
+For current behavior, the source code and tests govern. For product direction, `reserve-obligation-infrastructure.md` governs. For the target facility model, `obligation-facility-profile.md` governs. For reservation and issuability, `capacity-reservation-and-deliverability.md` governs. For data visibility and disclosure, `selective-disclosure-and-institutional-privacy.md` governs. No document should be read as claiming that typed bank obligations, deliverability orchestration, or advanced privacy proofs are already implemented.

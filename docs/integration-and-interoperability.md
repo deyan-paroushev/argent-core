@@ -1,197 +1,432 @@
-# Integration and Interoperability: How Argent Sits Beside the Systems Institutions Already Run
+# Integration and Interoperability: How Argent Sits Beside Existing Institutional Systems
 
-> **Positioning status:** Argent coordinates reserve, obligation, document, and settlement states across authoritative systems. The current credit lifecycle is the implemented reference branch; the target facility is obligation-first and non-cash-drawable.
-
-**The product, collateral, custody, trade-document, settlement, and signing infrastructure that banks already operate, and the adapters that let Argent coordinate one reserve-capacity state without replacing those systems.**
-
-**Status:** integration design and onboarding framework; not all target obligation adapters are implemented  
-**Canonical direction:** purpose-bound bank obligations, with no unrestricted customer cash draw  
-**Implemented reference:** secured-credit collateral-control branch  
-**Boundary:** Argent is a shared reserve-control and evidence layer. It does not replace the bank product system, custodian books, trade-document platform, treasury system, accounting ledger, messaging network, or legal file.  
-**Companion documents:** `reserve-obligation-infrastructure.md`, `obligation-facility-profile.md`, `bank-integration-and-adapter-strategy.md`, `argent-architecture.md`, `argent-dfns-signing-sequence.md`  
-**Last updated:** 2026-07-18
-
-*This is a design and integration note, not legal, banking, regulatory, or investment advice. Named systems and standards illustrate authoritative institutional domains. No partnership, certification, compatibility, or endorsement is implied.*
+**Status:** architecture and integration strategy. Current Soroban contracts implement the secured-credit reference branch; the reservation, bank-obligation, and advanced privacy flows described here are target-profile capabilities unless explicitly identified as current.
 
 ---
 
-## 1. The principle: sit beside the system of record, never replace it
+## 1. The governing principle
 
-Every institution that has succeeded in this market followed one rule: do not ask the bank to change its system of record. Euroclear's Central Bank Access service lets a bank keep its existing operational setup and continue sending the instructions it sends today while the settlement complexity is handled behind the scenes. Clearstream integrated with the Eurosystem Collateral Management System so that participants use a single collateral pool without ripping out what they had. Komgo reached more than 200 banks and trading companies by digitising the workflow around existing trade-finance operations, not by becoming a new core.
+Argent should **integrate, not replace**.
 
-Argent takes the same position. It is not a triparty agent, custodian, trade-finance platform, treasury system, CTRM, messaging network, or bank core. It is the layer none of those necessarily provides across institutions: a shared, role-signed, replayable reserve-capacity record linking custody, eligibility, allocation, bank obligations, reimbursement, release, and enforcement evidence. The entire adoption thesis is that a bank's collateral operations, risk, and audit functions should be able to consume Argent in the formats and workflows they already use, with the least possible change to the back office.
+A bank, custodian, trade-finance platform, treasury system, accounting ledger, document network, and settlement rail each remain authoritative for the domain they already operate. Argent provides the bounded shared-control layer between them:
 
-This is also the pattern the standards bodies are engineering toward. When SWIFT and the ISO 20022 community extended collateral messages to service digital assets, they did so explicitly to leverage existing messages so that back offices need the least possible adaptation. Argent builds with that current, not against it.
+```text
+identify the reserve
+-> verify current control and eligibility
+-> calculate available capacity
+-> preflight the requested bank product
+-> reserve capacity without double use
+-> reconcile institutional approvals
+-> bind the authoritative issue outcome
+-> track exposure, reimbursement, release, or enforcement
+```
 
----
+The value is not a second core-banking system. It is one authoritative capacity and control state that existing systems can consume and reconcile.
 
-## 2. What banks already run
-
-Reserve-backed obligations sit across several established layers. Argent slots into the seams between them; it does not compete with any.
-
-### 2.1 Triparty collateral agents (the securities benchmark)
-
-Euroclear and Clearstream act as neutral triparty collateral agents, handling allocation, optimisation, and substitution in straight-through processing and real time [1], [2]. In June 2025 the Eurosystem Collateral Management System (ECMS) went live as a single platform replacing the collateral systems previously used by the 20 euro-area national central banks, and Clearstream launched integrated triparty collateral management with it from day one [3], [4]. This is the reference standard for how collateral *should* mobilise, and it is the model the Argent auto-collateralisation layer borrows. It does not cover physical metal in a vault under a bilateral bank-owner-custodian relationship, which is Argent's lane.
-
-### 2.2 The messaging standard (ISO 15022 and ISO 20022)
-
-The triparty lifecycle runs on standardised messages, and this is the most important integration surface for Argent. In the legacy ISO 15022 (MT) form, the core set is MT527 (Triparty Collateral Instruction), sent by a trading party to its triparty agent to instruct an action on a collateral transaction; MT558 (Triparty Collateral Status and Processing Advice); and MT569 (Triparty Collateral and Exposure Statement) [5], [6], [7]. The market is migrating to the ISO 20022 (MX) form under the AMI-SeCo Single Triparty Model for Europe, where the equivalent messages are colr.019 (Triparty Collateral Transaction Instruction), colr.020 (Processing Status Advice), colr.021 (Allegement Notification), colr.022 (Triparty Collateral and Exposure Report), and colr.023 (Status Advice) [8], [9]. Bilateral margining uses the colr series MarginCallRequest, MarginCallResponse, CollateralProposal, and CollateralProposalResponse flow [10].
-
-Two facts make this the highest-leverage adapter target. First, these messages already model exactly the lifecycle Argent records: instruction, status, exposure and collateral valuation, margin call, substitution, and cancellation. Second, the standards bodies have begun extending these same category-5 messages to service digital assets, treating a digital asset as a security type of growing importance and adding structured blocks for digital-asset attributes and oracle-sourced pricing, precisely so that back offices need minimal change [11]. The rails are being widened, conservatively, for exactly Argent's kind of asset.
-
-### 2.3 Commodity trade-finance networks
-
-Physical collateral lives in commodity trade finance, which is less mature than securities. The dominant network is Komgo, used by more than 200 banks and trading companies, founded by ABN AMRO, BNP Paribas, Citi, Crédit Agricole, ING, Mercuria, MUFG, Natixis, Rabobank, Shell, SGS, and Société Générale, among others [12], [13]. Its fraud-response tool, Trakk, lets users register, trace, and authenticate digital documents, linking each registered action to both the company and the authorised individual [13]. That is a document-authenticity layer. It is not a collateral-control-state layer, which is the specific gap Argent fills. Note that Komgo's founding banks are largely the same institutions whose losses and retreat are documented in `collateral-failure-modes.md`: the network exists because these banks already know the problem is real.
-
-### 2.4 CTRM systems and the bank credit core
-
-Traders and lenders run commodity trading and risk management platforms (ION, Murex MX.3, and others) alongside the bank's own credit and collateral core [14], [15]. Murex MX.3 alone reports over 50,000 daily users across trading, treasury, risk, and post-trade [15]. These are systems of record for exposure and valuation. They are not shared control records across bank, custodian, and owner, and they are the source Argent reads a price and exposure feed from, not a thing Argent replaces.
-
-The through-line: financial collateral is increasingly mobile and standardized, while physical-commodity control, bank obligations, and trade documents remain fragmented. The missing piece is one shared, signed capacity-and-evidence record across those authoritative systems. That is Argent's position in the stack.
+> **Move instructions, proofs, and capacity state. Do not create duplicate legal claims over the reserve.**
 
 ---
 
-## 3. The adapter model
+## 2. Systems of authority
 
-Argent connects through adapters, each a translation between an Argent lifecycle event and a system the bank already runs. Adapters are deliberately thin: they carry evidence and instructions across the boundary, and they never move the system of record inside Argent or move Argent's control state outside it.
+Argent must name the authoritative system for every material fact.
 
-### 3.1 Adapter 1: the ISO 20022 collateral-message bridge (highest leverage)
-
-The primary adapter emits and ingests the collateral messages a bank's operations team already processes. When an Argent lifecycle event occurs, the bridge produces the corresponding standardised message, and it accepts standardised instructions as triggers:
-
-| Argent lifecycle event | Outbound message analogue | Inbound trigger analogue |
+| Domain | Authoritative source | Argent responsibility |
 |---|---|---|
-| Pledge activated / transaction opened | colr.019 / MT527 (transaction instruction), colr.020 / MT558 (status advice) | colr.019 / MT527 to instruct an opening |
-| Valuation and margin state updated | colr.022 / MT569 (collateral and exposure report) | price feed drives `revalue_and_check` |
-| Margin call raised | MarginCallRequest (colr series) | MarginCallResponse / CollateralProposal |
-| Substitution executed | colr.019 / MT527 (substitution), colr.020 / MT558 (status) | substitution instruction |
-| Exposure and collateral statement | colr.022 / MT569 (exposure report) | statement request |
-| Transaction closed / released | colr.020 / MT558 (status), colr.023 (status advice) | cancellation / close instruction |
+| Legal ownership and security | governing legal documents and applicable registry or control arrangement | commit evidence identity and record authorized lifecycle acts |
+| Physical existence and custody | custodian, vault, warehouse, or collateral manager | record signed custody, immobilization, substitution, release, and realization events |
+| Facility and product approval | bank credit, limits, trade-finance, guarantee, or treasury system | enforce the approved policy version and capacity allocation |
+| Product issuance and wording | bank product system | correlate request and reservation to the definitive issue or rejection result |
+| Trade-document control | legally recognized document or transferable-record system | reference the authoritative state and evidence; never infer title from a hash alone |
+| Valuation and eligibility | bank-approved price and collateral-policy sources | enforce freshness, treatment, haircut, sublimit, and refusal rules |
+| Payment and reimbursement | bank core, payment rail, or selected on-chain settlement asset | bind settlement reference to exposure state and reconcile final outcome |
+| Institutional signing | DFNS or equivalent governed signer | require the correct Soroban role authorization and preserve approval evidence |
+| Shared protocol state | Soroban contracts and canonical events | provide deterministic state transitions, refusals, replay, and evidence references |
 
-The point is not conformance certification; it is that a bank's collateral operations desk can see Argent activity in the format its systems already read, and can drive Argent from instructions it already emits, with minimal back-office change. The distinction matters and the document holds it firmly: Argent targets the message families and their semantics, the lifecycle they model, not conformance to the certified SWIFT or ISO rail. Triparty collateral messaging and the SCoRE-aligned Single Triparty Model are real institutional rails; Argent is not a certified triparty messaging product, and the adapter is a translation surface, not a claim of registration. With that boundary held, this is the single most credible line item in an integration plan, because it is standards-based, concrete, and it is the exact adaptation path the standards bodies are building for digital assets, reusing existing category-5 and ISO 20022 messages so back offices need less adaptation [11]. It is future scope, not a certified capability today, and the document says so plainly.
-
-### 3.2 Adapter 2: custodian and CTRM connectors
-
-Two connectors feed the control record its two most important external inputs.
-
-The **custodian connector** is the most important adapter in the whole model, because the custodian's signature is the physical root of trust: `confirm_and_immobilize`, custody-state transitions, and `custodian_confirm_release` are only as good as the link to the custodian's own books. The connector lets the custodian confirm custody state from its own system, and lets Argent reflect that confirmation as a signed event. Where a custodian already reports through a vault or warehouse system, the connector reads that feed; where it signs manually, the connector captures the signed attestation.
-
-The **CTRM and valuation connector** is a read connector supplying the price and exposure feed that `revalue_and_check` consumes, sourced from the bank's or trader's existing risk system rather than from a price oracle Argent asserts on its own. This keeps valuation authority with the bank, consistent with `collateral-eligibility-and-risk-policy.md`.
-
-### 3.3 Adapter 3: the trade-finance evidence pointer
-
-Argent does not compete with a document-authentication network; it complements one. An evidence-pointer adapter lets an Argent evidence-pack hash reference an externally authenticated document, and lets an external record reference the Argent control state that governs that document's collateral. A network that authenticates a warehouse receipt answers "is this document genuine"; Argent answers "what does this document currently control, to whom is it pledged, and can it be released". The two are complementary, and the pointer turns a potential competitor into a distribution surface.
-
-### 3.4 Adapter 4: the settlement and cash leg
-
-The funding leg is specified in `auto-collateralisation-layer.md`: manual bank confirmation first, the Stellar settlement asset (`settlement_vault`) second, a bank ledger API when a design partner defines the rail, and a supplier-payment or tokenized-cash rail later. Argent binds the credit event to the collateral and evidence path; it does not pretend to control bank cash unless the rail is actually integrated.
-
-### 3.5 Adapter 5: the Soroban event indexer
-
-The evidence value of the control record depends on a durable, queryable history of its events, and this is an operational requirement, not an optional nicety. Stellar RPC's `getEvents` method retains at most seven days of recent events, and Stellar's own guidance is that backend components should ingest events into their own database for any longer-lived record [21]. The indexer adapter consumes the `CollateralEventV1` and `GovernanceEventV1` streams as they are emitted, deduplicating on each event's unique id, and persists them so that the pool risk report, the position eligibility certificate, and the replayable audit bundle can be served for the full life of a facility rather than a rolling week. Without this adapter there is no long-term evidence pack; with it, the on-chain event stream becomes a permanent, reconstructable record that a bank's audit and risk functions can query at any point in the exposure's life.
+When authorities disagree, Argent must expose the disagreement and block unsafe progression. It must not silently choose whichever source is most convenient.
 
 ---
 
-## 4. Governance and key custody: the DFNS model
+## 3. Available capacity is not necessarily usable capacity
 
-The adapters carry instructions and evidence across the boundary; the governance layer decides who may authorise what, and it is where a bank's security review will focus hardest. Argent's reference governance uses DFNS, and the design principle is worth stating precisely because it maps onto the same principle as the auto-collateralisation layer: automation of execution, never automation of consent.
+A reserve may be present, eligible, valued, and apparently unallocated, yet still be unusable for a proposed obligation.
 
-The distinction DFNS makes explicit is the one that matters. MPC (multi-party computation) protects the *signing process*, distributing key material across nodes in secure enclaves so no single compromised device can sign [16], [17]. But MPC alone is not governance: a transaction can still move fast through an MPC wallet if no approval controls sit above the signing layer [18]. The governance is the *policy engine* that sits above signing, enforcing quorum approvals, amount limits, address allowlists, and method-aware checks, with policies written once and inherited by every wallet, approval groups with named quorums, auto-reject timeouts, and immutable approval logs [17], [19].
+Argent should distinguish:
 
-This maps directly onto Argent's role model:
+```text
+gross reserve value
+-> eligible collateral value
+-> approved facility capacity
+-> available capacity
+-> reservable capacity
+-> reserved capacity
+-> issuable capacity
+-> deliverable capacity
+-> active obligation capacity
+-> releasable capacity
+```
 
-- **Role wallets are the signing parties.** Bank, custodian, owner, and verifier each hold a role wallet. `approve_party` and `revoke_party` define the signing set; deny-by-default and role separation mean the owner cannot sign attestations, custody confirmations, or releases, and the operator cannot sign for any institutional role.
-- **The policy engine enforces the institutional act before any signature.** A quorum policy on a role wallet requires the right approvers before a release, drawdown, or substitution can be signed, and the policy decoder resolves method, role, pool, policy version, amount, collateral, and evidence hash so a signer never approves an opaque payload. The signing sequence is detailed in `argent-dfns-signing-sequence.md`.
-- **Every authorisation is logged and attributable.** The approval log is the off-chain complement to the on-chain `GovernanceEventV1` stream: together they answer not only what happened but who approved it, under what quorum, at what time.
-- **Keys can live where the bank's security perimeter already is.** DFNS supports the same governance model whether keys are managed through MPC or inside an HSM, so an institution can extend its existing certified cryptographic boundary to Argent operations rather than adopting a new one [20].
+A request becomes **issuable** only after the relevant applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, sublimit, and approval checks pass.
 
-The result a security reviewer needs to hear: Argent does not introduce a new, weaker way to move value. It inherits an institutional-grade policy-and-quorum layer, and every control-state transition is subject to the same deny-by-default, quorum-approved, fully-logged discipline the bank would demand of any signing system.
+It becomes **deliverable** only when the required operational route is available: the bank product system can accept and decide the request, required signers and callbacks are available, mandatory evidence is current, and the originating system can receive a definitive result.
 
----
-
-## 5. The onboarding path: read-model first, control later
-
-The safest adoption path is graduated, and it is designed so a bank can derive value at each step while signing and controlling nothing until it chooses to.
-
-**Step 1: reporting overlay (bank signs nothing, controls nothing).** The bank consumes the pool risk report and position eligibility certificate from `collateral-eligibility-and-risk-policy.md` as a read-only view of shared state. It sees what is pledged, to whom, since when, with what evidence and freshness, without Argent controlling anything. This carries zero new contract risk and is exactly what a credit officer evaluates first.
-
-**Step 2: shared reserve-control record on one facility.** One custodian, one bank, one owner, one eligibility schedule, and one pledged pool. The current reference lifecycle runs as role-signed events. Value: prove the reserve identity, capacity, authorization, release, and adverse path before asking the bank to issue a new product.
-
-**Step 3: one bank-obligation adapter.** Connect capacity reservation and discharge to one guarantee, documentary-credit, or treasury product system. The bank system remains authoritative for issue, amendment, claim, and payment.
-
-**Step 4: message bridge and policy enforcement.** Connect reserve and obligation events to the institution's collateral, trade-finance, treasury, and reporting workflows. Automation follows only after policy, evidence, and reconciliation are proven.
-
-At no step does the bank surrender its systems of record. Each step is independently valuable, independently reversible, and independently evaluable by risk and audit.
+The detailed state and reason-code model is defined in [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
 
 ---
 
-## 6. What risk and compliance need to approve it
+## 4. The orchestration transaction
 
-Three artifacts, most extending documents already in the repository, turn "interesting protocol" into "the second line can sign off."
+A target production request should follow one correlated transaction envelope.
 
-**A control-mapping pack.** A short mapping of each Argent control to the bank's own control framework and to the regulatory language it answers to (PFMI Principle 5 for collateral discipline, and the operational-resilience and outsourcing expectations that apply in the pilot jurisdiction). Risk approves what it can map to its own framework, and `collateral-eligibility-and-risk-policy.md` and `threat-model-and-security-boundaries.md` supply most of the content.
+### 4.1 Request
 
-**A key-governance and continuity spec.** Who holds the keys, how they are revoked, what the recovery path is, and what happens if Argent the company disappears. Because the core is open-source under Apache-2.0, the answer includes the bank's ability to run it itself, and because governance uses DFNS with HSM support, the answer includes keys living inside the bank's existing certified boundary [20]. This removes the vendor-lock and key-risk objection that ends most infrastructure pilots.
+The originating system supplies:
 
-**An exit and fallback story.** The facility must survive Argent's absence. Because Argent records control not title and the asset never leaves custody, the fallback is clean: if the system stops, the custody agreement and security documents still stand, and the last signed state plus the replayable `CollateralEventV1` and `GovernanceEventV1` history is the evidence pack. This is a genuine advantage of the control-not-title design that a tokenization model cannot offer, and it should be stated plainly.
+- request ID and idempotency key;
+- facility, applicant, and requested product;
+- beneficiary and commercial purpose;
+- amount, currency, tenor, expiry, or maturity;
+- required evidence references;
+- requested response deadline;
+- originating system and callback route.
+
+### 4.2 Preflight
+
+Argent evaluates or obtains authoritative decisions for:
+
+- reserve and facility status;
+- current eligible and available capacity;
+- product and entity sublimits;
+- applicant and beneficiary permission;
+- product, currency, jurisdiction, tenor, and concentration rules;
+- custody, valuation, document, and policy freshness;
+- institutional approval route;
+- bank product-system readiness;
+- settlement and reimbursement path.
+
+### 4.3 Reservation
+
+A positive preflight may create a purpose-bound provisional reservation. Creation and capacity reduction must be atomic. The reservation includes its amount, policy version, purpose, applicant, beneficiary, product, expiry, and correlation identifiers.
+
+### 4.4 Institutional approval
+
+DFNS or an equivalent signer governs whether the bank, custodian, verifier, or operator role may sign. Soroban independently checks whether the signed transition is permitted by contract state.
+
+### 4.5 Product-system issue
+
+The bank product system remains authoritative for issuance. Argent sends or references the approved instruction and waits for a correlated result:
+
+- issued;
+- definitively rejected;
+- still pending;
+- ambiguous and requiring status reconciliation.
+
+A timeout is not a rejection. Argent must retain committed capacity until the authoritative product system establishes the outcome.
+
+### 4.6 Definitive response
+
+The originating system receives a machine-readable response containing:
+
+- final or current status;
+- request, reservation, facility, and obligation IDs;
+- reason codes;
+- policy and evidence version;
+- DFNS approval reference where applicable;
+- Soroban transaction and event reference where applicable;
+- authoritative bank product reference;
+- next required action.
 
 ---
 
-## 7. What this integration model is not
+## 5. Adapter architecture
 
-- **Argent is not a triparty agent.** It does not hold accounts, settle securities, or act as a neutral collateral manager in the Euroclear or Clearstream sense. It records the control state of a bilateral bank-owner-custodian pledge.
-- **Argent does not certify conformance to any message standard.** The ISO 20022 adapter targets the formats a bank uses; it is future scope, and conformance would require the relevant testing and registration.
-- **Argent does not replace the custodian's books, bank product systems, CTRM, or accounting core.** It reads authoritative state from them and writes shared evidence beside them.
-- **Argent does not compete with document-authentication networks.** It records what authenticated documents control, and can point to and from them.
-- **Argent does not move keys or value outside the bank's governance.** The DFNS policy-and-quorum layer, optionally HSM-rooted, governs every signature.
-- **Argent does not perform legal enforcement or settlement finality.** It produces evidence and binds instructions; settlement and enforcement happen on their own rails.
+### 5.1 Bank facility and limits adapter
 
-Stated as a principle: Argent is the thin, shared, signed control-and-evidence layer that the existing stack does not provide for physical collateral, connected to that stack through standards-based adapters, governed by an institutional-grade policy-and-quorum layer, and adoptable one reversible step at a time. It earns its place by making the systems a bank already trusts work together over collateral they currently cannot control cleanly, not by asking the bank to replace any of them.
+Responsibilities:
+
+- customer and group eligibility;
+- facility and sublimit state;
+- collateral treatment and capacity-consumption rules;
+- product eligibility;
+- hold, decline, and exception decisions;
+- exposure and accounting references.
+
+### 5.2 Bank trade-finance and guarantee adapter
+
+Responsibilities:
+
+- product preflight;
+- request and reservation correlation;
+- issue, amendment, cancellation, expiry, presentation, claim, payment, and discharge callbacks;
+- instrument and beneficiary references;
+- governing-rule and document requirements;
+- definitive product-system status.
+
+Argent does not author instrument wording or decide documentary compliance.
+
+### 5.3 Custodian, vault, or warehouse adapter
+
+Responsibilities:
+
+- position identity and owner;
+- allocation or segregation state;
+- location, quantity, quality, and control restrictions;
+- immobilization, substitution, release, legal hold, and realization;
+- statement freshness and evidence hash;
+- signed discrepancy and exception status.
+
+The custodian remains the physical root of truth.
+
+### 5.4 Valuation and collateral-policy adapter
+
+Responsibilities:
+
+- price and timestamp;
+- eligible quantity;
+- haircut and advance rate;
+- concentration and wrong-way-risk treatment;
+- maintenance, margin, and cure state;
+- policy version and exception authority.
+
+### 5.5 Trade-document adapter
+
+Responsibilities:
+
+- authoritative document identifier;
+- issuer, holder, beneficiary, or controller where applicable;
+- operative status;
+- issue, endorsement, transfer, surrender, cancellation, or presentation state;
+- document-system evidence reference.
+
+A document hash proves integrity against a supplied document. It does not by itself prove legal possession, control, or transfer.
+
+### 5.6 Settlement and reimbursement adapter
+
+Responsibilities:
+
+- beneficiary payment reference;
+- reimbursement source and status;
+- crystallized exposure;
+- settlement finality according to the selected rail;
+- duplicate-payment prevention;
+- reconciliation and exception state.
+
+Soroban finality proves a Soroban transaction. It does not automatically prove finality in a bank ledger, payment system, court process, or custody book.
+
+### 5.7 DFNS and signer adapter
+
+Responsibilities:
+
+- organization and role-wallet mapping;
+- permission and policy evaluation;
+- approval groups and quorums;
+- payload decoding and human-readable intent;
+- signature generation;
+- pending, approved, denied, expired, submitted, and confirmed states;
+- webhook or polling reconciliation;
+- approval-to-auth-entry and transaction evidence.
+
+### 5.8 Soroban event and state adapter
+
+Responsibilities:
+
+- canonical event ingestion;
+- ledger cursor and gap detection;
+- state replay;
+- transaction, event, and evidence correlation;
+- divergence alerts;
+- durable archive outside recent-ledger query windows.
 
 ---
 
-## References
+## 6. Interoperability identifiers
 
-Independent sources, cited to evidence the incumbent stack, the messaging standards, and the governance model described above. No partnership, certification, or endorsement by any named organization is implied.
+Every participating system should preserve stable identifiers for:
 
-[1] Euroclear, "Collateral management - Euroclear Bank" (triparty collateral matching, selection, substitution, margin calls, mark-to-market valuation). https://www.euroclear.com/services/en/collateral-management/Collateral-Management-Euroclear-Bank.html
+- legal entity and role;
+- facility and sublimit;
+- reserve asset, position, and pledge;
+- request and idempotency key;
+- reservation;
+- bank obligation;
+- beneficiary;
+- trade document;
+- presentation or claim;
+- payment and reimbursement;
+- DFNS approval;
+- Soroban transaction and event;
+- evidence package and policy version.
 
-[2] Clearstream, "Triparty collateral services" (neutral collateral agent handling allocation, optimisation, and substitution in straight-through processing and real time). https://www.clearstream.com/clearstream-en/securities-services/collateral-lending-and-liquidity-solutions/collateral-management
+Identifiers should be namespaced and source-qualified. An identifier must not be silently recycled for a new commercial object.
 
-[3] Deutsche Börse, "Clearstream Successfully Launches the Only Triparty Collateral Management Solution with ECMS Go-live," June 2025. https://www.deutsche-boerse.com/dbg-en/media/news-stories/press-releases/Clearstream-Successfully-Launches-the-Only-Tri-party-Collateral-Management-Solution-with-ECMS-Go-live-4543260
+---
 
-[4] Securities Finance Times, "Clearstream launches triparty collateral management solution with ECMS," June 2025. https://www.securitiesfinancetimes.com/securitieslendingnews/industryarticle.php?article_id=227996
+## 7. Idempotency, retries, and ambiguous outcomes
 
-[5] ISO 20022, "MT 527 Triparty Collateral Instruction." https://www.iso20022.org/15022/uhb/finmt527.htm
+Institutional systems retry. Networks time out. Webhooks are duplicated or arrive out of order. The adapter layer must treat these as normal operating conditions.
 
-[6] ISO 20022, "MT 558 Triparty Collateral Status and Processing Advice." https://www.iso20022.org/15022/uhb/finmt558.htm
+Required controls:
 
-[7] ISO 20022, "MT 569 Triparty Collateral and Exposure Statement." https://www.iso20022.org/15022/uhb/finmt569.htm
+- stable idempotency key per originating command;
+- canonical request digest;
+- rejection when the same key is reused with different data;
+- duplicate callback suppression;
+- monotonic lifecycle version or authoritative timestamp;
+- status-query fallback after lost callbacks;
+- no blind resubmission after ambiguous issue or payment status;
+- no release while product or settlement status is unresolved;
+- manual repair workflow with full audit evidence.
 
-[8] ISO 20022, "Message Definitions" (colr.019 TripartyCollateralTransactionInstruction, colr.020 ProcessingStatusAdvice, colr.021 AllegementNotification, colr.022 TripartyCollateralAndExposureReport, colr.023 StatusAdvice). https://www.iso20022.org/iso-20022-message-definitions
+---
 
-[9] SWIFT / AMI-SeCo, "Standards Triparty Collateral Management (Standards MX)," 2022 (Single Triparty Model for Europe based on ISO 20022 messaging). https://storage.e.jimdo.com/file/b29a052e-34cb-462b-8f38-4bb3cc5848a3/SR2022_MX_TripartyMDR1.pdf
+## 8. Privacy and minimum disclosure
 
-[10] SWIFT, "Standards Collateral Management (Standards MX)" (bilateral MarginCallRequest, MarginCallResponse, CollateralProposal, CollateralProposalResponse flow). https://www2.swift.com/knowledgecentre/publications/stdsmx_col_mgt_mdrs
+Interoperability must not turn Argent into a central store of every participant's confidential data.
 
-[11] ISO 20022, "Standards MT Release Discussion paper and Minutes" (extension of category-5 collateral messages to service digital assets, digital-asset attribute blocks, oracle-sourced pricing, minimal back-office adaptation). https://www.iso20022.org/milestone/23503/download
+### Shared minimum
 
-[12] Consensys, "komgo: Blockchain Case Study for Commodity Trade Finance" (founding banks and single-source-of-truth model). https://consensys.io/blockchain-use-cases/finance/komgo
+- protocol and facility identifiers;
+- role authority;
+- policy and evidence commitments;
+- capacity or sufficiency facts required for control;
+- lifecycle status;
+- sequence and transaction evidence.
 
-[13] MUFG EMEA, "Komgo & Commodity Finance" (more than 200 banks and trading companies; Trakk document registration, tracing, and authentication). https://www.mufgemea.com/products-and-services/komgo/
+### Restricted information
 
-[14] Trade Finance Global, "CTRM (Commodity Trading and Risk Management) Software." https://www.tradefinanceglobal.com/commodity-trading/ctrm-software/
+- bar serials and complete reserve book;
+- customer KYC and sanctions files;
+- bank credit model, pricing, and internal rating;
+- beneficiary terms and trade documents;
+- claims, disputes, legal opinions, and enforcement files;
+- group-company exposure and reimbursement arrangements.
 
-[15] Trade Finance Global / Murex, "Murex MX.3" (integrated trading, treasury, risk, and post-trade; over 50,000 daily users in 60 countries). https://www.tradefinanceglobal.com/commodity-trading/ctrm-software/
+Each adapter and view should disclose only what the receiving role needs. Hashes are integrity commitments, not universal confidentiality controls. Stable identifiers, exact values, and event timing can create correlation leakage.
 
-[16] Dfns, "Architecture" (policy engine, approval quorum, MPC nodes in secure enclaves). https://docs.dfns.co/core-concepts/architecture
+The canonical model is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
-[17] Dfns, "Wallet-as-a-Service" (velocity limits, address allowlists, M-of-N quorums, method-aware checks; policy written once and inherited; approval groups, quorums, auto-reject timeout). https://dfns.co/wallet-as-a-service
+---
 
-[18] BitGo, "Crypto Policy Engines: Approval Workflows and Governance for Institutional Wallets" (MPC protects the signing process; the policy layer governs the decision around it). https://www.bitgo.com/resources/blog/crypto-policy-engines/
+## 9. Incremental adoption without re-platforming
 
-[19] Dfns, "Wallet Entitlement Management" (programmatic governance controls, enforced quorum approvals, verifiable approval logs, address whitelisting). https://www.dfns.co/product/wallet-entitlement
+Argent should be introduced in stages.
 
-[20] Dfns, "Securosys HSM Integration" (same governance model, access policies, and approval workflows whether keys are managed through MPC or inside an HSM). https://dfns.co/article/securosys-hsm-integration
+### Mode 1 - evidence-only mirror
 
-[21] Stellar Developers, "getEvents" and "Ingest events published from a contract" (getEvents retains at most a 7-day window; backend components should ingest events into their own database for a longer-lived record). https://developers.stellar.org/docs/build/guides/events/ingest
+- ingest approved sample or production evidence;
+- generate hashes, state views, and certificates;
+- no decision authority and no write-back.
+
+### Mode 2 - shadow state
+
+- replay capacity and lifecycle beside the bank and custodian systems;
+- compare results;
+- measure divergence and operational latency;
+- no production block or release decision.
+
+### Mode 3 - controlled decision gate
+
+- use Argent preflight and refusal results for one bounded action;
+- retain human approval and existing product-system issuance;
+- fail closed on stale, inconsistent, or unavailable state.
+
+### Mode 4 - limited write-back
+
+- send one approved reservation, release, or evidence update to an existing system;
+- require correlation, idempotency, and reconciliation;
+- preserve manual fallback.
+
+### Mode 5 - governed production integration
+
+- operate one product, one bank, one custodian, and one reserve pool end to end;
+- monitor service levels, reconciliation, privacy, and exception handling;
+- expand only after the first route is stable.
+
+This progression lets an institution begin with a single venue or product and expand without replacing its core systems.
+
+---
+
+## 10. Multi-ledger and multi-rail boundary
+
+Argent may reference or coordinate systems on several ledgers or payment rails. It must not mint duplicate representations of the same bullion claim merely to make each ledger aware of the reserve.
+
+The safe pattern is:
+
+```text
+one legal reserve and security state
++ one authoritative Argent capacity state
++ adapters carrying proofs, instructions, and outcomes
++ settlement references on the selected rail
+```
+
+A bridge or token wrapper cannot establish physical truth, legal perfection, bank approval, or custody control. Cross-system interoperability is therefore a reconciliation and authority problem before it is a token-transfer problem.
+
+---
+
+## 11. Operational monitoring
+
+A production integration should monitor:
+
+- adapter availability and latency;
+- stale custody, valuation, policy, and document state;
+- reservation age and expiry;
+- issue and callback latency;
+- unmatched or duplicated requests;
+- Soroban indexer gaps;
+- DFNS pending and expired approvals;
+- disagreement between contract, bank, custodian, and evidence state;
+- unauthorized disclosure attempts;
+- age of the oldest unresolved exception.
+
+The system should expose clear ownership and escalation for every exception class.
+
+---
+
+## 12. What this model is not
+
+- not a replacement for core banking, limits, accounting, trade-finance, treasury, custody, or document systems;
+- not a claim that every bank product can settle on-chain;
+- not legal finality for an external instrument;
+- not proof that the physical reserve exists beyond the authoritative attestation;
+- not an automatic permission to issue when collateral value is sufficient;
+- not a universal data lake for bank and customer documents;
+- not a cross-chain duplication of the reserve;
+- not a promise of straight-through production use before operational testing.
+
+---
+
+## 13. Recommended first integration
+
+```text
+one bank
++ one custodian
++ one reserve owner
++ one allocated bullion pool
++ one product family
++ one originating system
++ one preflight and reservation route
++ one authoritative issue callback
++ one reimbursement and release route
+```
+
+The purpose of the first integration is to prove authoritative boundaries, operational deliverability, privacy, and reconciliation. It is not to maximize the number of connected systems.
+
+---
+
+## 14. References
+
+- Quant, "Unlocking collateral mobility: How tokenisation transforms settlement infrastructure," 2026: https://quant.network/perspectives/unlocking-collateral-mobility-how-tokenisation-transforms-settlement-infrastructure/
+- Daml Finance asset model: https://docs.daml.com/daml-finance/concepts/asset-model.html
+- Daml Finance settlement: https://docs.daml.com/daml-finance/concepts/settlement.html
+- Corda UTXO token selection: https://docs.r3.com/en/platform/corda/5.2/developing-applications/api/ledger/utxo-ledger/token-selection.html
+- Stellar authorization: https://developers.stellar.org/docs/learn/fundamentals/contract-development/authorization
+- Stellar events: https://developers.stellar.org/docs/learn/fundamentals/contract-development/events
+- DFNS policies: https://docs.dfns.co/core-concepts/policies
+- DFNS policy approvals: https://docs.dfns.co/api-reference/policy-approvals
+- DFNS webhooks: https://docs.dfns.co/developers/webhooks
+- ISO 20022: https://www.iso20022.org/iso-20022
+- ICC Digital Standards Initiative: https://www.dsi.iccwbo.org/
+- UNCITRAL Model Law on Electronic Transferable Records: https://uncitral.un.org/en/texts/ecommerce/modellaw/electronic_transferable_records
+- Digital Asset, Canton ledger privacy model: https://docs.digitalasset.com/overview/3.5/explanations/ledger-model/ledger-privacy.html
+
+No source implies partnership, certification, endorsement, or production compatibility.

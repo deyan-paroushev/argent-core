@@ -57,6 +57,19 @@ The core invariants are:
 
 ---
 
+### 2.1 Target obligation-profile assets
+
+The mature profile additionally protects:
+
+- available, reserved, issuable, deliverable, and releasable capacity;
+- reservation identity, purpose, amount, policy version, and expiry;
+- authoritative product-system and callback correlation;
+- beneficiary and obligation lifecycle state;
+- role-specific data views and evidence permissions;
+- confidentiality of bar, reserve, beneficiary, claim, and group-exposure information.
+
+These are target-profile properties unless implemented in source and tests. Their detailed specifications are [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) and [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
 ## 3. Trust assumptions
 
 Argent is designed around explicit trust boundaries.
@@ -121,6 +134,24 @@ The service is trusted operationally for:
 | Secret leakage in public repo | `.env`, keys, PEM files and private credentials must never be committed. | Repository review must be repeated before each public push. |
 
 ---
+
+### 4.1 Target reservation, interoperability, and privacy threats
+
+| Threat | Target control | Residual risk |
+|---|---|---|
+| Concurrent requests over-allocate the same capacity | atomic reservation, version checks, and aggregate plus sublimit validation | pledges or holds created outside Argent remain an external authority risk |
+| Abandoned reservations block usable capacity | reservation expiry, cancellation, renewal policy, and reconciliation | bad expiry policy can release too early or retain capacity too long |
+| Duplicate request creates duplicate obligation | stable idempotency key, canonical request digest, and authoritative product reference | weak external identifiers may require manual repair |
+| Issue succeeds but callback is lost | committed reservation, status query, and no blind resubmission | product-system outage delays certainty and capacity reuse |
+| Callback is spoofed, duplicated, or reordered | authenticated callback, correlation, signature or request validation, and lifecycle version | compromised external system remains a trust risk |
+| Policy or beneficiary status changes after reservation | policy version pinning and revalidation before issue or amendment | emergency override still requires explicit governance |
+| Ledger, bank, and custodian states diverge | exception state, fail-closed progression, and reconciliation report | operational resolution may require human and legal judgment |
+| Public event reveals reserve or commercial activity | data minimization, role projections, value bucketing or commitments where appropriate, and privacy review | timing, graph, and repeated-identifier analysis may still correlate activity |
+| Evidence hash permits dictionary attack | salt or keyed commitment where appropriate; do not publish low-entropy sensitive values | poor canonicalization or key handling can still expose or invalidate evidence |
+| Unauthorized evidence disclosure | encrypted storage, purpose-bound access, tenant isolation, access logging, and disclosure receipt | privileged insider or endpoint compromise remains possible |
+| Selective proof is mistaken for legal or physical truth | explicit `does_prove` and `does_not_prove` semantics; authoritative-source reference | verifier may still over-rely without legal and operational review |
+
+No privacy mechanism changes the hierarchy of authority: the custodian controls physical truth, the bank controls product issuance, and governing law controls legal effect.
 
 ## 5. Out of scope
 
@@ -203,6 +234,10 @@ The following are not necessarily defects in the prototype, but they must be add
 6. Settlement-asset selection and legal treatment review.
 7. Custodian integration model for off-chain custody-book updates.
 8. Monitoring and incident response for service/API key compromise.
+9. Reservation concurrency, expiry, idempotency, callback authentication, and ambiguous-outcome testing.
+10. Daily reconciliation between bank product, custodian, DFNS, Soroban, settlement, and evidence state.
+11. Data-protection impact assessment, role-view review, retention schedule, and metadata-leakage analysis.
+12. Independent review of any selective-credential or zero-knowledge implementation before relying on it in production.
 
 ---
 
@@ -218,3 +253,9 @@ A reviewer should verify:
 - [ ] Governance event tests prove authority acts are recorded separately from deal acts.
 - [ ] The live evidence pack points to the same commit, contract IDs and testnet lifecycle.
 - [ ] Public docs do not overclaim physical truth, legal enforceability or tokenization.
+- [ ] Target reservation tests cover concurrent requests, expiry, cancellation, duplicate commands, lost callbacks and ambiguous issue status.
+- [ ] Every external callback is authenticated and correlated to an originating request and reservation.
+- [ ] Reconciliation fails closed when bank, custodian, DFNS, Soroban, settlement or evidence states disagree.
+- [ ] Public and shared payloads exclude raw bar lists, KYC, complete legal documents and unnecessary beneficiary data.
+- [ ] Privacy review covers hashes of low-entropy data, event timing, exact amounts, stable identifiers and graph correlation.
+- [ ] Selective-disclosure evidence states what it proves, what it does not prove and which authority supplied the underlying fact.

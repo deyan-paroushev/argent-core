@@ -16,6 +16,8 @@ Start with:
 
 - [`docs/reserve-obligation-infrastructure.md`](docs/reserve-obligation-infrastructure.md) - the current product thesis and institutional value proposition.
 - [`docs/obligation-facility-profile.md`](docs/obligation-facility-profile.md) - the target non-cash-drawable facility model and its relationship to the current contracts.
+- [`docs/capacity-reservation-and-deliverability.md`](docs/capacity-reservation-and-deliverability.md) - how eligible reserve value becomes reserved, issuable, and operationally deliverable bank capacity without double allocation.
+- [`docs/selective-disclosure-and-institutional-privacy.md`](docs/selective-disclosure-and-institutional-privacy.md) - the minimum-disclosure model for banks, custodians, beneficiaries, auditors, and supervisors.
 - [`docs/DOCUMENT_STATUS_MATRIX.md`](docs/DOCUMENT_STATUS_MATRIX.md) - which documents describe shipped code, product direction, or later extensions.
 - [`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md) - the five-minute verification path for the implementation.
 
@@ -30,8 +32,8 @@ A shared, role-signed control layer for physical reserves that remain under prof
 - asset and lot identity;
 - custody and immobilization;
 - eligibility and valuation treatment;
-- exclusive pledge and available capacity;
-- allocation to a bank-approved obligation;
+- exclusive pledge, available capacity, and purpose-bound reservation;
+- deliverability checks and allocation to a bank-approved obligation;
 - reimbursement, release, default, and enforcement evidence.
 
 ### What Argent is not
@@ -62,7 +64,7 @@ Allocated reserve
     -> capacity restored or collateral realized
 ```
 
-The target facility rejects an unrestricted customer cash draw. Every utilization is tied to an approved product, purpose, amount, beneficiary, expiry or maturity, and evidence package.
+The target facility rejects an unrestricted customer cash draw. Every utilization is tied to an approved product, purpose, amount, beneficiary, expiry or maturity, and evidence package. Available capacity is not treated as automatically issuable: applicant, beneficiary, product, evidence, institutional approval, and operational-deliverability conditions must also pass before the bank product system may issue.
 
 ### Implemented reference profile - secured credit
 
@@ -134,6 +136,8 @@ The next protocol extension generalizes the facility and exposure objects rather
 |---|---|
 | [`reserve-obligation-infrastructure.md`](docs/reserve-obligation-infrastructure.md) | Product thesis, stakeholder value, product boundary, and market category. |
 | [`obligation-facility-profile.md`](docs/obligation-facility-profile.md) | Target facility objects, states, invariants, and mapping to current contracts. |
+| [`capacity-reservation-and-deliverability.md`](docs/capacity-reservation-and-deliverability.md) | Reservation, concurrency, preflight, issuability, external finality, and reconciliation. |
+| [`selective-disclosure-and-institutional-privacy.md`](docs/selective-disclosure-and-institutional-privacy.md) | Data classification, role-specific visibility, evidence privacy, and selective-disclosure path. |
 | [`argent-architecture.md`](docs/argent-architecture.md) | System architecture, roles, trust boundaries, and implementation relationship. |
 | [`protocol.md`](docs/protocol.md) | Open protocol specification and implemented reference profile. |
 
@@ -173,9 +177,11 @@ See [`docs/README.md`](docs/README.md) and [`docs/DOCUMENT_STATUS_MATRIX.md`](do
 - mainnet reference deployment;
 - general master facility and typed bank obligations;
 - contingent versus crystallized exposure;
-- product sublimits and capacity reservations;
+- product sublimits and available-versus-issuable capacity;
+- provisional and committed reservations, expiry, idempotency, and definitive callbacks;
 - no-unrestricted-cash-draw invariant;
-- beneficiary, trade-document, and settlement adapters.
+- role-specific projections, encrypted evidence access, and selective-disclosure controls;
+- beneficiary, trade-document, bank-product, and settlement adapters.
 
 ### Not yet claimed
 

@@ -28,6 +28,8 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 |---|---|---|
 | `reserve-obligation-infrastructure.md` | **Canonical direction** | One controlled reserve supports many purpose-bound bank obligations while operating cash remains available. |
 | `obligation-facility-profile.md` | **Target profile** | Domain objects, states, invariants, no-cash-draw rule, and mapping to the current contracts. |
+| `capacity-reservation-and-deliverability.md` | **Canonical direction + target profile** | Available versus issuable capacity, reservation lifecycle, concurrency, preflight decisions, callbacks, external finality, and reconciliation. |
+| `selective-disclosure-and-institutional-privacy.md` | **Canonical direction + target profile** | Data classification, role-specific visibility, minimized shared state, evidence protection, and selective-disclosure maturity path. |
 | `argent-architecture.md` | **Canonical direction + implemented reference** | Full system architecture and the boundary between the live credit branch and target obligation profile. |
 | `protocol.md` | **Protocol specification + implemented reference** | Event-sourced physical-reserve control protocol; V0.1 currently implements the secured-credit profile. |
 | `product-roadmap.md` | **Canonical direction** | Sequenced path from tested contracts to institutional signing, typed obligations, interoperability, and selective disclosure. |
@@ -40,8 +42,8 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 |---|---|---|
 | `REVIEWER_QUICKSTART.md` | **Implemented reference** | Fast verification of the 224-test contract engine and live testnet deployment. |
 | `TEST_SURFACE_MATRIX.md` | **Implemented reference** | Test coverage for the secured-credit reference branch. |
-| `deployment-and-runbook.md` | **Implemented reference** | Deployment and operating procedure for the current contracts. |
-| `evidence-pack-index.md` | **Implemented reference** | Available evidence, certificates, source, and verification artifacts. |
+| `deployment-and-runbook.md` | **Implemented reference + target operations** | Current deployment procedure plus clearly marked future reservation, reconciliation, privacy, and service-level controls. |
+| `evidence-pack-index.md` | **Implemented reference + target evidence** | Available evidence and certificates plus clearly marked future privacy, classification, and disclosure evidence. |
 | `argent-core-v5-summary.pdf` | **Implemented reference** | Test-result summary; not a product-positioning document. |
 
 ---
@@ -101,32 +103,40 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 
 1. `../README.md`
 2. `reserve-obligation-infrastructure.md`
-3. `argent-architecture.md`
-4. `product-roadmap.md`
-5. `REVIEWER_QUICKSTART.md`
+3. `capacity-reservation-and-deliverability.md`
+4. `selective-disclosure-and-institutional-privacy.md`
+5. `argent-architecture.md`
+6. `product-roadmap.md`
+7. `REVIEWER_QUICKSTART.md`
 
 ### Bank, trade-finance, or treasury reviewer
 
 1. `reserve-obligation-infrastructure.md`
 2. `obligation-facility-profile.md`
-3. `bank-integration-and-adapter-strategy.md`
-4. `collateral-eligibility-and-risk-policy.md`
-5. `physical-collateral-and-trade-finance.md`
+3. `capacity-reservation-and-deliverability.md`
+4. `selective-disclosure-and-institutional-privacy.md`
+5. `bank-integration-and-adapter-strategy.md`
+6. `collateral-eligibility-and-risk-policy.md`
+7. `physical-collateral-and-trade-finance.md`
 
 ### Custodian or bullion operator
 
 1. `bullion-collateral-reference-architecture.md`
 2. `custodian-as-security-infrastructure.md`
 3. `collateral-control.md`
-4. `obligation-facility-profile.md`
+4. `capacity-reservation-and-deliverability.md`
+5. `selective-disclosure-and-institutional-privacy.md`
+6. `obligation-facility-profile.md`
 
 ### Technical reviewer
 
 1. `REVIEWER_QUICKSTART.md`
 2. `argent-architecture.md`
 3. `protocol.md`
-4. `argent-dfns-signing-sequence.md`
-5. `TEST_SURFACE_MATRIX.md`
+4. `capacity-reservation-and-deliverability.md`
+5. `selective-disclosure-and-institutional-privacy.md`
+6. `argent-dfns-signing-sequence.md`
+7. `TEST_SURFACE_MATRIX.md`
 
 ---
 
@@ -136,8 +146,10 @@ Where product-positioning language differs, apply this order:
 
 1. `reserve-obligation-infrastructure.md` for the market and product direction;
 2. `obligation-facility-profile.md` for the target facility model;
-3. `argent-architecture.md` for system boundaries and implementation mapping;
-4. `protocol.md` for current protocol and contract behavior;
-5. the contract source and tests for what is actually implemented.
+3. `capacity-reservation-and-deliverability.md` for reservation, issuability, and external-system reconciliation;
+4. `selective-disclosure-and-institutional-privacy.md` for data visibility and evidence disclosure;
+5. `argent-architecture.md` for system boundaries and implementation mapping;
+6. `protocol.md` for current protocol and contract behavior;
+7. the contract source and tests for what is actually implemented.
 
 No document may convert a target design into a claim of shipped functionality. The source code and tests remain the implementation ground truth.

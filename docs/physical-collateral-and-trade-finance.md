@@ -134,6 +134,21 @@ Argent should synchronize evidence across these states without claiming that one
 
 ---
 
+### Operational deliverability across the four states
+
+Synchronizing the four states requires more than enough collateral value. Before issuance, Argent must establish that the requested product is permitted, the beneficiary and transaction are approved, required documents and approvals are current, capacity is reserved, and the bank product system can return a definitive outcome.
+
+```text
+available reserve capacity
++ product and counterparty eligibility
++ documentary readiness
++ institutional approval
++ operational route
+= issuable and deliverable capacity
+```
+
+The canonical preflight and reservation model is [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
 ## 5. Reference flow: import documentary credit
 
 ```text
@@ -383,6 +398,12 @@ Trade-document and settlement systems
 Argent is the reserve-capacity control layer. It should not replace the systems above or below it.
 
 ---
+
+### Privacy across the trade stack
+
+The bank, custodian, applicant, beneficiary, document provider, auditor, and supervisor do not need identical data. A beneficiary may verify the bank instrument and its status without receiving the full bar list or group exposure. A custodian may receive bar-control instructions without receiving the complete credit file. Trade documents and claims remain in their authoritative systems or encrypted evidence stores.
+
+See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ## 17. Current implementation and next extension
 

@@ -17,3 +17,14 @@ This repository update therefore does three things:
 3. specifies the target obligation-facility extension without claiming it is already built.
 
 The repository remains fund-neutral and may be shared with banks, custodians, accelerators, investors, implementation partners, and open-source reviewers.
+
+## July 2026 refinement - capacity orchestration and institutional privacy
+
+The product direction was refined again without changing the implemented reference branch. The core now distinguishes **available capacity** from **issuable and operationally deliverable capacity**. A target obligation request must pass product, beneficiary, jurisdiction, evidence, approval, and external-system checks; reserve capacity atomically; and reconcile the authoritative bank-product result before capacity is released or reused.
+
+The repository also makes institutional privacy a first-class control surface. Shared protocol state is minimized, restricted evidence remains encrypted and role-bound, and any selective-disclosure mechanism must state what it proves and what remains authoritative off-chain. The new canonical specifications are:
+
+- `docs/capacity-reservation-and-deliverability.md`;
+- `docs/selective-disclosure-and-institutional-privacy.md`.
+
+These refinements strengthen Argent as a reserve-capacity orchestration layer beside existing bank and custody systems. They are target-profile specifications, not claims that the current Soroban contracts already implement typed obligations, callbacks, or advanced privacy proofs.

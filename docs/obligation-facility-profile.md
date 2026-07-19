@@ -245,14 +245,33 @@ min(bank-approved facility limit, eligible reserve value)
 
 ```text
 approved facility capacity
+- provisional reservations
+- committed reservations
 - active contingent allocations
 - pending presentations or claims
 - crystallized reimbursement exposure
 - required margin reserve
-= free capacity
+= available capacity
 ```
 
-### 5.4 Product-specific consumption
+### 5.4 Reservable, issuable, and deliverable capacity
+
+Available capacity is only a facility-wide starting point. For a specific request, the bank must also determine:
+
+- whether the relevant product, applicant, subsidiary, currency, tenor, beneficiary, and jurisdiction sublimits permit the request;
+- whether custody, valuation, legal, and evidence conditions are current;
+- whether institutional approvals are complete;
+- whether the bank product, documentary, settlement, and reimbursement routes can complete the requested act.
+
+The target states are:
+
+```text
+available -> reservable -> reserved -> issuable -> deliverable -> active
+```
+
+The detailed model is specified in [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
+### 5.5 Product-specific consumption
 
 The face amount of an obligation and the amount of facility capacity it consumes may differ.
 
@@ -285,25 +304,41 @@ DRAFT
 
 A facility may be suspended without invalidating already issued obligations.
 
-### 6.2 Reservation state
+### 6.2 Reservation and deliverability state
+
+The request and product-deliverability path is:
 
 ```text
 REQUESTED
--> POLICY_VALIDATED
--> RESERVED
--> COMMITTED
--> RELEASED
+-> PRECHECKED
+-> PROVISIONALLY_RESERVED
+-> BANK_APPROVED
+-> ISSUABLE
+-> ISSUE_SUBMITTED
+-> ISSUED
 ```
 
-Alternative terminal states:
+Alternative or exception states:
 
 ```text
 REQUESTED -> REFUSED
-RESERVED -> EXPIRED
-RESERVED -> CANCELLED
+PRECHECKED -> REFUSED
+PROVISIONALLY_RESERVED -> EXPIRED
+PROVISIONALLY_RESERVED -> CANCELLED
+BANK_APPROVED -> APPROVAL_EXPIRED
+ISSUABLE -> ISSUE_FAILED
+ISSUE_SUBMITTED -> RECONCILIATION_REQUIRED
 ```
 
-A reservation must expire automatically if the related instrument is not issued within the bank-approved window.
+Reservation commitment is a separate bank-policy state:
+
+```text
+PROVISIONAL -> COMMITTED -> RELEASED
+PROVISIONAL -> EXPIRED
+PROVISIONAL -> CANCELLED
+```
+
+The bank defines the commit point. It may occur before issue submission, when an authenticated issuance message is dispatched, or when the product system reports `ISSUED`. Argent records the configured rule and current commitment status. A provisional reservation must expire automatically if the instrument is not issued within the permitted window. A committed reservation must remain capacity-consuming while issue status is ambiguous. Blind resubmission is prohibited.
 
 ### 6.3 Obligation state
 
@@ -484,6 +519,8 @@ The protocol should support evidence statements such as:
 
 That statement is not a guarantee from Argent and does not transfer rights in the reserve.
 
+Shared state, evidence access, and derived statements must follow a documented `DisclosurePolicy`. Hashes are integrity commitments, not confidentiality controls where the underlying value is guessable. Role-specific views, encrypted evidence, retention, access logging, and optional standards-based selective credentials are defined in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
 ---
 
 ## 10. External system adapters
@@ -498,6 +535,8 @@ Authoritative for:
 - pricing and fees;
 - accounting and exposure.
 
+The adapter should support authenticated preflight requests and return bank-governed decisions for product, applicant, beneficiary, tenor, currency, jurisdiction, concentration, and capacity-consumption treatment.
+
 ### Trade-finance or guarantee platform
 
 Authoritative for:
@@ -506,6 +545,8 @@ Authoritative for:
 - issue, amendment, cancellation, presentation, claim, and expiry;
 - applicable ICC rules or local product rules;
 - external messages and beneficiary communications.
+
+Every request and callback should preserve the originating request ID, idempotency key, reservation ID, product-system reference, lifecycle version, timestamp, and reason code. A timeout or missing callback places the request in reconciliation; it does not prove rejection or permit blind resubmission.
 
 ### Custodian system
 
@@ -540,7 +581,7 @@ Authoritative for:
 - signature generation;
 - approval and signing audit trail.
 
-Argent reconciles these authorities; it does not merge them into one legal system.
+Argent reconciles these authorities; it does not merge them into one legal system. It should return one definitive machine-readable status to the originating system and keep exceptions open until the authoritative systems agree. The detailed preflight, reservation, callback, and finality rules are in [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
 
 ---
 
@@ -668,13 +709,15 @@ Policies must be explicitly configured. DFNS policies add restrictions; they do 
 - extend release checks to all unresolved obligation states;
 - add obligation-specific evidence certificates.
 
-### Phase 5 - interoperability
+### Phase 5 - interoperability and privacy
 
-- bank product adapter;
+- bank-product preflight and definitive lifecycle callbacks;
 - custodian adapter;
 - trade-document adapter;
 - settlement and reimbursement adapter;
-- selective-disclosure capacity proof.
+- idempotency, ambiguous-outcome reconciliation, and operational monitoring;
+- role-specific projections and encrypted evidence access;
+- selective-disclosure capacity and instrument proof where justified.
 
 ---
 
@@ -695,6 +738,11 @@ A deployment conforms to this profile only if:
 - [ ] legal documents and authoritative external systems remain authoritative;
 - [ ] operator, bank, custodian, and owner authorities are separated;
 - [ ] evidence is versioned and replayable;
+- [ ] available, issuable, deliverable, and releasable capacity are distinguishable;
+- [ ] every request, reservation, callback, and status query has stable correlation and idempotency controls;
+- [ ] ambiguous issue status cannot silently release capacity or create a duplicate obligation;
+- [ ] the originating system receives a definitive status and reason code;
+- [ ] role-specific disclosure, evidence access, retention, and audit rules are documented;
 - [ ] private commercial detail is not exposed beyond the approved disclosure model.
 
 ---
@@ -723,5 +771,9 @@ This profile does not define:
 - UNCITRAL MLETR: electronic transferable records require authoritative control and integrity, not merely a document hash.
 - Stellar authorization: independently supplied authorization entries support role-specific acts.
 - DFNS policies: approvals, quorums, and signing governance occur before the institutional signature is produced.
+- Quant collateral-orchestration model: real-time inventory, reservation against double allocation, deterministic outcome, and incremental adoption without re-platforming.
+- Canton privacy model: transaction visibility should follow party and need-to-know boundaries rather than universal broadcast.
+- W3C Verifiable Credentials and OpenID for Verifiable Presentations: optional patterns for minimized, purpose-bound external verification.
+
 
 These are design references, not claims of legal equivalence or interoperability.

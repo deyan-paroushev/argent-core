@@ -128,27 +128,35 @@ This stage proves the reserve-control engine through a funded-credit branch. It 
 
 ---
 
-## 5. Stage 2 - facility and capacity generalization
+## 5. Stage 2 - facility, reservation, and deliverability generalization
 
-**Objective:** separate the reserve pool and facility from the current credit-line object.
+**Objective:** separate the reserve pool and facility from the current credit-line object, then convert free value into purpose-bound capacity that a bank product system can actually issue against.
 
 ### New protocol concepts
 
 - MasterFacility;
 - ProductSublimit;
 - FacilityParticipant;
+- ObligationRequest;
 - CapacityReservation;
+- DeliverabilityDecision;
 - generic ExposureState;
-- external product-system reference.
+- DisclosurePolicy;
+- external product-system and originating-request references.
 
 ### Required behavior
 
-- expose gross, eligible, approved, reserved, crystallized, and free capacity;
+- expose gross, eligible, approved, available, issuable, deliverable, reserved, crystallized, and releasable capacity;
 - support group and product sublimits;
-- reserve capacity before an external bank instrument is issued;
-- automatically expire unused reservations;
+- accept authenticated, idempotent preflight requests;
+- evaluate applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, and operational-route conditions;
+- reserve capacity atomically before an external bank instrument is issued;
+- distinguish provisional from committed reservations;
+- automatically expire or explicitly cancel unused reservations;
+- retain committed capacity while an external issue outcome is ambiguous;
 - prevent concurrent allocation of the same capacity;
-- preserve policy version and evidence context;
+- reconcile issue, rejection, amendment, claim, payment, expiry, and cancellation callbacks;
+- preserve policy version, evidence context, and reason codes;
 - maintain backward compatibility with the current credit branch.
 
 ### Migration principle
@@ -158,9 +166,15 @@ The existing line and draw state should be represented as one facility profile r
 ### Exit criteria
 
 - one existing credit position can be read through the generalized facility view;
-- a reservation can be created, committed, expired, and released without moving value;
+- a preflight request returns a deterministic decision and stable correlation identifiers;
+- a reservation can be created, committed, expired, cancelled, and released without moving value;
+- duplicate requests and callbacks are idempotent;
+- ambiguous issue status cannot silently release capacity or create a duplicate obligation;
 - aggregate and sublimit constraints are enforced;
+- the originating system receives one definitive machine-readable outcome;
 - no current test or event replay is silently broken.
+
+The canonical specification is [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
 
 ---
 
@@ -401,9 +415,19 @@ Prove capacity sufficiency and instrument authenticity without exposing:
 - release certificate;
 - default and enforcement evidence pack.
 
+### Maturity path
+
+1. role-specific API and user-interface views;
+2. encrypted evidence packages with purpose-bound access and audit receipts;
+3. signed capacity and instrument statements containing only required claims;
+4. standards-based selective credentials where they add interoperability;
+5. predicate or zero-knowledge proofs only where the verifier, legal model, and operational benefit justify the added complexity.
+
 ### Principle
 
-The protocol should disclose the minimum fact required by the verifier, while preserving bank, customer, and beneficiary confidentiality.
+The protocol should disclose the minimum fact required by the verifier, while preserving bank, customer, and beneficiary confidentiality. A hash is an integrity commitment, not a privacy guarantee. Event timing, exact values, and stable identifiers must be assessed for correlation leakage.
+
+The canonical specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ---
 

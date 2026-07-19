@@ -409,6 +409,49 @@ No adapter should collapse these identifiers into one field. Collapsing identifi
 
 ---
 
+### 6.4 Preflight, reservation, and definitive outcome model
+
+The gateway must distinguish a collateral position that appears free from capacity that is usable for a particular bank product. The originating system should be able to request a preflight decision containing:
+
+```text
+request id and idempotency key
+facility and applicant
+product type
+beneficiary
+amount and currency
+tenor or expiry
+commercial purpose
+required evidence references
+requested response deadline
+```
+
+The gateway then evaluates or retrieves the authoritative result for:
+
+```text
+facility and product eligibility
+applicant and beneficiary permission
+current eligible and available capacity
+product and group sublimits
+currency, jurisdiction, tenor, and concentration rules
+evidence and custody freshness
+approval route availability
+bank product-system availability
+settlement and reimbursement route
+```
+
+A positive decision may create a provisional reservation atomically with the capacity reduction. The response should include:
+
+```text
+decision and reason codes
+reservation id and expiry
+reserved capacity
+policy version
+authoritative external references
+required next action
+```
+
+The bank product platform remains authoritative for legal and operational issue. Its callback or status response must be correlated to the originating request and reservation. A timeout, lost callback, or ambiguous network response must not trigger blind resubmission or capacity release. The detailed state model is defined in [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
 ## 7. Adapter classes
 
 The gateway should be built as adapter classes, not one-off integrations. The first version should deliberately support low-tech bank pilots before attempting deep API integrations.
@@ -636,6 +679,13 @@ For systems like Murex, Calypso, CloudMargin, and Acadia, Argent's value is a ph
 ### 7.7 Trade-finance and document adapter
 
 Purpose: connect warehouse, shipping, and trade-finance documents to collateral-control state.
+
+For bank obligations, the adapter should support two directions:
+
+1. **preflight and reservation** - receive the requested product, applicant, beneficiary, amount, currency, tenor, purpose, and evidence requirements;
+2. **authoritative lifecycle callback** - receive issue, rejection, amendment, cancellation, presentation, claim, payment, expiry, and discharge outcomes from the bank product system.
+
+Each request and callback must carry a stable originating-system reference, idempotency key, facility or reservation reference, status timestamp, and reason code. The adapter must query the authoritative product system before deciding that an ambiguous issue attempt failed.
 
 Mapped references:
 
@@ -1070,7 +1120,7 @@ bank account details unless settlement integration is in scope
 internal risk rating unless policy needs it
 ```
 
-The principle is simple: Argent should not become a sensitive-data sink just to prove collateral control.
+The principle is simple: Argent should not become a sensitive-data sink just to prove collateral control. Shared state, adapter payloads, evidence exports, and user views should be minimized by role and purpose. Exact reserve values, bar serials, beneficiary terms, and group exposure should remain restricted unless required for the receiving party's function. Hashes do not make low-entropy or commercially identifying data confidential. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ---
 
@@ -1388,7 +1438,22 @@ idempotency keys
 error taxonomy
 ```
 
-### Phase 6: bank-system mapping packs
+### Phase 6: preflight, reservation, and callback API
+
+Deliver:
+
+```text
+authenticated preflight endpoint
+available-versus-issuable capacity decision
+provisional reservation and expiry
+stable correlation and idempotency rules
+deterministic reason-code taxonomy
+issue and lifecycle callback endpoints
+ambiguous-outcome reconciliation
+definitive response to the originating system
+```
+
+### Phase 7: bank-system mapping packs
 
 Deliver mapping notes, not proprietary connectors:
 
@@ -1401,7 +1466,7 @@ argent-to-dfns.md
 argent-to-stellar-indexer.md
 ```
 
-### Phase 7: design-partner pilot
+### Phase 8: design-partner pilot
 
 Deliver:
 
@@ -1410,10 +1475,12 @@ one bank or finance provider
 one custodian
 one owner
 one collateral pool
+one obligation type
 one policy pack
+one preflight and reservation path
+one authoritative issue callback
 one release decision gate
-one borrowing-base report
-one reconciliation report
+one capacity and reconciliation report
 ```
 
 The pilot should not begin with many assets, many custodians, and many systems.
@@ -1443,6 +1510,19 @@ A bank pilot should start by answering these questions.
 The output should be a signed integration pack, not an informal email thread.
 
 ---
+
+### Additional reservation, deliverability, and privacy questions
+
+1. At what point does a quote or application consume capacity?
+2. How long may provisional capacity remain reserved before issue?
+3. Which system is authoritative when an issue request times out or a callback is lost?
+4. Which identifiers make retries and callbacks idempotent across the bank, Argent, DFNS, and Soroban?
+5. Which beneficiary, product, jurisdiction, document, and operating-window checks determine issuability?
+6. What exact status must be returned to the originating system before capacity may be reused?
+7. Which reserve, obligation, and evidence fields may each role see?
+8. Which data must never be submitted to a public ledger, even as a direct hash?
+9. What retention, deletion, disclosure, and audit rules apply to evidence packages?
+10. What manual exception process applies when custody, bank-product, and Argent states disagree?
 
 ## 15. Test surface
 
@@ -1556,3 +1636,11 @@ Independent sources, cited to evidence the bank infrastructure and integration d
 [31] European Banking Authority, "Guidelines on outsourcing arrangements," 25 February 2019. https://www.eba.europa.eu/sites/default/files/documents/10180/2551996/38c80601-f5d7-4855-8ba3-702423665479/EBA%20revised%20Guidelines%20on%20outsourcing%20arrangements.pdf
 
 [32] European Banking Authority, "Draft Guidelines on the sound management of third-party risk," consultation paper, 8 July 2025. https://www.eba.europa.eu/sites/default/files/2025-07/33a0ee15-9601-4c2b-828e-1b09201a6e9f/CP%20on%20Draft%20Guidelines%20on%20sound%20management%20of%20third%20party%20risk.pdf
+
+[33] Quant, "Unlocking collateral mobility: How tokenisation transforms settlement infrastructure," 2026. https://quant.network/perspectives/unlocking-collateral-mobility-how-tokenisation-transforms-settlement-infrastructure/
+
+[34] Digital Asset, "Canton ledger privacy model." https://docs.digitalasset.com/overview/3.5/explanations/ledger-model/ledger-privacy.html
+
+[35] W3C, "Verifiable Credentials Data Model v2.0." https://www.w3.org/TR/vc-data-model-2.0/
+
+[36] OpenID Foundation, "OpenID for Verifiable Presentations 1.0." https://openid.net/specs/openid-4-verifiable-presentations-1_0.html

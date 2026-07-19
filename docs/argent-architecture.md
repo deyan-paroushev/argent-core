@@ -7,6 +7,8 @@
 **Institutional signing direction:** DFNS-governed organization wallets, policies, approvals, and reconciliation  
 **Canonical product direction:** `reserve-obligation-infrastructure.md`  
 **Target domain profile:** `obligation-facility-profile.md`  
+**Capacity orchestration:** `capacity-reservation-and-deliverability.md`  
+**Institutional privacy:** `selective-disclosure-and-institutional-privacy.md`  
 
 This document is self-contained. It distinguishes what is implemented from what is designed next. Contract source and tests remain authoritative for current behavior.
 
@@ -351,6 +353,7 @@ The next profile introduces a facility layer above the current collateral core.
 - ProductSublimit;
 - FacilityParticipant;
 - CapacityReservation;
+- DeliverabilityDecision;
 - BankObligation;
 - Beneficiary;
 - Presentation;
@@ -358,7 +361,8 @@ The next profile introduces a facility layer above the current collateral core.
 - SettlementInstruction;
 - Reimbursement;
 - LegalContext;
-- EvidencePackage.
+- EvidencePackage;
+- DisclosurePolicy.
 
 These names are design objects, not claims of current contract types.
 
@@ -366,21 +370,38 @@ These names are design objects, not claims of current contract types.
 
 ```text
 obligation requested
--> policy validated
--> capacity reserved
--> bank approved
--> instrument issued
+-> authenticated preflight
+-> policy and deliverability validated
+-> capacity provisionally reserved
+-> bank approved and issuable
+-> issue submitted to the authoritative bank system
+-> reservation becomes committed at the bank-defined commit point
+-> issued or definitively rejected
 -> active
 -> expired, cancelled, presented, claimed, or matured
 -> reimbursement or discharge
 -> capacity released
 ```
 
-### 9.3 Target no-cash-draw invariant
+The commit point is policy-defined and may occur before submission, when an authenticated issuance message is dispatched, or when the product system reports `ISSUED`. A timeout or lost callback is not proof that issuance failed. Once committed, capacity remains committed until the authoritative product system is reconciled. Requests, callbacks, and status queries therefore require stable correlation identifiers and idempotency controls.
+
+### 9.3 Capacity-state distinction
+
+The target architecture distinguishes:
+
+- **eligible capacity** - value admitted under current collateral policy;
+- **available capacity** - eligible value not already reserved, crystallized, claimed, or buffered;
+- **issuable capacity** - available capacity that also passes applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, and bank-policy checks;
+- **deliverable capacity** - issuable capacity for which the required operational route is available and can return a definitive result to the originating system;
+- **releasable capacity** - capacity whose obligation, claim, reimbursement, and evidence conditions are fully resolved.
+
+The bank owns the product and exposure decision. Argent records the bank-approved decision, reserves the corresponding capacity atomically, and refuses incompatible concurrent allocation. The canonical specification is [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
+### 9.4 Target no-cash-draw invariant
 
 The facility owner cannot withdraw free capacity into a general account. Value movement must be linked to a named beneficiary and a bank-authorized obligation or settlement instruction.
 
-### 9.4 Exposure classes
+### 9.5 Exposure classes
 
 The target state distinguishes:
 
@@ -391,7 +412,7 @@ The target state distinguishes:
 - default and enforcement exposure;
 - released capacity.
 
-### 9.5 Backward compatibility
+### 9.6 Backward compatibility
 
 The existing credit line becomes one implemented facility profile. A migration or adapter should preserve current identifiers, event replay, and state while exposing a generalized facility view.
 
@@ -501,7 +522,9 @@ The reusable contribution is not only a wallet connection. It is:
 - trade documents;
 - claims, disputes, and enforcement files.
 
-A production deployment should support selective disclosure. A beneficiary may verify instrument authenticity and recorded capacity sufficiency without seeing the owner's total reserve or unrelated obligations.
+A production deployment should enforce role-specific projections and evidence access. A beneficiary may verify instrument authenticity and recorded capacity sufficiency without seeing the owner's total reserve or unrelated obligations. A custodian may see bar and control instructions without seeing the bank's complete credit file. Public state should contain only the minimum identifiers, commitments, and lifecycle facts required for shared control.
+
+Hashes do not make sensitive data private when the underlying value has a small or guessable domain. Stable identifiers, exact amounts, event timing, and repeated counterparties can also leak commercial information through correlation. The canonical privacy and disclosure specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ---
 
@@ -514,7 +537,11 @@ A production deployment should support selective disclosure. A beneficiary may v
 - trade-finance and guarantee platform;
 - treasury and derivatives platform;
 - accounting and general ledger;
-- regulatory reporting.
+- regulatory reporting;
+- authenticated preflight and reservation requests;
+- definitive issue, rejection, amendment, claim, payment, expiry, and cancellation callbacks.
+
+The originating bank system remains authoritative for whether an instrument was legally and operationally issued. Argent returns a correlated machine-readable result and never treats a network timeout as permission to resubmit or release capacity.
 
 ### Custody and valuation
 
@@ -542,6 +569,20 @@ A production deployment should support selective disclosure. A beneficiary may v
 Argent uses adapters and evidence commitments. It does not duplicate the same legal asset claim across ledgers.
 
 ---
+
+### Orchestration rule
+
+Argent sits beside existing systems rather than replacing them. It should:
+
+1. receive a purpose-bound request from an authenticated originating system;
+2. evaluate current reserve, policy, and operational conditions;
+3. reserve capacity without double allocation;
+4. reconcile institutional approvals and signatures;
+5. bind the bank product-system result to the reservation;
+6. return one definitive status and evidence reference;
+7. keep exceptions visible until the authoritative systems agree.
+
+This supports incremental adoption: evidence-only mirror, shadow state, controlled decision gate, limited write-back, then governed production. Institutions should be able to begin with one product and one integration route without re-platforming their core systems.
 
 ## 14. Evidence and audit model
 
@@ -641,11 +682,15 @@ Typed obligations and the no-cash-draw profile require a separate future test ma
 - approval-to-transaction reconciliation;
 - mainnet reference deployment and runbook.
 
-### Stage 2 - generalize facility and capacity
+### Stage 2 - generalize facility, reservation, and deliverability
 
 - generic master facility view;
 - product and group sublimits;
-- pre-issuance reservation;
+- available, issuable, deliverable, and releasable capacity;
+- authenticated and idempotent preflight requests;
+- provisional and committed pre-issuance reservation;
+- expiry, cancellation, renewal, and ambiguous-outcome handling;
+- definitive callbacks and external-system reconciliation;
 - contingent versus crystallized exposure.
 
 ### Stage 3 - implement typed obligations
@@ -656,13 +701,15 @@ Typed obligations and the no-cash-draw profile require a separate future test ma
 - treasury exposure;
 - issue, amend, expire, claim, pay, reimburse, and discharge.
 
-### Stage 4 - connect authoritative systems
+### Stage 4 - connect authoritative systems and privacy controls
 
-- bank product adapter;
+- bank product preflight, issue, and lifecycle adapter;
 - custodian adapter;
 - electronic trade-document adapter;
 - settlement and reimbursement adapter;
-- selective-disclosure evidence.
+- role-specific projections and encrypted evidence access;
+- selective-disclosure capacity and instrument evidence;
+- reconciliation, operational monitoring, and manual exception handling.
 
 ---
 
@@ -715,5 +762,10 @@ The current contracts already prove the shared physical-collateral foundation. T
 - Daml Finance lifecycling: https://docs.daml.com/daml-finance/concepts/lifecycling.html
 - ICC UCP 600: https://library.iccwbo.org/content/tfb/RULES/tfb-ucp600-rules.htm
 - UNCITRAL MLETR: https://uncitral.un.org/en/texts/ecommerce/modellaw/electronic_transferable_records
+- Quant, settlement orchestration and reservation: https://quant.network/perspectives/unlocking-collateral-mobility-how-tokenisation-transforms-settlement-infrastructure/
+- Corda UTXO token selection and reservation precedent: https://docs.r3.com/en/platform/corda/5.2/developing-applications/api/ledger/utxo-ledger/token-selection.html
+- Canton ledger privacy model: https://docs.digitalasset.com/overview/3.5/explanations/ledger-model/ledger-privacy.html
+- W3C Verifiable Credentials Data Model 2.0: https://www.w3.org/TR/vc-data-model-2.0/
+- OpenID for Verifiable Presentations 1.0: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
 
 No source reference implies partnership, endorsement, legal equivalence, or production compatibility.

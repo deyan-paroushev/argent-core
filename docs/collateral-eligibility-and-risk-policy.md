@@ -1,6 +1,6 @@
 # Collateral Eligibility and Risk Policy Framework
 
-> **Positioning status:** The policy applies to the full reserve obligation facility. Eligibility determines usable reserve capacity; product sublimits, contingent exposure, claims, reimbursement exposure, and funded settlement determine how that capacity is consumed. The current contracts implement the secured-credit reference branch.
+> **Positioning status:** The policy applies to the full reserve obligation facility. Eligibility determines which reserve value may enter the capacity calculation. Separate reservation and deliverability rules determine what is available, issuable, and operationally usable for a particular obligation. Product sublimits, contingent exposure, claims, reimbursement exposure, and funded settlement determine how capacity is consumed. The current contracts implement the secured-credit reference branch.
 
 **How a bank defines eligible physical collateral, valuation, haircuts, concentration limits, substitution rules, and escalation, and how Argent enforces that policy once it is signed.**
 
@@ -175,6 +175,8 @@ minus reserved_amount
 equals available_capacity
 ```
 
+For the target obligation facility, this is not the end of the decision. `available_capacity` is a portfolio quantity. A specific request becomes issuable only after applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, approval, and operational-route checks pass. See [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
 ---
 
 ## 6. Advance-rate, margin, and escalation policy
@@ -290,7 +292,9 @@ The framework produces three bank-readable artifacts. As with the rest of Argent
 
 **Position eligibility certificate.** For a given lot: identity and custody evidence, current eligibility status against the policy, fresh haircut-adjusted value or the zero-value reason, and any active exception. This turns "we hold gold" into "this bar is eligible, worth this much after haircut, under this policy version, as of this timestamp."
 
-**Pool risk report.** For a facility: total attested, eligible, and haircut-adjusted value; free, earmarked, reserved, pledged, and drawn amounts; available borrowing base; margin status; concentration exposures by dimension against their limits; open exceptions; and escalation state. This is the standing answer to the only question a lender ultimately asks: what is lendable now, under our policy, with proof.
+**Pool risk report.** For a facility: total attested, eligible, and haircut-adjusted value; free, earmarked, reserved, pledged, and drawn amounts; available borrowing base; margin status; concentration exposures by dimension against their limits; open exceptions; and escalation state. This is the standing answer to the lender's risk question: what is eligible and available now, under our policy, with proof. A separate deliverability decision answers whether a particular bank product can be issued now.
+
+Reports and certificates should follow the role-specific visibility and evidence-minimization rules in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ---
 

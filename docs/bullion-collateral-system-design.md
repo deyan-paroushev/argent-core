@@ -257,6 +257,14 @@ This is the defensible problem. A closed bank product can always solve more of t
 
 ---
 
+### 4.9 Available is not issuable
+
+Eligible, unallocated bullion value is only the starting point. A requested obligation must also pass applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, approval, and operational-route checks. Capacity must be reserved before issue, and ambiguous external outcomes must keep the reservation committed until reconciled. The canonical specification is [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
+
+### 4.10 Privacy follows role and purpose
+
+Shared control does not require every participant to see the complete reserve, credit file, beneficiary terms, or claim evidence. Shared state and adapter payloads should be minimized, while restricted evidence remains encrypted, access-controlled, retained according to policy, and disclosed through purpose-bound statements or proofs. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
 ## 5. Bullion representation taxonomy
 
 The architecture classifies each holding along three separate dimensions:
@@ -592,7 +600,7 @@ status
 
 For allocated bars, this is immobilisation. For certificates, it may be redemption and transfer blocking. For account claims, it may be an account control or assignment acknowledgement.
 
-### 9.8 `Facility`, `Pledge`, `BankObligation`, and `CreditLine`
+### 9.8 `Facility`, `Pledge`, `CapacityReservation`, `DeliverabilityDecision`, `BankObligation`, `DisclosurePolicy`, and `CreditLine`
 
 These remain separate:
 
@@ -1093,7 +1101,9 @@ An adapter has four responsibilities:
 
 **Outbound facts**
 
-- eligible value and available capacity;
+- eligible value, available capacity, and bank-approved issuable capacity;
+- preflight decision, reservation, and expiry;
+- definitive issue, rejection, amendment, claim, payment, and discharge callback;
 - margin and evidence status;
 - collateral exceptions;
 - release or substitution request package;
@@ -1455,6 +1465,8 @@ On-chain data should avoid:
 - full account numbers;
 - precise vault addresses;
 - full bar serial lists where commercial sensitivity requires privacy;
+
+The detailed privacy and disclosure model is specified in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 - legal-document content;
 - KYC or sanctions data;
 - trading strategy and customer pricing.

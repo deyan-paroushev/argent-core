@@ -193,13 +193,30 @@ This section stays empty of results until the DFNS integration is implemented. I
 
 ---
 
-## 10. What must not be included
+## 10. Privacy, classification, and disclosure evidence
 
-Never include: private keys; seed phrases; DFNS API keys; Railway or service secrets; unredacted KYC or client data; payment credentials; unredacted custody agreements or legal documents; non-public bank or custodian emails; or production credentials for RPC or indexer services. Use role labels and evidence hashes where confidentiality matters.
+Before production or any external design-partner data is used, the evidence pack should include:
+
+- evidence-classification matrix;
+- role and tenant access matrix;
+- public/shared versus restricted-field map;
+- encryption and key-management summary;
+- retention and deletion schedule;
+- access and disclosure audit sample;
+- redaction or derived-statement procedure;
+- metadata and correlation-risk review;
+- incident-response and evidence-revocation procedure;
+- `does_prove` and `does_not_prove` wording for each certificate or proof.
+
+The canonical requirements are in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md). Advanced selective credentials or zero-knowledge proofs should not be listed as production evidence until the deployed implementation, verifier behavior, key lifecycle, and security review are independently reproducible.
+
+## 11. What must not be included
+
+Never include: private keys; seed phrases; DFNS API keys; Railway or service secrets; unredacted KYC or client data; payment credentials; unredacted custody agreements or legal documents; non-public bank or custodian emails; or production credentials for RPC or indexer services. Use role labels, opaque references, and evidence commitments where integrity and correlation are required, but do not rely on a raw hash alone to protect confidential or guessable information.
 
 ---
 
-## 11. Verification checklist
+## 12. Verification checklist
 
 Before sharing the repository with a reviewer or design partner:
 

@@ -288,7 +288,8 @@ It does not yet demonstrate:
 - data fields and identifiers;
 - event and evidence schema;
 - reconciliation and exception handling;
-- privacy and selective-disclosure requirements.
+- preflight, reservation expiry, idempotency, callback, and ambiguous-outcome rules;
+- privacy, role-view, retention, and selective-disclosure requirements.
 
 ### Pilot output
 
@@ -312,6 +313,11 @@ It does not yet demonstrate:
 8. What evidence may be placed on a shared ledger and what must remain private?
 9. What would make a first pilot commercially worthwhile?
 10. Which risk or control would cause the bank to reject the model?
+11. At what point does an application or quote reserve capacity, and for how long?
+12. Which system is authoritative if an issue request times out or a callback is lost?
+13. Which statuses and reason codes must be returned to the originating system?
+14. Which reserve, beneficiary, and obligation fields may each role see?
+15. What daily reconciliation and manual exception process would operations require?
 
 ---
 
@@ -325,6 +331,8 @@ It does not yet demonstrate:
 6. What constitutes valid bank release authority?
 7. How would realization be instructed and evidenced?
 8. What privacy limitations apply to serial numbers and client positions?
+9. Which control facts may be shared without exposing the complete bar list or customer book?
+10. How should a disagreement between the custody book and Argent be escalated and resolved?
 
 ---
 

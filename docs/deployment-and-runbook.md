@@ -390,3 +390,140 @@ After deployment, update:
 - any README contract-ID table.
 
 The public repo, live service and evidence certificate must all point to the same deployment.
+
+---
+
+## 16. Target reservation and deliverability operations
+
+> **Target profile, not current contract behavior.** These procedures apply when `MasterFacility`, typed obligations, and pre-issuance reservations are implemented.
+
+A production operator should monitor the following queue states:
+
+```text
+REQUESTED
+PRECHECKED
+PROVISIONALLY_RESERVED
+BANK_APPROVED
+COMMITTED
+ISSUE_SUBMITTED
+ISSUED
+REJECTED
+EXPIRED
+CANCELLED
+RECONCILIATION_REQUIRED
+```
+
+For each request, preserve:
+
+- originating-system request ID;
+- idempotency key and canonical request digest;
+- facility, applicant, product, beneficiary, amount, and expiry;
+- reservation ID and reservation expiry;
+- policy and evidence version;
+- DFNS approval reference;
+- Soroban transaction and event reference;
+- bank product-system reference;
+- current reason code and next action.
+
+### 16.1 Reservation expiry
+
+A provisional reservation may expire only under the configured bank policy. Before release:
+
+1. confirm that no instrument was issued;
+2. query the authoritative product system if issue status is uncertain;
+3. record the expiry or cancellation reason;
+4. release capacity atomically;
+5. notify the originating system;
+6. include the event in reconciliation output.
+
+Committed capacity must not be released merely because a callback or client connection timed out.
+
+### 16.2 Duplicate commands and callbacks
+
+- reuse of an idempotency key with the same request returns the existing result;
+- reuse of the key with different request data is rejected;
+- duplicate callbacks do not create duplicate obligations or payments;
+- out-of-order callbacks are held or rejected according to lifecycle version;
+- manual replay must preserve the original correlation identifiers.
+
+### 16.3 Ambiguous issue status
+
+If the product-system request may have succeeded but no definitive response was received:
+
+```text
+keep reservation committed
+-> mark RECONCILIATION_REQUIRED
+-> query authoritative product system
+-> prohibit blind resubmission
+-> prohibit release
+-> record definitive issued or rejected outcome
+```
+
+## 17. External-system reconciliation
+
+Production reconciliation should compare:
+
+- bank facility and product system;
+- custodian or vault control book;
+- DFNS approval state;
+- Soroban contract state and event archive;
+- settlement or reimbursement system;
+- evidence-package index.
+
+The daily or intraday report should show:
+
+- unmatched requests and callbacks;
+- reservation and obligation status differences;
+- stale custody, valuation, policy, or document state;
+- duplicated or missing events;
+- age of oldest unresolved exception;
+- assigned owner and escalation deadline.
+
+A disagreement must be visible. Argent must not silently overwrite the bank or custodian record.
+
+## 18. Privacy and evidence operations
+
+Apply the data classification and role-view rules in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
+Operational requirements include:
+
+- no raw bar list, KYC file, complete legal agreement, or beneficiary document in public contract state;
+- encrypted evidence storage with tenant and role separation;
+- purpose-bound access grants and access logging;
+- approved redaction or derived statement before external disclosure;
+- retention and deletion schedule by evidence class;
+- incident response for unauthorized access or public metadata leakage;
+- separate keys and environments for development, test, and production;
+- recovery plan for evidence-encryption keys and signing-service credentials.
+
+A hash is an integrity commitment. It is not permission to publish the underlying data or a guarantee that the committed value cannot be guessed.
+
+## 19. Operational service levels
+
+A production design partner should define measurable targets for:
+
+- preflight response time;
+- reservation creation and expiry processing;
+- DFNS approval timeout;
+- product-system issue callback;
+- event indexing and reconciliation lag;
+- stale valuation and custody alerts;
+- evidence retrieval;
+- manual exception acknowledgement and resolution;
+- recovery-point and recovery-time objectives.
+
+Ledger availability does not imply that the bank, custodian, document examiner, or settlement rail operates continuously. Service levels must reflect the real operating windows of each authority.
+
+## 20. Target-profile go-live checklist
+
+- [ ] authoritative system identified for every state and document;
+- [ ] preflight reason codes tested;
+- [ ] provisional and committed reservation paths tested;
+- [ ] reservation expiry and cancellation tested;
+- [ ] duplicate request and callback behavior tested;
+- [ ] ambiguous issue status tested without blind resubmission;
+- [ ] product-system and Soroban reconciliation tested;
+- [ ] role-specific views and evidence permissions tested;
+- [ ] privacy and metadata-leakage review completed;
+- [ ] manual exception and disaster-recovery procedures rehearsed;
+- [ ] monitoring, alerting, escalation, and evidence export approved.

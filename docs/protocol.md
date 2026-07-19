@@ -2,7 +2,7 @@
 
 **Event-sourced control of physical reserves, capacity, and bank obligations.**
 
-**Public core specification v0.2-draft** · revised 2026-07-18  
+**Public core specification v0.2-draft** · revised 2026-07-19  
 **Reference implementation:** Soroban / Stellar  
 **First reserve adapter:** allocated physical gold  
 **Implemented profile:** secured-credit reference branch  
@@ -86,7 +86,7 @@ Implemented today. A bank opens and manages a secured line against controlled co
 
 #### Profile B - reserve obligation facility
 
-Target product profile. A bank uses controlled reserve capacity to issue purpose-bound obligations. Free capacity cannot be withdrawn as unrestricted customer cash. Obligations may expire, be cancelled, be presented or claimed, crystallize into reimbursement exposure, or proceed to enforcement.
+Target product profile. A bank uses controlled reserve capacity to issue purpose-bound obligations. Free capacity cannot be withdrawn as unrestricted customer cash. Before issuance, a request must pass operational preflight, create a purpose-bound reservation, and become issuable under the bank's product policy. Obligations may expire, be cancelled, be presented or claimed, crystallize into reimbursement exposure, or proceed to enforcement. Argent reconciles the authoritative bank-system result; it does not infer issuance from a submitted request or release capacity after an ambiguous timeout.
 
 #### Profile C - funded liquidity and auto-collateralisation
 
@@ -116,7 +116,11 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**, 
 | Reference implementation | The first concrete implementation of the protocol. The current Soroban contracts implement the secured-credit profile. |
 | Master facility | The bank-approved relationship under which reserve capacity may support permitted products. |
 | Bank obligation | A bank-issued guarantee, documentary credit, undertaking, accepted instrument, treasury exposure, or other approved product supported by facility capacity. |
-| Capacity reservation | A purpose-bound allocation of free facility capacity to a requested or active obligation. |
+| Available capacity | Eligible facility capacity not consumed by reservations, crystallized exposure, pending claims, or required buffers. |
+| Issuable capacity | Available capacity that also passes applicant, beneficiary, product, tenor, currency, jurisdiction, evidence, and bank-policy checks. |
+| Deliverable capacity | Issuable capacity for which the required bank, custody, document, and settlement route is operational and can return a definitive outcome. |
+| Capacity reservation | A purpose-bound, non-transferable, time-limited allocation of facility capacity to a requested or active obligation. |
+| Disclosure policy | The rule set defining which fields, evidence, and derived assertions each role or verifier may receive. |
 
 ---
 
@@ -189,6 +193,8 @@ The protocol must distinguish:
 - free reserve capacity.
 
 The customer MUST NOT be able to convert unused capacity into unrestricted cash under Profile B.
+
+The protocol MUST also distinguish available capacity from issuable and deliverable capacity. A reserve may be unallocated yet unusable for a specific request because the applicant, beneficiary, product, jurisdiction, evidence, approval path, or external product system is not ready. The canonical reservation and operational-deliverability rules are defined in [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
 
 ## 4. Conceptual model
 
@@ -326,9 +332,13 @@ The protocol MUST NOT claim to seize, sell, or transfer physical assets by itsel
 
 ### Principle 8: Shared truth does not require full disclosure
 
-Participants SHOULD be able to verify relevant state and evidence commitments without seeing all private documents.
+Participants SHOULD be able to verify relevant state and evidence commitments without seeing all private documents. Shared state MUST be minimized by role and purpose. Hashes MUST NOT be treated as confidentiality controls where the underlying value is guessable or commercially identifying. The disclosure model is defined in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
-### Principle 9: Chain-portable specification, Soroban-first implementation
+### Principle 9: Available does not mean issuable
+
+The protocol MUST distinguish collateral that is eligible and unallocated from capacity that is operationally usable for a specific bank product. It MUST reserve capacity before issue, reject incompatible concurrent allocation, preserve capacity during ambiguous external outcomes, and require an authoritative issue or rejection result before finalizing the obligation state.
+
+### Principle 10: Chain-portable specification, Soroban-first implementation
 
 The protocol SHOULD define chain-neutral concepts. The first reference implementation is Soroban because Soroban's authorization model fits role-signed collateral workflows.
 
@@ -1342,7 +1352,7 @@ The following SHOULD remain private unless a partner chooses disclosure:
 - production operational runbooks;
 - partner-specific integration details.
 
-This split lets Argent communicate a bigger open protocol vision publicly without exposing commercially sensitive execution details.
+This split lets Argent communicate a bigger open protocol vision publicly without exposing commercially sensitive execution details. A production deployment SHOULD apply role-specific views, encrypted evidence access, purpose-bound audit exports, retention controls, and disclosure receipts. Advanced selective credentials or zero-knowledge proofs are optional maturity steps, not current protocol dependencies. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
 
 ---
 
@@ -1369,13 +1379,17 @@ This split lets Argent communicate a bigger open protocol vision publicly withou
 - event-to-contract mapping;
 - certificate JSON output.
 
-### v0.3. Pool model
+### v0.3. Facility, reservation, and disclosure model
 
-- collateral-pool event model;
+- collateral-pool and master-facility event model;
+- available, issuable, deliverable, reserved, and releasable capacity;
+- provisional and committed reservation states;
+- idempotent preflight, callback, and reconciliation interface;
 - safe substitution formalization;
 - margin-call event lifecycle;
 - daily revaluation job interface;
-- position report format.
+- role-specific disclosure policy and evidence-access model;
+- position and capacity report formats.
 
 ### v1.0. Protocol candidate
 
@@ -1446,6 +1460,12 @@ And its commercial boundary is:
 10. Golden Ark Reserve, "Gold Transaction Documentation: Quote to Settlement," 2026. https://goldenarkreserve.com/blog/gold-transaction-documentation/
 11. Golden Ark Reserve, "Gold Bar Serial Number and Allocated Gold Records," 2026. https://goldenarkreserve.com/blog/gold-bar-serial-number-and-allocated-gold-records/
 12. Golden Ark Reserve, "Allocated vs Unallocated Gold: Key Differences," 2026. https://goldenarkreserve.com/blog/allocated-vs-unallocated-gold-key-differences/
+13. Quant, "Unlocking collateral mobility: How tokenisation transforms settlement infrastructure," 2026. https://quant.network/perspectives/unlocking-collateral-mobility-how-tokenisation-transforms-settlement-infrastructure/
+14. Digital Asset, "Canton ledger privacy model." https://docs.digitalasset.com/overview/3.5/explanations/ledger-model/ledger-privacy.html
+15. W3C, "Verifiable Credentials Data Model v2.0," 2025. https://www.w3.org/TR/vc-data-model-2.0/
+16. W3C, "Data Integrity BBS Cryptosuites v1.0." https://www.w3.org/TR/vc-di-bbs/
+17. OpenID Foundation, "OpenID for Verifiable Presentations 1.0." https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
+18. NIST, "Zero Trust Architecture," SP 800-207. https://csrc.nist.gov/pubs/sp/800/207/final
 
 ---
 

@@ -39,7 +39,11 @@ The current contracts do not yet implement:
 - contingent, pending-claim, and crystallized exposure classes;
 - issue, amend, cancel, expire, present, claim, and discharge states;
 - the target no-unrestricted-cash-draw invariant;
-- electronic trade-document or bank trade-finance adapters.
+- electronic trade-document or bank trade-finance adapters;
+- available-versus-issuable capacity preflight;
+- provisional and committed reservation states;
+- idempotent issue callbacks and ambiguous-outcome reconciliation;
+- role-specific projections, encrypted evidence access, or advanced selective-disclosure proofs.
 
 The repository states these gaps explicitly so reviewers can distinguish demonstrated engineering from the commercial product extension.
 
@@ -155,6 +159,8 @@ The next design step generalizes the facility object and adds obligation lifecyc
 - `DOCUMENT_STATUS_MATRIX.md` - the scope and status of every document.
 - `reserve-obligation-infrastructure.md` - the current product thesis.
 - `obligation-facility-profile.md` - the target technical model.
+- `capacity-reservation-and-deliverability.md` - the target reservation, issuability, callback, and reconciliation model.
+- `selective-disclosure-and-institutional-privacy.md` - the target data-visibility and evidence-disclosure model.
 - `argent-architecture.md` - the full architecture and boundary.
 - `argent-dfns-signing-sequence.md` - the institutional signing model.
 - `protocol.md` - the protocol specification and current reference profile.

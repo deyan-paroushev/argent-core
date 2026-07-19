@@ -287,28 +287,55 @@ The protocol must make those limitations visible rather than market gold as risk
 
 ---
 
-## 8. One authoritative capacity state
+## 8. One authoritative capacity and deliverability state
 
-The central system object is not a tokenized bar and not a customer cash balance. It is the facility's authoritative capacity state.
+The central system object is not a tokenized bar and not a customer cash balance. It is the facility's authoritative capacity state, together with the evidence needed to determine whether that capacity is usable for the requested bank instrument.
 
 ```text
-Gross eligible reserve value
+Gross reserve value
 - valuation haircuts
-- liquidity and concentration adjustments
-- required volatility and legal buffers
-= approved reserve capacity
+- liquidity, concentration, custody, and legal adjustments
+- required volatility buffer
+= eligible reserve value
 
-Approved reserve capacity
-- active contingent allocations
+min(eligible reserve value, bank-approved facility limit)
+= approved facility capacity
+
+Approved facility capacity
+- provisional and committed reservations
+- active obligation allocations
 - crystallized reimbursement exposure
 - pending claims and settlement
 - required margin buffer
-= free obligation capacity
+= available capacity
+```
+
+Available capacity is not automatically issuable capacity. A proposed use must also pass:
+
+- product and applicant sublimits;
+- beneficiary, jurisdiction, currency, and tenor rules;
+- custody, valuation, legal, and documentary freshness checks;
+- institutional approvals;
+- bank-product and settlement-route readiness.
+
+The target progression is:
+
+```text
+eligible
+-> available
+-> reservable
+-> reserved
+-> issuable
+-> deliverable
+-> active
+-> releasable
 ```
 
 A bank may apply different capacity treatments by product. A performance guarantee, documentary credit, financial guarantee, and treasury exposure do not necessarily consume identical internal risk capacity merely because their face values match.
 
-Argent records the bank-approved capacity decision. It does not invent the bank's exposure model.
+Argent records and enforces the bank-approved capacity and deliverability decision. It does not invent the bank's exposure model, beneficiary decision, documentary decision, or operating calendar.
+
+The canonical reservation and deliverability specification is [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md).
 
 ---
 
@@ -363,12 +390,16 @@ A typical obligation follows:
 
 ```text
 REQUESTED
--> POLICY_VALIDATED
--> CAPACITY_RESERVED
+-> PRECHECKED
+-> PROVISIONALLY_RESERVED
 -> BANK_APPROVED
+-> ISSUABLE
+-> ISSUE_SUBMITTED
 -> INSTRUMENT_ISSUED
 -> ACTIVE
 ```
+
+If issue status is ambiguous, the reservation remains committed until the authoritative bank product system is reconciled. The service must not release capacity or submit a duplicate instrument merely because a callback or transaction response timed out.
 
 Normal expiry:
 
@@ -455,7 +486,7 @@ Argent should sit beside, not replace:
 - accounting and regulatory reporting;
 - payment, stablecoin, tokenized-deposit, or CBDC settlement rails.
 
-The protocol should move instructions, proofs, and control state. It should not create duplicate legal claims over the same gold on multiple ledgers.
+The protocol should move instructions, proofs, and control state. It should not create duplicate legal claims over the same gold on multiple ledgers. It should act as an orchestration layer between existing systems: preflight the proposed use, reserve capacity without double allocation, reconcile institutional approvals, receive the bank's issue outcome, and return one definitive status to the originating system without requiring the institution to re-platform.
 
 A future documentary-credit path may coordinate:
 
@@ -534,11 +565,13 @@ What must be added:
 - typed bank obligations;
 - beneficiaries and product sublimits;
 - contingent, pending, and crystallized exposure classes;
-- capacity reservation before issuance;
+- provisional and committed capacity reservation before issuance;
+- available, issuable, deliverable, and releasable capacity states;
+- deterministic preflight outcomes, idempotency, callbacks, and external-system reconciliation;
 - issue, amend, expire, present, claim, pay, and reimburse states;
 - target no-cash-draw invariant;
 - trade-document and beneficiary-settlement adapters;
-- selective disclosure of reserve sufficiency.
+- role-specific views and selective disclosure of reserve sufficiency, custody control, and instrument status.
 
 The correct claim is therefore:
 
@@ -594,5 +627,9 @@ Those questions remain with the bank, custodian, counsel, accountant, and releva
 - ICC URDG 758 overview: https://academy.iccwbo.org/trade-finance/e-books/urdg-758/
 - UNCITRAL Model Law on Electronic Transferable Records: https://uncitral.un.org/en/texts/ecommerce/modellaw/electronic_transferable_records
 - DTCC, *Collateral Infrastructure for Tokenized Capital Markets* (2026): https://www.dtcc.com/news/2026/may/13/tokenized-collateral-could-unlock-billions-in-capital-and-transform-liquidity-management
+- Quant, *Unlocking collateral mobility: How tokenisation transforms settlement infrastructure* (2026): https://quant.network/perspectives/unlocking-collateral-mobility-how-tokenisation-transforms-settlement-infrastructure/
+- Canton ledger privacy model: https://docs.digitalasset.com/overview/3.5/explanations/ledger-model/ledger-privacy.html
+- W3C Verifiable Credentials Data Model 2.0: https://www.w3.org/TR/vc-data-model-2.0/
+- OpenID for Verifiable Presentations 1.0: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
 
 No reference implies partnership, endorsement, legal equivalence, or production compatibility.
