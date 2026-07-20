@@ -31,6 +31,7 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 | `obligation-facility-profile.md` | **Target profile** | Domain objects, states, invariants, no-cash-draw rule, and mapping to the current contracts. |
 | `capacity-reservation-and-deliverability.md` | **Canonical direction + target profile** | Available versus issuable capacity, reservation lifecycle, concurrency, preflight decisions, callbacks, external finality, and reconciliation. |
 | `selective-disclosure-and-institutional-privacy.md` | **Canonical direction + target profile** | Data classification, role-specific visibility, minimized shared state, evidence protection, and selective-disclosure maturity path. |
+| `confidential-control-and-public-integrity.md` | **Canonical direction + target profile** | Production public/private state placement, evidence commitments, custodian nullifiers, private transition envelopes, minimized batch anchors, relay controls, and confidentiality deployment gates. |
 | `shared-gold-infrastructure-and-argent.md` | **Market and interoperability analysis** | Boundary between emerging gold-market infrastructure and Argent's bank-facility, reservation, and obligation state. |
 | `argent-architecture.md` | **Canonical direction + implemented reference** | Full system architecture and the boundary between the live credit branch and target obligation profile. |
 | `protocol.md` | **Protocol specification + implemented reference** | Event-sourced physical-reserve control protocol; V0.1 currently implements the secured-credit profile. |
@@ -108,10 +109,11 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 2. `reserve-obligation-infrastructure.md`
 3. `capacity-reservation-and-deliverability.md`
 4. `selective-disclosure-and-institutional-privacy.md`
-5. `shared-gold-infrastructure-and-argent.md`
-6. `argent-architecture.md`
-7. `product-roadmap.md`
-8. `REVIEWER_QUICKSTART.md`
+5. `confidential-control-and-public-integrity.md`
+6. `shared-gold-infrastructure-and-argent.md`
+7. `argent-architecture.md`
+8. `product-roadmap.md`
+9. `REVIEWER_QUICKSTART.md`
 
 ### Bank, trade-finance, or treasury reviewer
 
@@ -119,10 +121,11 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 2. `obligation-facility-profile.md`
 3. `capacity-reservation-and-deliverability.md`
 4. `selective-disclosure-and-institutional-privacy.md`
-5. `shared-gold-infrastructure-and-argent.md`
-6. `bank-integration-and-adapter-strategy.md`
-7. `collateral-eligibility-and-risk-policy.md`
-8. `physical-collateral-and-trade-finance.md`
+5. `confidential-control-and-public-integrity.md`
+6. `shared-gold-infrastructure-and-argent.md`
+7. `bank-integration-and-adapter-strategy.md`
+8. `collateral-eligibility-and-risk-policy.md`
+9. `physical-collateral-and-trade-finance.md`
 
 ### Custodian or bullion operator
 
@@ -132,7 +135,8 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 4. `collateral-control.md`
 5. `capacity-reservation-and-deliverability.md`
 6. `selective-disclosure-and-institutional-privacy.md`
-7. `obligation-facility-profile.md`
+7. `confidential-control-and-public-integrity.md`
+8. `obligation-facility-profile.md`
 
 ### Technical reviewer
 
@@ -141,8 +145,9 @@ The repository deliberately keeps the tested secured-credit reference branch bec
 3. `protocol.md`
 4. `capacity-reservation-and-deliverability.md`
 5. `selective-disclosure-and-institutional-privacy.md`
-6. `argent-dfns-signing-sequence.md`
-7. `TEST_SURFACE_MATRIX.md`
+6. `confidential-control-and-public-integrity.md`
+7. `argent-dfns-signing-sequence.md`
+8. `TEST_SURFACE_MATRIX.md`
 
 ---
 
@@ -154,9 +159,10 @@ Where product-positioning language differs, apply this order:
 2. `obligation-facility-profile.md` for the target facility model;
 3. `capacity-reservation-and-deliverability.md` for reservation, issuability, and external-system reconciliation;
 4. `selective-disclosure-and-institutional-privacy.md` for data visibility and evidence disclosure;
-5. `shared-gold-infrastructure-and-argent.md` for upstream gold-market authority and integration boundaries;
-6. `argent-architecture.md` for system boundaries and implementation mapping;
-7. `protocol.md` for current protocol and contract behavior;
-8. the contract source and tests for what is actually implemented.
+5. `confidential-control-and-public-integrity.md` for production public/private state placement, commitments, nullifiers, batching, and metadata controls;
+6. `shared-gold-infrastructure-and-argent.md` for upstream gold-market authority and integration boundaries;
+7. `argent-architecture.md` for system boundaries and implementation mapping;
+8. `protocol.md` for current protocol and contract behavior;
+9. the contract source and tests for what is actually implemented.
 
 No document may convert a target design into a claim of shipped functionality. The source code and tests remain the implementation ground truth.

@@ -10,11 +10,13 @@ The framing that matters, stated once: DFNS is not a remote private-key box that
 
 ## 0. Product and implementation boundary
 
-The mature product direction is a **corporate reserve obligation facility**: one identified reserve supporting multiple purpose-bound bank obligations, with no unrestricted customer cash draw. The current Soroban contracts remain the implemented secured-credit reference branch. They prove the shared foundation - role authority, asset identity, immobilization, pledge, capacity, settlement-linked exposure reduction, release, default, cure, and enforcement evidence.
+The mature product direction is a **corporate reserve obligation facility**: one identified reserve supporting multiple purpose-bound bank obligations, with no unrestricted customer cash draw. The current Soroban contracts remain the implemented secured-credit reference branch. They prove the shared foundation - role authority, supplied asset-evidence binding, identical-key collision refusal, immobilization, pledge, capacity, settlement-linked exposure reduction, release, default, cure, and enforcement evidence.
 
 DFNS integration does not require the target obligation types to be implemented first. The same governed-intent layer is needed for both the current credit branch and future guarantee, documentary-credit, accepted-obligation, treasury, amendment, claim, reimbursement, and discharge actions. The integration should therefore be expressed in terms of **governed institutional acts**, not only drawdown signing.
 
-The current on-chain logic does not change for the reference implementation. The Soroban contracts (`credit_ledger`, `settlement_vault`, `rewards_ledger`), the existing lifecycle, and every tested invariant remain exactly as built. DFNS does not replace any of that.
+The current on-chain logic does not change for the transparent reference implementation. The Soroban contracts (`credit_ledger`, `settlement_vault`, `rewards_ledger`), the existing lifecycle, and every tested invariant remain exactly as built. DFNS does not replace any of that. The reference profile must use synthetic data because its call arguments, storage, accounts, and replayable events are public.
+
+The target confidential production profile changes what is signed and broadcast. Authorized approvers review a complete private transition envelope and the exact minimized public batch anchor derived from it. DFNS governs the institutional approval; the common relay broadcasts only the anchor. The private operating state, custodian nullifier, participants, amount, action type, and evidence remain restricted. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 What changes first is the service layer. Today, each governed act is signed synchronously: the service asks a signer for a signature on the Soroban authorization-entry hash, gets it immediately, assembles the transaction, and submits. Under DFNS, signing becomes asynchronous and policy-governed. A governed act may not sign immediately; it may enter a pending state and wait for a second party's approval before DFNS signs it via MPC. The new work is the pending state and the webhook handling that surround the existing call.
 
@@ -87,7 +89,7 @@ So Argent must not claim "DFNS policies automatically protect the workflow." The
 
 Every governed Argent act follows this sequence. The two-stage release and the enforcement flow are the clearest cases, but the pattern is uniform.
 
-State 1, Initiated. A party initiates an act (e.g. the bank authorizes release). The service composes the Soroban invocation and simulates it to discover the authorization entries, exactly as today.
+State 1, Initiated. A party initiates an act (for example, the bank authorizes release). In the transparent reference, the service composes the complete Soroban invocation. In the confidential production profile, it constructs the complete private transition envelope and deterministically derives the minimized public anchor invocation.
 
 State 2, Policy-evaluated. The act is submitted to DFNS. The Permissions Gatekeeper checks the initiator's authority; the Policy Engine evaluates the act against its rules.
 
@@ -99,7 +101,7 @@ State 4, Approved (or rejected). A member of the approval group reviews and appr
 
 State 5, Signed. Only now does the approved act descend to the MPC nodes and the authorization-entry hash is signed.
 
-State 6, Broadcast and recorded. The signed transaction is assembled and broadcast to Stellar. The service records the on-chain transaction, exactly as today, the contract event and the ledger entry are unchanged.
+State 6, Broadcast and recorded. In the transparent reference, the signed transaction and rich contract event remain unchanged. In the confidential production profile, the common relay broadcasts the approved uniform batch anchor. The service reconciles that anchor to the private approval and state transition without placing the approval envelope on Stellar.
 
 The only structurally new states are 3b (pending) and 4 (approval/rejection). States 1, 2, 5, and 6 already exist in the current synchronous flow, compressed together. The integration pulls them apart and inserts the pending/approval gap.
 

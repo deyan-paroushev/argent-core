@@ -14,7 +14,7 @@ The mature product direction is a **corporate reserve obligation facility**. One
 
 Argent is designed to sit above authoritative gold-market infrastructure rather than duplicate it. Provenance, ownership, custody, physical backing, and digital-gold product records may come from a custodian, LBMA Gold Bar Integrity, a future shared gold platform, or another bank-approved authority. The full World Gold Council and BCG paper clarifies that upstream assurance may cover physical gold and legal entitlements while product implementation remains with the issuer. Argent begins at the bank-specific boundary: legal pledgeability, operational control, eligibility, facility encumbrance, capacity reservation, bank-obligation allocation, and release state. See [`docs/shared-gold-infrastructure-and-argent.md`](docs/shared-gold-infrastructure-and-argent.md).
 
-The code in this repository is the tested **secured-credit reference branch** of that broader protocol. It proves the difficult shared primitives through real Soroban state transitions: instrument eligibility, lot identity, exclusive pledge, borrowing-base computation, utilization, atomic repayment, dual-control release, default, cure, and enforcement recording. The obligation profile generalizes those primitives; it does not discard or misrepresent the implementation that exists today.
+The code in this repository is the tested **secured-credit reference branch** of that broader protocol. It proves difficult shared primitives through real Soroban state transitions: instrument eligibility, binding of supplied lot evidence and identifiers, identical-key collision refusal, exclusive pledge, borrowing-base computation, utilization, atomic repayment, dual-control release, default, cure, and enforcement recording. The obligation profile generalizes those primitives; it does not discard or misrepresent the implementation that exists today.
 
 Start with:
 
@@ -22,6 +22,7 @@ Start with:
 - [`docs/obligation-facility-profile.md`](docs/obligation-facility-profile.md) - the target non-cash-drawable facility model and its relationship to the current contracts.
 - [`docs/capacity-reservation-and-deliverability.md`](docs/capacity-reservation-and-deliverability.md) - how eligible reserve value becomes reserved, issuable, and operationally deliverable bank capacity without double allocation.
 - [`docs/selective-disclosure-and-institutional-privacy.md`](docs/selective-disclosure-and-institutional-privacy.md) - the minimum-disclosure model for banks, custodians, beneficiaries, auditors, and supervisors.
+- [`docs/confidential-control-and-public-integrity.md`](docs/confidential-control-and-public-integrity.md) - the production public/private state boundary, custodian nullifier profile, batch anchoring model, and leakage-control gates.
 - [`docs/shared-gold-infrastructure-and-argent.md`](docs/shared-gold-infrastructure-and-argent.md) - how Argent complements Gold Bar Integrity, Wholesale Digital Gold, Pooled Gold Interests, and the proposed Gold as a Service platform without duplicating gold ownership or issuance.
 - [`docs/DOCUMENT_STATUS_MATRIX.md`](docs/DOCUMENT_STATUS_MATRIX.md) - which documents describe shipped code, product direction, or later extensions.
 - [`docs/REVIEWER_QUICKSTART.md`](docs/REVIEWER_QUICKSTART.md) - the five-minute verification path for the implementation.
@@ -34,7 +35,7 @@ Start with:
 
 A shared, role-signed control layer for physical reserves that remain under professional custody. It gives the participating institutions one ordered state for:
 
-- asset and lot identity;
+- asset definition and supplied lot-evidence identity;
 - custody and immobilization;
 - eligibility and valuation treatment;
 - exclusive pledge, available capacity, and purpose-bound reservation;
@@ -100,7 +101,7 @@ python3 scripts/check_docs.py                       # docs match the contract
 
 | Property | Current proof | Failure behavior |
 |---|---|---|
-| **The same bars cannot support two active pledges.** | Lot-level `uniqueness_hash` | A second active pledge is rejected. |
+| **The same supplied lot key cannot support two active positions.** | Lot-level `uniqueness_hash` lock | A second active position using the identical 32-byte key is rejected. The current contract does not derive that key from private bar identity. |
 | **A facility cannot open without risk headroom.** | `open_credit_line` enforces `ltv_bps < maintenance_bps` | An unsafe line is rejected at creation. |
 | **Only the bound settlement vault can reduce exposure.** | Credit ledger authorization and vault binding | An unapproved caller cannot apply repayment. |
 | **Release requires two distinct institutional acts.** | Bank authorization followed by custodian confirmation | The custodian cannot release before the bank authorizes it. |
@@ -115,7 +116,9 @@ Stellar/Soroban is not used as a document archive. Three features are structural
 
 1. **Role-specific authorization.** `require_auth` binds each state transition to the party that performs it. The bank, custodian, owner, verifier, and operator do not sign for one another.
 2. **Atomic value-state transitions.** Where regulated settlement value moves, the settlement transfer and exposure update can occur together or not at all.
-3. **Shared, replayable evidence.** The parties and an auditor can verify one ordered event history rather than reconciling several private records after the fact.
+3. **Shared, replayable integrity evidence.** The current transparent reference emits a replayable event history. The target production profile instead anchors minimized state roots so authorized parties can prove their private records against one ordered, non-equivocating integrity history.
+
+Soroban is the integrity plane, not the institutional operating book. In production, exact bar identity, participants, amounts, capacity, beneficiaries, and action details remain in bank, custodian, title, signing, and evidence systems. See [`docs/confidential-control-and-public-integrity.md`](docs/confidential-control-and-public-integrity.md).
 
 The intended institutional signing layer is DFNS. DFNS policies and approvals govern whether an institutional role may sign; Soroban enforces whether the resulting state transition is valid. The reusable integration contribution is a Soroban-aware DFNS authorization adapter, approval-to-transaction reconciliation, and an institutional role blueprint that can support other Stellar applications requiring governed multi-party acts.
 
@@ -143,6 +146,7 @@ The next protocol extension generalizes the facility and exposure objects rather
 | [`obligation-facility-profile.md`](docs/obligation-facility-profile.md) | Target facility objects, states, invariants, and mapping to current contracts. |
 | [`capacity-reservation-and-deliverability.md`](docs/capacity-reservation-and-deliverability.md) | Reservation, concurrency, preflight, issuability, external finality, and reconciliation. |
 | [`selective-disclosure-and-institutional-privacy.md`](docs/selective-disclosure-and-institutional-privacy.md) | Data classification, role-specific visibility, evidence privacy, and selective-disclosure path. |
+| [`confidential-control-and-public-integrity.md`](docs/confidential-control-and-public-integrity.md) | Production public/private state placement, commitment and nullifier semantics, minimized batch anchors, relay controls, and confidentiality deployment gates. |
 | [`shared-gold-infrastructure-and-argent.md`](docs/shared-gold-infrastructure-and-argent.md) | Boundary and adapter model between authoritative gold infrastructure and Argent's bank-obligation state. |
 | [`argent-architecture.md`](docs/argent-architecture.md) | System architecture, roles, trust boundaries, and implementation relationship. |
 | [`protocol.md`](docs/protocol.md) | Open protocol specification and implemented reference profile. |
@@ -171,7 +175,7 @@ See [`docs/README.md`](docs/README.md) and [`docs/DOCUMENT_STATUS_MATRIX.md`](do
 - 224 passing contract tests;
 - instrument eligibility and lot uniqueness;
 - tri-party pledge and secured-credit lifecycle;
-- canonical collateral and governance events;
+- canonical collateral and governance events for the transparent reference profile;
 - atomic repayment;
 - controlled release, default, cure, and enforcement evidence;
 - Stellar testnet deployment and live demonstrator.
@@ -187,6 +191,9 @@ See [`docs/README.md`](docs/README.md) and [`docs/DOCUMENT_STATUS_MATRIX.md`](do
 - provisional and committed reservations, expiry, idempotency, and definitive callbacks;
 - no-unrestricted-cash-draw invariant;
 - role-specific projections, encrypted evidence access, and selective-disclosure controls;
+- custodian-controlled canonical identity and nullifier derivation;
+- private institutional state with minimized Soroban state-root anchoring;
+- common relay, uniform padded batches, and public-surface leakage testing;
 - beneficiary, trade-document, bank-product, and settlement adapters.
 
 ### Not yet claimed
@@ -196,6 +203,7 @@ See [`docs/README.md`](docs/README.md) and [`docs/DOCUMENT_STATUS_MATRIX.md`](do
 - no legal security interest is created on-chain;
 - no asset is tokenized or transferred by the protocol;
 - no public capacity token or private currency is proposed.
+- no production confidentiality claim is made for the current transparent contracts; their public fields and replayable events require synthetic data.
 
 ---
 

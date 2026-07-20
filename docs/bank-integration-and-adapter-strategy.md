@@ -850,12 +850,13 @@ The long-term direction should be compatible with LEI and vLEI because the vLEI 
 
 ### 7.12 DFNS signing adapter
 
-Purpose: make every on-chain act decodeable, approvable, and attributable before signature.
+Purpose: make every **private institutional instruction** decodeable, approvable, and attributable before signature, and let approvers verify the exact minimized public anchor derived from it.
 
-Required mapping:
+Required private approval mapping:
 
 ```text
-Soroban method
+private action type
+target public anchor method
 Argent role required
 party expected
 wallet expected
@@ -872,7 +873,9 @@ approval state
 broadcast state
 ```
 
-The adapter must decode the pending Soroban call and compare it to the bank policy before approval. It must reject opaque payloads. It must reconcile pending approvals with broadcast transactions and indexed events.
+The adapter must decode the complete private transition envelope and compare it to bank policy before approval. It must reject an opaque institutional instruction. Before signature it must also render the minimized public payload and prove that the public previous and next roots, policy version, batch commitment, authorization commitment, epoch, and replay token were deterministically derived from the approved private envelope.
+
+Amounts, facilities, positions, counterparties, beneficiaries, products, and action types in the private mapping are not automatically Soroban call arguments. The confidential production profile submits only the minimized batch anchor through a common relay. The adapter must reconcile private approvals with the public anchor and the private state transition without exposing the approval envelope.
 
 ### 7.13 Stellar and Soroban indexer adapter
 
@@ -880,22 +883,23 @@ Purpose: archive Soroban events and transaction state beyond the short RPC query
 
 Stellar documents that `getEvents` can retrieve filtered contract events, but the RPC query window is limited to recent ledgers and backend components should ingest events into their own database for querying and serving [26]. Stellar also documents contract events as the mechanism off-chain applications use to monitor both value movement and custom contract events [27].
 
-Therefore production Argent requires an indexer archive.
+Therefore production Argent requires an indexer archive for the public integrity history. The current transparent reference indexer may reconstruct the secured-credit projection from rich events. A confidential production indexer must not attempt to recreate the private facility book from public data; it archives uniform batch anchors and reconciles them to a separately authorized private read model.
 
 Indexer duties:
 
 ```text
-ingest contract events
-parse CollateralEventV1
-parse GovernanceEventV1
-link events to bank identifiers
-link events to DFNS approvals
-link events to evidence hashes
-track ledger sequence and transaction hash
-detect gaps
-replay facility state
-export event replay file
-reconcile with current contract state
+reference profile:
+  ingest contract events
+  parse CollateralEventV1
+  parse GovernanceEventV1
+  replay synthetic facility state
+
+production profile:
+  ingest uniform batch-anchor events
+  track epoch, roots, ledger sequence and transaction hash
+  detect gaps, replay, rollback and root discontinuity
+  reconcile public anchors to authorized private transitions
+  keep bank identifiers, approvals, evidence and facility projection private
 ```
 
 Horizon remains useful for Stellar account and payment streams, including account payment streaming with cursors [28]. The Soroban event archive remains mandatory for the contract lifecycle.
@@ -1141,6 +1145,8 @@ internal risk rating unless policy needs it
 ```
 
 The principle is simple: Argent should not become a sensitive-data sink just to prove collateral control. Shared state, adapter payloads, evidence exports, and user views should be minimized by role and purpose. Exact reserve values, bar serials, beneficiary terms, and group exposure should remain restricted unless required for the receiving party's function. Hashes do not make low-entropy or commercially identifying data confidential. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
+The production public/private boundary is stricter than field redaction. The private operating plane holds exact values and identities. Soroban anchors only an authorized state transition using a uniform batch event, common relay, minimized identifiers, and reviewed commitments. Custodian nullifiers remain private by default. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 

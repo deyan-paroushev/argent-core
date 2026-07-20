@@ -6,6 +6,8 @@
 
 Status: public security-boundary document. This file describes what Argent Core is designed to protect, what it deliberately does not protect, and which trust assumptions remain off-chain.
 
+The current contracts are a transparent reference profile. Their participant addresses, stable IDs, exact quantities and risk values, states, and replayable events are publicly inspectable and must use synthetic data. The confidential production boundary is specified in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
+
 Argent is a collateral-control system, not a commodity token, custodian, bank, legal-enforcement engine, or price oracle. The contracts record role-signed control facts around physical collateral that remains in custody. The core security question is therefore not “can the chain prove the asset exists?” It cannot. The question is: **given signed attestations, legal documents and role authority, can the system prevent unauthorized, inconsistent, or under-collateralizing control-state changes?**
 
 Throughout this document, a control is marked **(enforced today)** where the open-source contracts enforce and test it now, and **(current build)** where it belongs to the DFNS-governed signing layer that the present build introduces and is not yet in the contracts. This keeps the security claims matched to what the code actually delivers.
@@ -32,7 +34,7 @@ Argent protects **control state**, not physical title itself.
 
 The protected assets are:
 
-1. The exclusivity of a pledged lot inside the Argent record.
+1. The exclusivity of an identical caller-supplied lot key inside the current Argent record.
 2. The credit line’s drawn balance and available capacity.
 3. The lender’s release and enforcement control path.
 4. The settlement-to-exposure linkage between repayment and debt reduction.
@@ -44,7 +46,7 @@ The core invariants are:
 
 | Invariant | Required property |
 |---|---|
-| No duplicate active pledge | The same lot / uniqueness hash cannot back two active pledges in the Argent record. |
+| No duplicate active supplied key | The identical 32-byte `uniqueness_hash` cannot remain active under two positions in the current Argent record. This does not prove that two different keys do not describe the same physical lot. |
 | No unauthorized business act | Each state-changing act must be signed by the party whose role authorizes that act. |
 | No revoked role action | Governed parties must be checked against the current approval table at the time they act. |
 | No draw through capacity | A drawdown cannot exceed the available secured capacity. |
@@ -68,7 +70,7 @@ The mature profile additionally protects:
 - role-specific data views and evidence permissions;
 - confidentiality of bar, reserve, beneficiary, claim, and group-exposure information.
 
-These are target-profile properties unless implemented in source and tests. Their detailed specifications are [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) and [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+These are target-profile properties unless implemented in source and tests. Their detailed specifications are [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md), [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md), and [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ## 3. Trust assumptions
 
@@ -117,7 +119,7 @@ The service is trusted operationally for:
 
 | Threat | Contract control | Residual risk |
 |---|---|---|
-| Borrower or owner tries to pledge the same lot twice | Lot uniqueness lock and duplicate-pledge tests. | A pledge outside Argent cannot be detected unless the custodian/bank integrates external lien checks. |
+| Borrower or owner submits an identical lot key twice | Current identical-key lock and duplicate-key tests. Target custodian nullifier rejects alternate-salt representations inside its governed domain. | The current contract can be bypassed with a different supplied value; a pledge outside the governed domain cannot be detected. |
 | Bank opens a line against an ineligible instrument | Instrument registry and framework-level eligibility treatment are checked before position/line use. | The bank may admit a poor instrument under its own policy; Argent enforces policy, it does not judge credit quality. |
 | LTV exceeds lender ceiling | `open_credit_line` checks requested LTV against the admitted instrument treatment. | Incorrect treatment values remain a bank policy/input risk. |
 | Stale or missing valuation used for credit capacity | Valuation-bearing paths require references and freshness checks where implemented. | The chain cannot know whether the external valuation source is economically fair. |
@@ -148,6 +150,13 @@ The service is trusted operationally for:
 | Ledger, bank, and custodian states diverge | exception state, fail-closed progression, and reconciliation report | operational resolution may require human and legal judgment |
 | Public event reveals reserve or commercial activity | data minimization, role projections, value bucketing or commitments where appropriate, and privacy review | timing, graph, and repeated-identifier analysis may still correlate activity |
 | Evidence hash permits dictionary attack | salt or keyed commitment where appropriate; do not publish low-entropy sensitive values | poor canonicalization or key handling can still expose or invalidate evidence |
+| Same bar is submitted with a second random salt | separate the random evidence commitment from a deterministic custodian nullifier | nullifier protection is limited to the governed domain and authoritative custodian inputs |
+| Same bar receives different nullifiers because mutable or facility fields were included | versioned canonical physical-identity profile that excludes owner, bank, facility, obligation, and transaction | profile mistakes require migration and may fragment duplicate detection |
+| Custodian nullifier key is compromised or exposed as an oracle | HSM or equivalent boundary, authenticated derivation, rate limiting, audit, separation of duties, and incident response | a compromised authoritative custodian remains a concentrated trust risk |
+| Key or canonicalization rotation creates a new identity for an active bar | stable domain-key continuity or signed migration that preserves active locks across versions | failed or partial migration can create inconsistent domains |
+| Public nullifier reveals lifecycle linkage | keep N private in the production baseline and anchor the nullifier-set root; use a public-nullifier profile only after explicit leakage acceptance | root cadence and batch behavior may still reveal aggregate activity |
+| Public accounts reveal the institution and customer graph | common relay, scoped private IDs, uniform event, fixed cadence, and padded batches | traffic analysis may still infer activity and requires deployment-specific assessment |
+| Rich reference event stream is used with real data | synthetic-data-only rule and separate minimized production anchor contract | operator error or misconfiguration can still publish sensitive data irreversibly |
 | Unauthorized evidence disclosure | encrypted storage, purpose-bound access, tenant isolation, access logging, and disclosure receipt | privileged insider or endpoint compromise remains possible |
 | Selective proof is mistaken for legal or physical truth | explicit `does_prove` and `does_not_prove` semantics; authoritative-source reference | verifier may still over-rely without legal and operational review |
 
@@ -182,7 +191,7 @@ Argent intentionally does not provide:
 - yield generation from pledged physical assets;
 - a guarantee that the same asset has not been pledged in another system.
 
-This boundary is central to the design. Argent records and enforces the shared control state for a facility that has already been legally and operationally structured by the parties.
+This boundary is central to the design. The transparent reference records and enforces a complete shared synthetic state. The confidential production profile operates the complete facility state privately and uses Argent/Soroban to anchor its governed integrity history after the facility has been legally and operationally structured by the parties.
 
 ---
 
@@ -249,7 +258,9 @@ The following are not necessarily defects in the prototype, but they must be add
 9. Reservation concurrency, expiry, idempotency, callback authentication, and ambiguous-outcome testing.
 10. Daily reconciliation between bank product, custodian, DFNS, Soroban, settlement, and evidence state.
 11. Data-protection impact assessment, role-view review, retention schedule, and metadata-leakage analysis.
-12. Independent review of any selective-credential or zero-knowledge implementation before relying on it in production.
+12. Custodian nullifier canonicalization test vectors, HSM governance, key-rotation continuity, compromise drill, and domain-scope statement.
+13. Public-surface inspection of contract arguments, storage, events, authorization entries, return values, errors, logs, account graph, cadence, and batch sizes.
+14. Independent review of the confidential state engine, relay, anchor contract, and any selective-credential or zero-knowledge implementation before relying on it in production.
 
 ---
 
@@ -259,7 +270,7 @@ A reviewer should verify:
 
 - [ ] `cargo test --workspace` passes with the published test counts.
 - [ ] Role revocation tests cover bank, custodian, valuation, processor and vault surfaces.
-- [ ] Duplicate pledge tests use the lot uniqueness key.
+- [ ] Current duplicate-key tests prove only identical 32-byte key collision; target nullifier tests additionally cover alternate salts, canonicalization, domain scope, and key rotation.
 - [ ] Settlement vault tests prove rollback on failed repayment.
 - [ ] Release tests prove repayment does not release collateral.
 - [ ] Governance event tests prove authority acts are recorded separately from deal acts.
@@ -270,4 +281,6 @@ A reviewer should verify:
 - [ ] Reconciliation fails closed when bank, custodian, DFNS, Soroban, settlement or evidence states disagree.
 - [ ] Public and shared payloads exclude raw bar lists, KYC, complete legal documents and unnecessary beneficiary data.
 - [ ] Privacy review covers hashes of low-entropy data, event timing, exact amounts, stable identifiers and graph correlation.
+- [ ] The transparent reference contracts contain synthetic data only, and the production public payload contains no customer-scoped identifier, amount, action type, or unreviewed commitment.
+- [ ] The nullifier claim is limited to the governed Argent/custodian domain and does not imply global lien or pledge visibility.
 - [ ] Selective-disclosure evidence states what it proves, what it does not prove and which authority supplied the underlying fact.

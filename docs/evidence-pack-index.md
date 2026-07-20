@@ -159,7 +159,7 @@ The full run is also captured in `docs/argent-core-v5-summary.pdf`. Key tests to
 |---|---|
 | `register_position_refuses_instrument_not_admitted` | Instrument eligibility cannot be bypassed. |
 | `open_credit_line_refused_when_ltv_exceeds_instrument_ceiling` | Framework treatment controls credit terms. |
-| `refuses_double_pledge_of_same_bars` / lot-uniqueness equivalent | The same physical lot cannot back two active pledges. |
+| `refuses_double_pledge_of_same_bars` / lot-key equivalent | The current contract refuses a second active position using the identical supplied 32-byte key; the test name must not be read as proof of canonical physical identity. |
 | `unapproved_vault_cannot_apply_repayment` | Only the bound / approved vault can reduce exposure. |
 | `refuses_confirm_release_before_bank_authorizes` | Custodian cannot release alone. |
 | `repayment_does_not_release_collateral` | Repayment and release remain distinct control acts. |
@@ -205,10 +205,18 @@ Before production or any external design-partner data is used, the evidence pack
 - access and disclosure audit sample;
 - redaction or derived-statement procedure;
 - metadata and correlation-risk review;
+- complete public-surface inventory covering contract arguments, storage, events, authorization entries, returns, errors, logs, accounts, cadence, and batch size;
+- canonical bar-identity profile and interoperability test vectors;
+- evidence-commitment and custodian-nullifier derivation profile;
+- nullifier-domain scope statement and explicit global-uniqueness non-claim;
+- nullifier HSM or equivalent key-governance, rotation, recovery, migration, and compromise evidence;
+- private transition-envelope and deterministic public-minimization test evidence;
+- state-root and nullifier-set-root reproducibility evidence;
+- common-relay, uniform-event, cadence, padding, retry, and quiet-period leakage review;
 - incident-response and evidence-revocation procedure;
 - `does_prove` and `does_not_prove` wording for each certificate or proof.
 
-The canonical requirements are in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md). Advanced selective credentials or zero-knowledge proofs should not be listed as production evidence until the deployed implementation, verifier behavior, key lifecycle, and security review are independently reproducible.
+The canonical requirements are in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) and [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md). Advanced selective credentials or zero-knowledge proofs should not be listed as production evidence until the deployed implementation, verifier behavior, key lifecycle, and security review are independently reproducible.
 
 ### 10.1 Shared gold infrastructure evidence
 
@@ -248,5 +256,9 @@ Before sharing the repository with a reviewer or design partner:
 - [ ] WASM hashes in section 3 reproduce from the tested commit.
 - [ ] The demonstrator points to the same network and contract IDs as this document.
 - [ ] Public docs distinguish live functionality from the next-build DFNS features.
+- [ ] Public docs distinguish the transparent reference event stream from the confidential production anchor.
+- [ ] The current contracts contain synthetic data only.
+- [ ] The public production-surface scan finds no customer-scoped identity, exact amount, action type, relationship graph, or unreviewed low-entropy commitment.
+- [ ] Custodian nullifier evidence proves alternate salts cannot bypass duplicate detection within the stated governed domain.
 - [ ] No secrets or client-confidential files are linked.
 - [ ] The physical-truth boundary is stated clearly.

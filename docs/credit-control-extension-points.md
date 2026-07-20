@@ -41,7 +41,7 @@ A position cannot enter the active lifecycle unless its instrument is registered
 
 ### 1.2 Lot uniqueness and exclusive pledge
 
-The same physical lot cannot support two active pledges.
+The current contract refuses two active positions using the identical supplied 32-byte `uniqueness_hash`. It does not prove that differently generated values do not describe the same physical lot. The target production profile adds versioned canonical identity and a custodian-controlled deterministic nullifier, scoped to the governed Argent/custodian domain.
 
 ### 1.3 Initial risk headroom
 

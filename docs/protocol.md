@@ -10,6 +10,8 @@
 
 > Public document. This whitepaper defines the open protocol core and distinguishes the implemented reference profile from the mature product direction. It intentionally excludes institution-specific pricing, private partner strategy, and deployment-specific legal opinions. Source code and tests govern current behavior.
 
+> **Confidentiality boundary.** The implemented contracts are a transparent reference profile whose storage and typed events use synthetic test data. The target production profile keeps the institutional operating book private and uses Soroban as a minimized public integrity plane. [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md) governs that production boundary.
+
 ---
 
 ## Abstract
@@ -18,7 +20,7 @@ Argent Protocol is an open, event-sourced protocol for controlling and proving t
 
 The mature product direction is **reserve-backed obligation infrastructure**. One controlled reserve may support multiple purpose-bound bank obligations - guarantees, documentary credits, supplier undertakings, regulatory security, treasury exposures, and other approved instruments - while one authoritative state prevents duplicate allocation and premature release. Unused capacity is not intended to be drawable by the reserve owner as unrestricted cash. The bank remains the product issuer, the custodian remains the physical control point, and the beneficiary receives a bank obligation rather than rights over the gold.
 
-The current Soroban contracts implement the first executable profile: a secured-credit lifecycle. They prove the collateral-control primitives shared by the broader facility: instrument admission, lot identity, exclusive pledge, borrowing-base computation, utilization, atomic repayment, controlled adjustment, dual-control release, default, cure, enforcement, canonical events, and replay. The obligation profile generalizes the facility and exposure objects; it does not relabel unimplemented behavior as complete.
+The current Soroban contracts implement the first executable profile: a secured-credit lifecycle. They prove collateral-control primitives shared by the broader facility: instrument admission, binding of supplied lot evidence and identifiers, identical-key collision refusal, exclusive pledge, borrowing-base computation, utilization, atomic repayment, controlled adjustment, dual-control release, default, cure, enforcement, canonical events, and replay. The obligation profile generalizes the facility and exposure objects; it does not relabel unimplemented behavior as complete.
 
 The protocol is asset-agnostic within a strict boundary. It applies to custody-stable physical reserves whose identity, custody, uniqueness, and control can be evidenced. Allocated gold is the first adapter because it has mature bar-level identity, custody, valuation, and liquidation practices. Other custody-stable metals or warehouse-held assets may be supported only through their own rights, eligibility, valuation, and evidence profiles.
 
@@ -26,7 +28,7 @@ The protocol thesis is:
 
 > A physical holding becomes bank-usable reserve capacity when its identity, custody, rights, eligibility, valuation, exclusivity, authority, and release path are represented as a shared, signed, replayable control state.
 
-Argent therefore models the control and obligation lifecycle around the reserve, not a tradable ownership token. DFNS or an equivalent institutional signer governs who may authorize an act. Soroban preserves and enforces the shared state. Authoritative bank, custody, document, accounting, and legal systems retain their own roles.
+Argent therefore models the control and obligation lifecycle around the reserve, not a tradable ownership token. DFNS or an equivalent institutional signer governs who may authorize an act. In the transparent reference profile, Soroban preserves and enforces the complete shared test state. In the target production profile, confidential institutional systems preserve the complete operating state and Soroban enforces the minimized integrity anchor. Authoritative bank, custody, document, accounting, and legal systems retain their own roles.
 
 ---
 
@@ -314,9 +316,9 @@ These are related, but not the same.
 
 Each actor MUST sign only the acts it controls. A platform operator MUST NOT sign as owner, custodian, bank, verifier, or sponsor unless explicitly authorized as that role in a test environment.
 
-### Principle 4: Record events, not private documents
+### Principle 4: Keep the operating book private
 
-The protocol SHOULD store hashes, references, and typed evidence functions on-chain. It MUST NOT store private legal documents, KYC data, barlists, invoices, MT103 messages, customer files, or commercially sensitive data in plaintext.
+The transparent reference profile stores hashes, references, exact control values, and typed events on-chain for synthetic-data verification. A production deployment MUST NOT copy that full projection into public state. It MUST keep legal documents, KYC data, barlists, invoices, payment messages, customer files, exact amounts, commercial terms, stable customer identifiers, and action-specific relationship data in the confidential operating plane.
 
 ### Principle 5: Sequence creates legitimacy
 
@@ -333,6 +335,8 @@ The protocol MUST NOT claim to seize, sell, or transfer physical assets by itsel
 ### Principle 8: Shared truth does not require full disclosure
 
 Participants SHOULD be able to verify relevant state and evidence commitments without seeing all private documents. Shared state MUST be minimized by role and purpose. Hashes MUST NOT be treated as confidentiality controls where the underlying value is guessable or commercially identifying. The disclosure model is defined in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
+The production public/private state boundary, evidence-commitment and custodian-nullifier profile, uniform batch anchor, and metadata controls are defined in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ### Principle 9: Available does not mean issuable
 
@@ -688,6 +692,8 @@ Two repayment events exist by design and are not duplicates. `("repay", "settled
 
 Alongside these compact compatibility topics, every lifecycle act in the reference implementation also emits one typed `CollateralEventV1` (a soroban-sdk `#[contractevent]`), the canonical, replayable record this protocol's event model normalizes. Its topics are four-part: a pinned `collateral_event_v1` marker, the `framework_id`, the affected `entity` kind, and the `action`, so an indexer filters by deal, object kind, and act without decoding bodies. Its non-topic fields are emitted as a self-describing `Map<Symbol, Val>` (the SEP-48 map data format) registered in the contract spec, so an indexer or forker decodes by field name with no Argent-specific code and the wire event cannot diverge from the published spec. Each event carries a monotonic, framework-scoped sequence, the previous and new state of the affected entity, the actor and role, the relevant evidence, condition, and valuation commitments, and a typed payload sufficient to reconstruct projection state from the stream alone. The thin topics above remain for migration; the canonical event is authoritative, and the reference implementation in `credit_ledger/src/event.rs` is the definitive schema.
 
+This rich stream is canonical for the **transparent secured-credit reference profile only**. Its stable framework, entity, action, actor, role, object IDs, quantities, prices, limits, balances, and lifecycle payloads are intentionally reconstructable and therefore commercially linkable. It MUST use synthetic data unless a deployment explicitly accepts that disclosure. It is not the event model for the confidential production profile.
+
 ### 9.4 Governance events
 
 Deal acts and authority acts are separated into two event streams. The per-framework deal lifecycle (position, pledge, line, repayment, release, default, enforcement) is the `CollateralEventV1` stream above. Authority acts, the acts that establish who and what the deal stream is allowed to reference, are emitted on a distinct `GovernanceEventV1` stream.
@@ -704,6 +710,14 @@ A `GovernanceEventV1` is a typed `#[contractevent]` pinned to a `governance_even
 The two streams share the same sequencing and self-describing-map discipline but answer different questions: the collateral stream is the deal's history; the governance stream is the registry of authority and eligibility the deal stream depends on. Separating them lets an indexer or reviewer reconstruct the eligible-collateral set and the role registry independently of any single deal.
 
 The instrument layer is shaped by the ISDA Common Domain Model collateral-criteria / treatment taxonomy, and informed by Daml Finance's instrument-versus-holding decomposition: an instrument is the reusable asset-class definition, a position is a holding that references it, and the admitted treatment is the framework's eligible-collateral criteria (the "GC basket"). This is alignment with a recognized taxonomy for interoperability, not certification against it; the authoritative schema is the reference implementation in `credit_ledger/src/event.rs`.
+
+### 9.5 Confidential production anchor
+
+The target production profile does not publish a replayable facility projection. Authorized institutions approve a complete private transition envelope; a deterministic minimization step derives a public batch anchor containing only an epoch, previous and next state roots, policy-version commitment, batch commitment, authorization commitment, and replay token.
+
+One common relay submits fixed-cadence, policy-padded batches under one uniform event schema. The public event does not identify whether the private batch contained a registration, reservation, issuance, amendment, claim, reimbursement, release, or enforcement act.
+
+Soroban verifies permitted writers, epoch sequence, root continuity, replay refusal, and rollback refusal. Exact asset identity, participants, action type, amount, capacity, obligation, and evidence remain private. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -821,7 +835,7 @@ A missing evidence object should be visible to the party that depends on it. Thi
 
 ### 11.4 Hashing and canonicalization
 
-The protocol commits to evidence by hash, never by storing the document. A conformant implementation MUST treat each evidence hash as a commitment to exact bytes or to a declared canonical representation, and the hash algorithm SHOULD be recorded or fixed by adapter version.
+The protocol commits to evidence, never by storing the document publicly. A conformant implementation MUST treat each evidence commitment as binding exact bytes or a declared canonical representation, and the algorithm and domain version SHOULD be recorded or fixed by adapter version.
 
 For v0.1, the reference contracts store 32-byte commitments. Implementations SHOULD compute these as SHA-256 over either:
 
@@ -830,7 +844,16 @@ For v0.1, the reference contracts store 32-byte commitments. Implementations SHO
 
 Where structured JSON evidence is used, the implementation SHOULD apply a stable canonicalization rule and MUST NOT hash a parser-dependent or formatting-dependent representation. Two parties hashing the same logical evidence MUST be able to arrive at the same digest.
 
-The public chain SHOULD store only the digest. The private evidence pack SHOULD preserve the original document, the hash algorithm, the canonicalization method, and the timestamp of capture, so that any committed hash can later be reproduced and verified. This discipline is what keeps the evidence layer portable if the protocol is later implemented on more than one chain.
+Where a commitment is safe and necessary to publish, the public chain SHOULD store only the minimized digest. The private evidence pack SHOULD preserve the original document, random salt where used, hash algorithm, domain tag, canonicalization method, and timestamp of capture, so that any disclosed commitment can later be reproduced and verified.
+
+A random evidence commitment is not a uniqueness key. The same record with a second salt creates a second commitment. The target allocated-gold profile therefore separates:
+
+```text
+evidence commitment = SHA-256(domain || canonical evidence || random salt)
+uniqueness nullifier = HMAC-SHA-256(custodian domain key, domain || custodian namespace || canonical bar identity)
+```
+
+The current contract does not derive either value. It accepts 32-byte commitments supplied by authorized participants and rejects an identical active uniqueness value. The custodian derivation service, canonical identity profile, key lifecycle, private nullifier set, and batch anchoring are target production controls defined in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -844,7 +867,7 @@ Argent Protocol SHOULD treat allocated gold as the first acceptable gold collate
 
 ### 12.1 Allocated gold evidence set
 
-Minimum public evidence model:
+Minimum private adapter evidence model:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -902,7 +925,9 @@ pub struct VaultPosition {
 }
 ```
 
-This object is intentionally lean. The full barlist, allocation record, and custody documents stay off-chain. The on-chain commitments are enough to bind the collateral state to the evidence set while preserving privacy. `uniqueness_hash` is the asset-agnostic uniqueness commitment that prevents the same recorded lot from being pledged twice; for the allocated-gold adapter it is derived from the barlist and bar serial set, while another custody-stable commodity derives it from its own identifying evidence (lot, batch, warehouse-receipt, or tank identity) with no change to the structure.
+This object is intentionally lean relative to the full evidence package, but it is publicly inspectable in the transparent reference profile. Exact owner and custodian addresses, quantity, stable framework identifiers, state, and repeated commitments create commercial linkability even though the full barlist and documents remain off-chain.
+
+The current `uniqueness_hash` lock proves only that the same supplied 32-byte value cannot be active under two positions. It does not prove that two differently generated values do not describe the same physical lot. For the target production profile, the field maps to a custodian-attested deterministic nullifier derived from the stable canonical asset identity. Duplicate prevention is limited to the governed nullifier domain and does not reach unregistered pledges or external systems.
 
 ### 12.4 Balance-sheet caution
 
@@ -922,7 +947,7 @@ Responsibilities:
 
 - register control frameworks;
 - register physical positions;
-- prevent double pledge of the same recorded lot;
+- refuse a second active position using the identical supplied lot key;
 - record owner collateral selection;
 - record custodian immobilization;
 - activate bank pledge;
@@ -1135,18 +1160,20 @@ what the certificate proves
 what it does not prove
 ```
 
+This detailed certificate is a private or deliberately disclosed evidence product. It is not the target public Soroban event. Exact facility IDs, positions, balances, capacity, valuation, and state remain role-restricted in production.
+
 Example certificate language:
 
 ```text
 This certificate proves that the Argent protocol state for facility F records:
-1. a registered allocated-gold position bound to barlist hash H1 and serials hash H2;
+1. a registered allocated-gold position bound to evidence commitment H1 and supplied uniqueness key H2 in the transparent reference profile;
 2. custodian immobilization under custody-control hash H3;
 3. bank activation of pledge P;
 4. credit line L with approved limit X and drawn balance Y;
 5. repayment event R applied through SettlementVault;
 6. release or enforcement status as of ledger N.
 
-This certificate does not prove physical possession outside the custodian's attestation, does not replace legal title documentation, and does not itself enforce any security interest.
+This certificate does not prove physical possession outside the custodian's attestation, does not replace legal title documentation, does not establish global uniqueness, and does not itself enforce any security interest.
 ```
 
 ---
@@ -1352,7 +1379,7 @@ The following SHOULD remain private unless a partner chooses disclosure:
 - production operational runbooks;
 - partner-specific integration details.
 
-This split lets Argent communicate a bigger open protocol vision publicly without exposing commercially sensitive execution details. A production deployment SHOULD apply role-specific views, encrypted evidence access, purpose-bound audit exports, retention controls, and disclosure receipts. Advanced selective credentials or zero-knowledge proofs are optional maturity steps, not current protocol dependencies. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+This split lets Argent communicate a bigger open protocol vision publicly without exposing commercially sensitive execution details. A production deployment MUST keep the complete facility projection in the confidential operating plane and SHOULD apply role-specific views, encrypted evidence access, purpose-bound audit exports, retention controls, and disclosure receipts. The public Soroban plane receives a minimized, uniform batch anchor rather than the current reconstructable event stream. Advanced selective credentials or zero-knowledge proofs are optional maturity steps, not current protocol dependencies. See [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) and [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 

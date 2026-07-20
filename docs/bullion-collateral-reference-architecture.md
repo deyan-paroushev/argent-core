@@ -64,9 +64,14 @@ This is not a hypothetical. It is the structural equivalent of duplicate financi
 
 ### The demand
 
-> **Requirement 4.** The uniqueness key must be the **lot identity itself** — the serials, the receipt id, the parcel id — not the position record. The same lot must not be capable of being active under two positions at once. No-double-pledge is enforced at the *lot* level, not the *position* level.
+> **Requirement 4.** Duplicate-allocation control must be derived deterministically from the **stable lot identity itself** - the serials plus every profile field required to disambiguate them, the receipt ID, or the parcel ID - not from the position, facility, owner, or transaction. The same canonical lot identity must collide within the governed uniqueness domain when presented under another position.
 
-An implementation that cannot answer *"is any bar in this proposed pledge already pledged elsewhere?"* has not solved bullion collateral. It has solved bookkeeping.
+An evidence commitment and a uniqueness key are not the same thing. A random salt is appropriate for hiding a private evidence preimage, but the same lot with a second salt produces another commitment and evades a collision check. A conforming confidential implementation therefore separates:
+
+- a randomly salted commitment to the complete private evidence record; and
+- a custodian-controlled deterministic nullifier over a versioned canonical lot identity.
+
+The permitted claim is scoped: the nullifier prevents duplicate active allocation **within the governed Argent/custodian uniqueness domain**. It cannot detect a private paper pledge or an allocation in a non-participating external system.
 
 ---
 
@@ -86,7 +91,7 @@ Bullion collateral is not underwritten against a number. It is underwritten agai
 
 > **Requirement 5.** Quality and quantity are **separate, first-class commitments**, not fields buried inside the manifest. A lender underwrites against grade and weight independently, and a change to either is a credit event.
 
-> **Requirement 6.** The full documents are never stored in the shared record. Only cryptographic commitments to them. The shared record proves *which document was relied upon*; it does not become a document repository, and it does not leak bar serials, KYC, or legal terms.
+> **Requirement 6.** The full documents are never stored in the public integrity record. Only reviewed, domain-separated commitments or aggregate state roots may cross that boundary. A direct hash is not a confidentiality control for a guessable serial, identifier, amount, or document. The public record must also avoid leaking counterparties, exact values, action types, timing, and stable relationship identifiers.
 
 This second point is a boundary, not an optimisation. A shared control record that contains the actual bar list has created a new confidentiality surface and a new place for the bar list to be wrong.
 
@@ -211,9 +216,9 @@ The requirements above are asset-side. This section shows one implementation tha
 | **R1** Instrument/lot separation | `Instrument` (commodity, unit, `grade_hash`) referenced by `InstrumentKey`; `VaultPosition` holds lot-specific evidence and quantity. Asset data is never replicated per holding. |
 | **R2** Two-signature instrument definition | `register_instrument` is co-signed by the **issuer** (defines the standard) and the **depository** (attests it can hold the class). Neither can unilaterally define the asset. |
 | **R3** Grade versioning | `InstrumentKey.version` tracks linear standard evolution; a grade redefinition bumps the version, so old holdings keep referencing the standard in force when created. |
-| **R4** Lot-level no-double-pledge | `uniqueness_hash` on the position is the **collateral-uniqueness key** (bar serials / receipt id / parcel id). The same lot cannot be active under two positions at once. |
+| **R4** Lot-level no-double-pledge | The current `uniqueness_hash` lock rejects reuse of the identical supplied 32-byte key. It does not derive a private canonical identity. The target production profile uses a custodian-controlled deterministic nullifier and limits the claim to its governed uniqueness domain. |
 | **R5** Quality and quantity first-class | `quality_cert_hash` and `quantity_cert_hash` are separate commitments on the position, not fields inside the manifest. |
-| **R6** Commitments, not documents | Only hashes on chain. `manifest_hash`, `location_hash`, `legal_terms_hash`, `control_agreement_hash`. The full documents never leave the off-chain systems. |
+| **R6** Commitments, not documents | The current transparent reference stores hashes plus exact participants, quantities, prices, limits, balances, states, and replayable events. The target production profile keeps the full projection private and anchors only minimized state roots and safe policy commitments. |
 | **R7** Whole-unit operations | `select_lot_for_collateral` selects discrete lots; adjustment carries a **proposed new bar list and weight**, and coverage is evaluated against the resulting set. |
 | **R8** Adjustment as a state machine | `CollateralAdjustment` with `AdjustmentType` ∈ {`TopUp`, `Substitution`, `PartialRelease`} and status `Requested → CustodianConfirmed → Approved`, cleared by owner, then custodian, then bank, in that order. |
 | **R9** Location monitored | `location_hash` is a first-class commitment on the position. |
@@ -226,6 +231,8 @@ Two further properties, both enforced rather than procedural:
 - **The borrowing base bounds utilisation.** A drawdown exceeding available capacity is rejected (`InsufficientCapacity`). Advance rate must be strictly below the maintenance threshold, and may not exceed the instrument's eligibility ceiling. A line that violates policy cannot be opened.
 - **Eligibility is per-framework, per-instrument.** `FrameworkInstrumentEligibility` carries `haircut_bps`, `max_ltv_bps`, and `maintenance_bps` for *this instrument under this framework* — so "what we will lend against gold" is a policy object, not a constant.
 
+The confidentiality and uniqueness correction does not weaken the asset-side requirement. It states precisely where the control is enforced and what can be proven. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md) for canonicalization, nullifier production, key rotation, public versus private placement, and deployment gates.
+
 ---
 
 ## 9. What generalises, and what is gold-specific
@@ -236,7 +243,7 @@ The requirements above were derived from bullion, but most of them are not about
 
 - R1 instrument/lot separation — copper, wheat, and crude have the same two-layer identity
 - R2 two-signature asset definition — the anti-fraud rationale is asset-independent
-- R4 **lot-level uniqueness** — this *is* the warehouse-receipt duplicate-financing control, and it is arguably more load-bearing for bulk commodities than for gold
+- R4 **canonical lot nullification** - deterministic identity collision inside the governed custodian domain is the warehouse-receipt duplicate-financing control, and it is arguably more load-bearing for bulk commodities than for gold
 - R5 quality/quantity as separate certificates — warehouse-receipt finance evidences stated quality and quantity exactly this way
 - R6 commitments not documents
 - R8 adjustment state machine

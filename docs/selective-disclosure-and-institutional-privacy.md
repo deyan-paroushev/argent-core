@@ -6,6 +6,8 @@
 **Applies to:** shared ledger state, evidence packages, bank and custodian adapters, beneficiary verification, audit exports, and future privacy-preserving credentials or proofs  
 **Primary rule:** shared truth does not require shared access to every underlying fact
 
+**Technical companion:** [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md) is canonical for production public/private state placement, evidence commitments, custodian nullifiers, batch anchors, relays, and public metadata controls.
+
 ---
 
 ## 1. Purpose
@@ -190,6 +192,8 @@ Access should be derived from role, facility, purpose, current authorization, an
 
 ## 6. On-chain data minimization
 
+The target production architecture is not a smaller version of the current replayable event stream. It is a separate confidentiality profile. The current contracts expose transparent reference state and events for synthetic-data verification. Production uses a confidential institutional operating plane and a minimized Soroban integrity plane as specified in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
+
 ### 6.1 What the shared ledger should prove
 
 A minimized event may need to prove:
@@ -229,6 +233,8 @@ An on-chain record may contain:
 - a coarse state or predicate result.
 
 A raw hash is not automatically private. Low-entropy data, known templates, short identifiers, predictable amounts, and public documents can be guessed and hashed by an attacker. Sensitive commitments should use appropriate salting, domain separation, access control, and canonicalization.
+
+A randomly salted evidence commitment also does not enforce uniqueness. The same private record combined with a second salt creates a second commitment. Bar-evidence binding and duplicate-allocation control therefore require separate values: a randomly salted evidence commitment and a custodian-controlled deterministic nullifier over a stable canonical bar identity. The nullifier claim is limited to the governed Argent/custodian uniqueness domain.
 
 ### 6.4 Exact values versus predicates
 
@@ -521,6 +527,14 @@ W3C Verifiable Credentials Data Model 2.0 defines an extensible issuer-holder-ve
 
 Even when payloads are encrypted or hashed, public metadata can leak information.
 
+The leakage analysis must treat three surfaces separately:
+
+1. **identity leakage** from serials, predictable hashes, identifiers, or commitments;
+2. **amount leakage** from quantities, limits, prices, haircuts, utilization, and deltas;
+3. **graph and timing leakage** from accounts, stable object IDs, event names, cadence, and repeated relationships.
+
+Hiding identity does not hide amounts. Hiding both does not hide the transaction graph.
+
 ### 11.1 Timing correlation
 
 A public reservation or claim event may correlate with:
@@ -563,14 +577,19 @@ Require authenticated requesters, rate limits, purpose checks, coarse external r
 
 ### 12.1 Shared execution layer
 
-Soroban should receive only the state required to:
+The current transparent reference contracts receive sufficient state and emit sufficient typed events to reconstruct the secured-credit projection. That design is valuable for public verification but is not suitable for real confidential facility data.
 
-- authorize the correct role;
-- prevent invalid sequencing or double allocation;
-- enforce capacity and release rules;
-- emit a minimized evidence event.
+The target production Soroban layer should receive only the minimized state required to:
+
+- authorize the approved aggregate writer or relay;
+- enforce epoch and root continuity;
+- refuse replay and rollback;
+- bind the approved policy and batch version;
+- emit one uniform minimized anchor event.
 
 Stellar contract events are durable and broadly observable through network infrastructure. Sensitive data should therefore not be emitted with the expectation of later removal.
+
+Exact capacity, bar identity, participant relationships, action types, and obligation state remain in the confidential operating plane. Duplicate nullifiers are refused there in the production baseline, with the resulting nullifier-set and facility-state roots anchored to Soroban. Independent proof of a correct hidden-set transition would require an additional proof system and is not a current claim.
 
 ### 12.2 Institutional approval layer
 
@@ -588,6 +607,8 @@ The private read model joins:
 - access-control and disclosure logs.
 
 It should present different projections by role rather than one universal dashboard.
+
+It is also the operating source for exact facility amounts, private nullifiers, participants, action types, and evidence links. A public root is an integrity anchor for this state, not a substitute for its governed database and reconciliation controls.
 
 ### 12.4 Evidence service
 
@@ -675,7 +696,7 @@ Privacy failures should be treated as facility incidents, not merely application
 ### Current strengths
 
 - contract state stores evidence hashes or references rather than full private documents;
-- lot identity uses a uniqueness commitment rather than requiring the full bar list in shared state;
+- private lot evidence uses a random commitment while duplicate allocation uses a separate custodian-controlled deterministic nullifier; neither requires publishing the full bar list;
 - role-specific authorization is enforced by Soroban;
 - DFNS integration is designed around institution-specific wallets, policy, and approvals;
 - public documentation distinguishes ledger evidence from physical and legal truth;

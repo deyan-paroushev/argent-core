@@ -22,6 +22,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 | [`obligation-facility-profile.md`](obligation-facility-profile.md) | **Target facility specification.** Non-cash-drawable capacity, typed obligations, sublimits, claims, reimbursement, and release. |
 | [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) | **Capacity orchestration.** Available versus issuable capacity, atomic reservation, preflight, callbacks, and reconciliation. |
 | [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) | **Institutional privacy.** Role-specific views, minimized ledger state, encrypted evidence, and selective disclosure. |
+| [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md) | **Production confidentiality architecture.** Public/private state placement, custodian nullifiers, minimized batch anchors, relay controls, and leakage tests. |
 | [`shared-gold-infrastructure-and-argent.md`](shared-gold-infrastructure-and-argent.md) | **Gold-infrastructure boundary.** How Argent consumes upstream provenance, ownership, custody, backing, and digital-gold records without duplicating them. |
 | [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) | **Scope map.** Distinguishes live implementation, target profile, domain specification, and research. |
 | [`REVIEWER_QUICKSTART.md`](REVIEWER_QUICKSTART.md) | **Implementation proof.** Verify the 224-test Soroban reference branch. |
@@ -49,6 +50,7 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 |---|---|
 | [`capacity-reservation-and-deliverability.md`](capacity-reservation-and-deliverability.md) | Reservation and deliverability model for converting eligible reserve value into usable bank capacity. |
 | [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) | Data classification, evidence privacy, role projections, and disclosure products. |
+| [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md) | Technical boundary between the confidential institutional operating plane and Soroban public integrity plane. |
 | [`bullion-collateral-reference-architecture.md`](bullion-collateral-reference-architecture.md) | Vendor-neutral correctness requirements for bullion under collateral control. |
 | [`bullion-collateral-system-design.md`](bullion-collateral-system-design.md) | Representation, lifecycle, product profiles, and build plan. |
 | [`collateral-eligibility-and-rights-model.md`](collateral-eligibility-and-rights-model.md) | Rights classification before a holding may enter a bank capacity calculation. |
@@ -94,4 +96,4 @@ Read [`DOCUMENT_STATUS_MATRIX.md`](DOCUMENT_STATUS_MATRIX.md) before using a doc
 
 ## Governing rule
 
-For current behavior, the source code and tests govern. For product direction, `reserve-obligation-infrastructure.md` governs. For the target facility model, `obligation-facility-profile.md` governs. For reservation and issuability, `capacity-reservation-and-deliverability.md` governs. For data visibility and disclosure, `selective-disclosure-and-institutional-privacy.md` governs. No document should be read as claiming that typed bank obligations, deliverability orchestration, or advanced privacy proofs are already implemented.
+For current behavior, the source code and tests govern. For product direction, `reserve-obligation-infrastructure.md` governs. For the target facility model, `obligation-facility-profile.md` governs. For reservation and issuability, `capacity-reservation-and-deliverability.md` governs. For data visibility and disclosure, `selective-disclosure-and-institutional-privacy.md` governs. For production public/private state placement, commitments, nullifiers, batching, relays, and confidentiality gates, `confidential-control-and-public-integrity.md` governs. No document should be read as claiming that typed bank obligations, deliverability orchestration, confidential state anchoring, or advanced privacy proofs are already implemented.

@@ -157,7 +157,7 @@ pub enum CollateralPoolStatus {
 }
 ```
 
-Positions inside a pool gain a state machine. Exclusivity is the invariant: a position is in exactly one state, and the same lot can never secure two credit events. The first version forbids any pooled pari passu treatment.
+Positions inside a pool gain a state machine. Exclusivity is the invariant: a position is in exactly one state, and the same governed canonical lot identity cannot secure two credit events inside the nullifier domain. The current reference lock proves only identical supplied-key collision; a funded pool extension must use the custodian-controlled nullifier profile before making the stronger claim. The first version forbids any pooled pari passu treatment.
 
 ```rust
 #[contracttype]
@@ -404,7 +404,7 @@ The layer is useful only if the invariants are simple and hard.
 
 1. **No unsecured opening.** A credit event cannot open unless sufficient eligible collateral is reserved and locked under the bank's policy, atomically with the opening.
 2. **No mobilisation without consent.** Only earmarked lots can be auto-pledged. No earmark, no automation, regardless of policy.
-3. **No double pledge.** A position cannot secure two credit events. The existing uniqueness lock and duplicate-pledge refusal hold unchanged.
+3. **No duplicate allocation.** The current reference refuses reuse of an identical supplied key. A production extension must use the canonical custodian nullifier so alternate salts or facility contexts cannot represent the same bar twice inside the governed domain.
 4. **No stale valuation.** A credit event cannot open on a stale, low-confidence, or unsupported valuation.
 5. **No release before replacement.** In substitution, incoming collateral must be locked and coverage satisfied before outgoing collateral can be released.
 6. **No silent purpose drift.** The credit event stays bound to its liquidity intent and permitted-purpose evidence.

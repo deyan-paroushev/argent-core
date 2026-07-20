@@ -25,7 +25,7 @@ The current Soroban implementation remains narrower and fully relevant:
 
 > **An implemented secured-credit reference branch that proves the shared collateral-control foundation.**
 
-That branch demonstrates asset identity, custody confirmation, exclusive pledge, eligibility, valuation, capacity, utilization, settlement-linked exposure reduction, controlled release, default, cure, and enforcement evidence. The target obligation facility generalizes the facility and exposure model; it does not discard the tested core.
+That branch demonstrates asset definitions, binding of supplied lot evidence and identifiers, identical-key collision refusal, custody confirmation, exclusive pledge, eligibility, valuation, capacity, utilization, settlement-linked exposure reduction, controlled release, default, cure, and enforcement evidence. The target obligation facility generalizes the facility and exposure model; it does not discard the tested core.
 
 A vertically integrated bank can keep bullion, client records, product policy, control instructions, and settlement inside one institutional perimeter. The harder and more general case is open-system reserve orchestration:
 
@@ -535,14 +535,14 @@ valid_from / valid_until
 status
 ```
 
-The shared ledger may store only hashes and compressed policy outcomes; the full interpretation remains off-chain.
+The confidential institutional model retains the full rights interpretation. The production public integrity plane stores only reviewed aggregate roots and safe policy commitments. Direct hashes of guessable rights, parties, amounts, documents, or identifiers are not confidentiality controls.
 
 ### 9.4 `LotEvidence`
 
 The current core already models the evidence bundle for a specific physical lot:
 
 - manifest or bar-list commitment;
-- uniqueness commitment;
+- current caller-supplied uniqueness key in the transparent reference; target custodian-controlled deterministic nullifier in production;
 - quality or assay certificate;
 - quantity or weight certificate;
 - location commitment.
@@ -1198,7 +1198,7 @@ The document itself remains in the approved repository.
 
 ### 13.8 Canonical event envelope
 
-Every cross-system event should carry a common envelope:
+Every cross-system **private institutional event** should carry a common envelope:
 
 ```text
 event_id
@@ -1219,7 +1219,7 @@ result: accepted / rejected / pending / exception
 reason_code
 ```
 
-This envelope aligns with the existing `CollateralEventV1` objective: a stable, replayable, per-framework event stream.
+This envelope aligns with the existing `CollateralEventV1` objective inside an authorized private projection. It is not the target public event body. The transparent reference publishes a reconstructable stream for synthetic verification; the production public plane emits only a uniform minimized batch anchor.
 
 ---
 
@@ -1432,7 +1432,7 @@ This prevents cryptographic evidence from being presented as a substitute for re
 
 ### 17.3 Replay and reconciliation
 
-The event stream should be replayable into the current control state. The replayed state must reconcile with contract state and external-system snapshots. Divergence is an operational incident, not a cosmetic reporting issue.
+The authorized private event stream should be replayable into the complete control state. Its resulting roots must reconcile with the public Soroban anchor and authoritative external-system snapshots. The transparent reference stream remains publicly replayable only for synthetic data. Any divergence is an operational incident, not a cosmetic reporting issue.
 
 ---
 
@@ -1528,7 +1528,7 @@ Argent links internal product silos and provides a shared event and evidence lay
 borrower + independent custodian + lender
 ```
 
-This is the recommended first commercial deployment. Argent provides the shared control state that no party's private system naturally owns.
+This is the recommended first commercial deployment. Argent provides a governed confidential control projection and neutral public integrity history that no single party's private system can unilaterally rewrite. It does not publish the complete tri-party facility book.
 
 ### 19.3 Custodian-led multi-lender service
 

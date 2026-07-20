@@ -6,7 +6,7 @@ The **product direction** is broader than the current contract names. Argent is 
 
 Read the product thesis at `reserve-obligation-infrastructure.md` and the target domain model at `obligation-facility-profile.md`. Use this document to verify what is actually implemented today.
 
-> **Do not infer typed guarantees, documentary credits, or treasury obligations from the current contracts.** Those are the next protocol profile, not a relabeling of shipped code.
+> **Do not infer typed guarantees, documentary credits, treasury obligations, or production confidentiality from the current contracts.** Those are target profiles, not a relabeling of shipped code. The current storage and replayable events are publicly inspectable and must use synthetic data.
 
 ---
 
@@ -14,7 +14,7 @@ Read the product thesis at `reserve-obligation-infrastructure.md` and the target
 
 1. An asset class is registered once as a reusable instrument and admitted to a framework under explicit eligibility treatment.
 2. A position cannot be registered against an unregistered or unadmitted instrument.
-3. The same physical lot cannot support two active pledges.
+3. The same supplied 32-byte `uniqueness_hash` cannot be active under two positions. The current contract does not derive a private bar identity and does not detect the same bar submitted under a different value.
 4. A credit line cannot open above the bank-approved instrument ceiling or without margin headroom.
 5. Only the bound settlement vault can reduce drawn exposure.
 6. Repayment moves settlement value and updates credit exposure atomically.
@@ -23,6 +23,8 @@ Read the product thesis at `reserve-obligation-infrastructure.md` and the target
 9. Deal acts emit canonical `CollateralEventV1` events.
 10. Authority acts emit parallel `GovernanceEventV1` events.
 11. Contract state can be rebuilt from the event stream.
+
+Items 9-11 describe the transparent reference profile. Their reconstructability is useful verification evidence and also the reason they are not the confidential production event model.
 
 These properties are reusable for the obligation facility because any guarantee, documentary credit, supplier undertaking, or treasury exposure still depends on identified collateral, exclusive allocation, governed exposure, controlled release, and an enforceable adverse path.
 
@@ -43,6 +45,9 @@ The current contracts do not yet implement:
 - available-versus-issuable capacity preflight;
 - provisional and committed reservation states;
 - idempotent issue callbacks and ambiguous-outcome reconciliation;
+- custodian-controlled canonical bar identity and deterministic nullifier derivation;
+- confidential state and nullifier-set roots;
+- minimized batch anchoring, common relay, uniform event, cadence, padding, and leakage tests;
 - role-specific projections, encrypted evidence access, or advanced selective-disclosure proofs.
 
 The repository states these gaps explicitly so reviewers can distinguish demonstrated engineering from the commercial product extension.
@@ -141,16 +146,16 @@ The mature facility changes the commercial use of capacity, not the physical-col
 | Current secured-credit proof | Reuse in obligation facility |
 |---|---|
 | instrument and lot identity | reserve eligibility and identity |
-| pledge exclusivity | no duplicate obligation allocation |
+| identical supplied pledge-key refusal | no duplicate obligation allocation after the target canonical custodian-nullifier control is added |
 | borrowing base | approved reserve capacity |
 | available limit | free obligation capacity |
 | draw utilization | capacity consumed by a bank obligation |
 | repayment | reimbursement after bank payment |
 | dual-control release | release after all obligations are discharged |
 | default and enforcement | adverse path after unpaid reimbursement |
-| canonical event stream | facility and obligation evidence |
+| canonical transparent event stream | reference evidence pattern; production uses confidential projections plus minimized batch anchors |
 
-The next design step generalizes the facility object and adds obligation lifecycles. It does not require rebuilding the reserve identity, authorization, release, or enforcement foundation.
+The next design step preserves the authorization, release, and enforcement foundation while adding canonical custodian identity, confidential state anchoring, and obligation lifecycles. It must not reuse the transparent event projection with real facility data.
 
 ---
 
@@ -161,6 +166,7 @@ The next design step generalizes the facility object and adds obligation lifecyc
 - `obligation-facility-profile.md` - the target technical model.
 - `capacity-reservation-and-deliverability.md` - the target reservation, issuability, callback, and reconciliation model.
 - `selective-disclosure-and-institutional-privacy.md` - the target data-visibility and evidence-disclosure model.
+- `confidential-control-and-public-integrity.md` - the production public/private state boundary, nullifier profile, batch anchor, and leakage gates.
 - `argent-architecture.md` - the full architecture and boundary.
 - `argent-dfns-signing-sequence.md` - the institutional signing model.
 - `protocol.md` - the protocol specification and current reference profile.

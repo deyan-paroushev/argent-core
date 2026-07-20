@@ -9,6 +9,7 @@
 **Target domain profile:** `obligation-facility-profile.md`  
 **Capacity orchestration:** `capacity-reservation-and-deliverability.md`  
 **Institutional privacy:** `selective-disclosure-and-institutional-privacy.md`  
+**Confidential production architecture:** `confidential-control-and-public-integrity.md`  
 
 This document is self-contained. It distinguishes what is implemented from what is designed next. Contract source and tests remain authoritative for current behavior.
 
@@ -27,7 +28,7 @@ The bank may issue approved guarantees, documentary credits, supplier undertakin
 The current open-source contracts implement a narrower but foundational **secured-credit reference profile**. They prove:
 
 - instrument eligibility;
-- position and lot identity;
+- caller-supplied position and lot-key handling;
 - exclusive pledge;
 - borrowing-base and capacity calculation;
 - utilization and reversal;
@@ -41,7 +42,9 @@ The product extension generalizes the facility and exposure objects. It does not
 
 The core architectural sentence is:
 
-> **Soroban records and enforces the shared control state. DFNS governs which institution may authorize each act. Bank, custodian, legal, trade-document, and settlement systems remain authoritative for their own domains.**
+> **The confidential institutional systems operate the facility. Soroban is the neutral integrity plane that anchors authorized state versions and refuses replay, rollback, and invalid sequence. DFNS governs which institution may authorize each act. Bank, custodian, legal, trade-document, and settlement systems remain authoritative for their own domains.**
+
+The current contracts intentionally use a richer transparent model for synthetic-data verification. Their public storage and replayable events are not the production confidentiality profile.
 
 ---
 
@@ -98,7 +101,7 @@ A bank obligation and a funded credit line both require:
 - reimbursement after payment;
 - default and enforcement evidence.
 
-The next phase adds typed obligations, beneficiaries, sublimits, reservation states, claims, and discharge. It does not require a new physical-collateral identity or enforcement foundation.
+The next phase adds typed obligations, beneficiaries, sublimits, reservation states, claims, and discharge while strengthening the supplied lot-key mechanism into a governed canonical custodian-nullifier profile. It preserves the enforcement foundation.
 
 ---
 
@@ -133,7 +136,8 @@ The next phase adds typed obligations, beneficiaries, sublimits, reservation sta
 | Product issue, amendment, claim, and payment | bank product system and bank authority |
 | Trade-document control and presentation | authoritative document system and bank process |
 | Accounting and regulatory exposure | bank and company systems |
-| Shared control state and evidence ordering | Argent / Soroban |
+| Complete confidential control state | Argent private read model beside bank and custodian systems |
+| Public state-version integrity and ordering | Argent / Soroban minimized anchor |
 | Institutional permission and approval | DFNS or equivalent governed signing layer |
 
 Where protocol state conflicts with authoritative legal documentation, the legal documentation governs. The conflict should be recorded and escalated rather than hidden.
@@ -429,7 +433,7 @@ Soroban `require_auth` binds each state transition to the address whose authorit
 The contracts make certain states impossible:
 
 - unadmitted instrument use;
-- duplicate pledge;
+- duplicate use of an identical supplied lot key;
 - unsafe initial LTV;
 - unauthorized repayment application;
 - premature release;
@@ -445,7 +449,9 @@ The protocol does not require every bank payment to occur on Stellar. Off-chain 
 
 ### 10.4 Shared event evidence
 
-The event stream allows institutions to reconstruct the agreed control state without treating the operator's database as the source of truth.
+The current transparent reference event stream allows reviewers to reconstruct the synthetic secured-credit state without treating the operator's database as the source of truth. That stream exposes stable relationships, values, actors, action types, and lifecycle timing and is not the production confidentiality profile.
+
+In production, the bank, custodian, title, signing, and evidence systems form the confidential operating plane. A complete private transition is institutionally approved, then deterministically reduced to a uniform public batch anchor. Soroban enforces authorized writers, root continuity, sequence, replay refusal, and rollback refusal without publishing the commercial projection. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -502,7 +508,7 @@ The reusable contribution is not only a wallet connection. It is:
 
 ## 12. Data and privacy boundary
 
-### On-chain or shared state
+### Transparent reference state - implemented today
 
 - identifiers and role addresses;
 - policy version;
@@ -512,19 +518,33 @@ The reusable contribution is not only a wallet connection. It is:
 - canonical events;
 - transaction and sequence evidence.
 
-### Off-chain or restricted state
+This state is publicly inspectable, reconstructable, and appropriate only for synthetic test and demonstration data.
+
+### Confidential production operating state
 
 - bar serials and full bar list;
+- custodian deterministic nullifiers and the complete nullifier set;
 - KYC, sanctions, and personal data;
 - complete legal agreements and opinions;
+- customer, bank, custodian, beneficiary, and facility relationships;
+- exact quantities, values, prices, haircuts, limits, utilization, and capacity;
 - beneficiary commercial terms;
 - bank credit model and pricing;
 - trade documents;
 - claims, disputes, and enforcement files.
 
-A production deployment should enforce role-specific projections and evidence access. A beneficiary may verify instrument authenticity and recorded capacity sufficiency without seeing the owner's total reserve or unrelated obligations. A custodian may see bar and control instructions without seeing the bank's complete credit file. Public state should contain only the minimum identifiers, commitments, and lifecycle facts required for shared control.
+### Production public integrity state
 
-Hashes do not make sensitive data private when the underlying value has a small or guessable domain. Stable identifiers, exact amounts, event timing, and repeated counterparties can also leak commercial information through correlation. The canonical privacy and disclosure specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+- anchor version and epoch;
+- previous and next private-state roots;
+- policy-version commitment where safe;
+- batch and authorization commitments;
+- replay token;
+- one uniform event emitted through a common relay.
+
+A production deployment should enforce role-specific projections and evidence access. A beneficiary may verify instrument authenticity and recorded capacity sufficiency without seeing the owner's total reserve or unrelated obligations. A custodian may see bar and control instructions without seeing the bank's complete credit file. Public state should not contain customer-scoped identifiers, exact values, action-specific events, or repeated relationship keys merely because they are useful to a private projection.
+
+Hashes do not make sensitive data private when the underlying value has a small or guessable domain. Stable identifiers, exact amounts, event timing, and repeated counterparties can also leak commercial information through correlation. A randomly salted commitment does not provide deterministic uniqueness. The canonical privacy and disclosure specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md); the technical public/private boundary and custodian nullifier profile are [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -684,7 +704,7 @@ Coverage includes:
 
 - role authorization and party revocation;
 - instrument eligibility;
-- double-pledge refusal;
+- identical supplied lot-key refusal;
 - borrowing-base and LTV constraints;
 - stale and future-dated valuation refusal;
 - repayment and duplicate-reference safety;
@@ -701,6 +721,9 @@ Typed obligations and the no-cash-draw profile require a separate future test ma
 
 ### Stage 1 - institutionalize the current proof
 
+- confidential operating-state model and synthetic-data-only boundary for the transparent contracts;
+- canonical bar identity, evidence commitment, and custodian nullifier service;
+- state and nullifier-set roots, minimized batch anchor, common relay, cadence, padding, and leakage tests;
 - DFNS role wallets;
 - permission and policy topology;
 - approval queue and webhooks;
@@ -727,7 +750,7 @@ Typed obligations and the no-cash-draw profile require a separate future test ma
 - treasury exposure;
 - issue, amend, expire, claim, pay, reimburse, and discharge.
 
-### Stage 4 - connect authoritative systems and privacy controls
+### Stage 4 - connect authoritative systems and advanced disclosure controls
 
 - bank product preflight, issue, and lifecycle adapter;
 - custodian adapter;

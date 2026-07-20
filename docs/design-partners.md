@@ -335,6 +335,10 @@ It does not yet demonstrate:
 13. Which statuses and reason codes must be returned to the originating system?
 14. Which reserve, beneficiary, and obligation fields may each role see?
 15. What daily reconciliation and manual exception process would operations require?
+16. Would the bank accept a public-nullifier profile, or must deterministic asset nullifiers remain inside the governed private control plane?
+17. Which public metadata - accounts, timing, event types, identifiers, counts, cadence, and batch sizes - would make the deployment unacceptable even without plaintext data?
+18. Which complete private transition must approvers see, and which minimized root anchor may the common relay publish?
+19. What evidence and independent review are required before the transparent reference is replaced by the confidential production profile?
 
 ---
 
@@ -343,13 +347,17 @@ It does not yet demonstrate:
 1. Which custody mode creates a sufficiently clear owner and control state?
 2. How are bar identity, allocation, segregation, and movement restrictions represented?
 3. Can the custodian provide signed, machine-readable attestations?
-4. What events require manual intervention?
-5. How are substitution, assay discrepancy, insurance change, and location change handled?
-6. What constitutes valid bank release authority?
-7. How would realization be instructed and evidenced?
-8. What privacy limitations apply to serial numbers and client positions?
-9. Which control facts may be shared without exposing the complete bar list or customer book?
-10. How should a disagreement between the custody book and Argent be escalated and resolved?
+4. Which stable fields form the canonical physical identity, and how are duplicate or recycled serials disambiguated?
+5. Can the custodian operate a deterministic nullifier service inside an HSM or equivalent boundary without exposing a general HMAC oracle?
+6. What is the governed uniqueness domain, and which pledges or systems remain outside it?
+7. How will canonicalization, key continuity, rotation, migration, recovery, and compromise be governed without creating a second identity for an active bar?
+8. What events require manual intervention?
+9. How are substitution, assay discrepancy, insurance change, and location change handled?
+10. What constitutes valid bank release authority?
+11. How would realization be instructed and evidenced?
+12. What privacy limitations apply to serial numbers and client positions?
+13. Which control facts may be shared without exposing the complete bar list or customer book?
+14. How should a disagreement between the custody book and Argent be escalated and resolved?
 
 ---
 

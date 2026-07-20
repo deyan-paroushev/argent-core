@@ -79,7 +79,7 @@ A position may not be valued until each is established and committed. These are 
 | 3 | **Legal owner** | Who holds title? | Pledge granted by a party without the right to grant it |
 | 4 | **Beneficial owner** | Who bears the economic interest, if different? | Nominee structures obscure the real party; sanctions and AML exposure |
 | 5 | **Custody model** | Third-party custodian, or *the counterparty's own vault*? | Metal held by the lender's own counterparty — no independence |
-| 6 | **Bar identifiers** | Which specific serials? | No `uniqueness_hash`; no no-double-pledge control |
+| 6 | **Bar identifiers** | Which specific serials and disambiguating profile fields? | No canonical custodian nullifier; duplicate-allocation control can be bypassed by another representation |
 | 7 | **Transferability** | May it be assigned at all? | The security cannot be perfected |
 | 8 | **Pledgeability** | May it be pledged **to a third party**? | *The Emirates NBD failure. Pledgeable only with the issuing bank's consent.* |
 | 9 | **Required consent** | Whose written consent is a precondition? | A pledge that is void until a third party agrees — and may never agree |
@@ -150,7 +150,7 @@ The position's evidence (`LotEvidence`) commits to five facts, all **physical**:
 | Committed today | Fact |
 |---|---|
 | `manifest_hash` | The bar list |
-| `uniqueness_hash` | Lot identity — the no-double-pledge key |
+| `uniqueness_hash` | Current caller-supplied lot key; target mapping is a custodian-controlled deterministic nullifier over canonical identity |
 | `quality_cert_hash` | Assay / grade |
 | `quantity_cert_hash` | Certified fine weight |
 | `location_hash` | Vault / jurisdiction |
@@ -182,9 +182,9 @@ Alongside `LotEvidence`, the position carries a commitment to the **rights deter
 | `lien_search_hash` | The encumbrance search and its result |
 | `consent_hash` | Third-party consent **actually obtained**, where the instrument requires it. `None` is not a default — where consent is required and absent, the holding is ineligible |
 
-### 5.2 Machine-readable classification, so the contract can *reject*
+### 5.2 Machine-readable classification, so the governed control engine can *reject*
 
-A hash alone cannot be reasoned about. The classification facts that determine eligibility must be on-chain as values, not merely committed:
+A hash alone cannot be reasoned about. The classification facts that determine eligibility must be machine-readable in the confidential, governed control engine, not merely committed as one opaque digest. They must not be published as plaintext merely so a public contract can reason about them:
 
 ```
 AllocationModel  ::= Allocated | Pooled | Unallocated
@@ -195,6 +195,8 @@ Pledgeability    ::= FreelyPledgeable
 EnforcementRoute ::= Sale | Appropriation | Transfer | Undetermined
 LienStatus       ::= Clean | Ranked { rank: u32 } | Unknown
 ```
+
+The target production transition commits the resulting authorized private state root to Soroban. Public verification proves the approved state version and sequence; role-authorized evidence proves the underlying rights classification. Independent public proof that hidden classifications satisfy policy would require an additional proof system and is not a current claim. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ### 5.3 The gate as an invariant, not a procedure
 

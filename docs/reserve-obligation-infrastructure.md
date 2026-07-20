@@ -3,7 +3,7 @@
 **Canonical product direction for Argent.**
 
 **Status:** product and protocol thesis; the complete obligation profile is not yet implemented in the current contracts  
-**Implemented foundation:** physical-collateral identity, eligibility, pledge, capacity, utilization, repayment, release, default, cure, enforcement, canonical events  
+**Implemented foundation:** physical-collateral evidence binding, supplied lot-key collision refusal, eligibility, pledge, capacity, utilization, repayment, release, default, cure, enforcement, canonical events  
 **Target profile:** non-cash-drawable master facility for bank-issued obligations  
 **First reserve asset:** allocated physical gold in professional custody  
 **Infrastructure rail:** Stellar/Soroban, with institutional authorization governed through DFNS or an equivalent policy-controlled signer  
@@ -493,7 +493,9 @@ Soroban supplies:
 - deterministic contract invariants;
 - ordered and replayable events;
 - atomic coordination where settlement value and state must change together;
-- public verifiability without publishing private commercial documents.
+- a neutral public integrity anchor for authorized private institutional state.
+
+The current contracts demonstrate these properties through transparent storage and replayable synthetic-data events. The target production profile does not publish the bank's facility projection. It keeps bar identity, participants, amounts, capacity, beneficiaries, and action details in the confidential operating plane and anchors uniform state-root batches through a common relay. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ### DFNS or equivalent institutional signer
 
@@ -509,7 +511,7 @@ The signer layer supplies:
 
 The integration principle is:
 
-> Soroban decides whether an authorized state transition is valid. The institutional signer decides whether the institution is allowed to authorize it.
+> In the transparent reference, Soroban validates the complete test transition. In the confidential production profile, Soroban validates the authorized anchor transition; the governed private engine validates the complete facility transition. The institutional signer decides whether the institution is allowed to authorize it.
 
 DFNS documentation notes that policies add restrictions rather than providing an automatic whitelist, and delegated wallets bypass organization policy. Argent must therefore construct a deliberate deny-by-default topology for bank, custodian, verifier, and operator roles rather than assume governance exists automatically.
 
@@ -590,7 +592,7 @@ The current contracts implement a secured-credit lifecycle rather than the compl
 What is already reusable:
 
 - instrument registration and admission;
-- lot-level identity and uniqueness;
+- identical supplied lot-key refusal in the current reference;
 - custody and immobilization acts;
 - pledge activation;
 - valuation and borrowing-base math;
@@ -600,6 +602,8 @@ What is already reusable:
 - dual-control release;
 - default, cure, enforcement readiness, and enforcement recording;
 - canonical events and replay.
+
+The current uniqueness lock rejects reuse of an identical 32-byte value. It does not derive a bar identity or detect the same bar submitted under another value. Production adds a versioned canonical asset profile and custodian-controlled deterministic nullifier, scoped to the governed Argent/custodian domain.
 
 What must be added:
 

@@ -420,7 +420,7 @@ Permitted value movement must be linked to:
 
 The same legal collateral capacity cannot support two incompatible active reservations or obligations.
 
-This extends the current lot-level no-double-pledge invariant from pledge creation into quotation, reservation, issuance, and amendment.
+This extends the current identical supplied-key collision invariant from pledge creation into quotation, reservation, issuance, and amendment. The stronger physical-lot claim begins only after the target canonical custodian-nullifier control is implemented.
 
 ### 7.3 Reserve before issue
 
@@ -485,13 +485,15 @@ The profile does not assume that every customer need should be solved with an ac
 
 ## 9. Privacy and evidence
 
+The object model in this document is the complete **private institutional domain model**. A field's presence in `MasterFacility`, `CapacityReservation`, `BankObligation`, claim, reimbursement, or release objects does not authorize publishing that field to Soroban. Facility IDs, applicants, beneficiaries, products, purposes, amounts, limits, capacity, exposure, and action types remain private in the target production profile.
+
 ### 9.1 Shared minimum state
 
-The shared protocol state should include only what is necessary to prove:
+The complete state shared among authorized facility participants should include only what is necessary for their role to prove:
 
-- facility and obligation identity;
+- private facility and obligation identity;
 - role authority;
-- capacity sufficiency;
+- capacity sufficiency or the minimum required predicate;
 - state transition;
 - evidence version;
 - time and sequence;
@@ -522,6 +524,8 @@ The protocol should support evidence statements such as:
 That statement is not a guarantee from Argent and does not transfer rights in the reserve.
 
 Shared state, evidence access, and derived statements must follow a documented `DisclosurePolicy`. Hashes are integrity commitments, not confidentiality controls where the underlying value is guessable. Role-specific views, encrypted evidence, retention, access logging, and optional standards-based selective credentials are defined in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+
+The target public Soroban payload contains no customer-scoped facility or obligation identifier, exact amount, beneficiary, product, action type, or capacity delta. It anchors a uniform authorized batch transition through previous and next state roots, policy and batch commitments, and replay protection. The exact technical boundary, custodian nullifier profile, and metadata controls are defined in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -621,15 +625,15 @@ Argent reconciles these authorities; it does not merge them into one legal syste
 | Reimbursement | repayment path | direct conceptual reuse |
 | Release | two-step release | direct reuse with broader unresolved-exposure test |
 | Default / Cure / Enforcement | implemented reference path | direct reuse with obligation triggers |
-| Canonical evidence events | CollateralEventV1 and GovernanceEventV1 | extend rather than replace |
+| Canonical transparent evidence events | CollateralEventV1 and GovernanceEventV1 | reuse as a private event taxonomy; do not publish the complete obligation projection in production |
 
 The current implementation therefore proves the hard collateral foundation but not the complete obligation lifecycle.
 
 ---
 
-## 12. Event model extension
+## 12. Private event model extension
 
-The existing canonical event pattern should be extended with obligation events such as:
+The existing canonical event taxonomy should be extended in the confidential operating plane with obligation events such as:
 
 - FacilityActivated;
 - ProductSublimitSet;
@@ -648,7 +652,7 @@ The existing canonical event pattern should be extended with obligation events s
 - ObligationDischarged;
 - CapacityReleased.
 
-These event names describe the target profile. They do not claim current contract emission.
+These event names describe private target-profile acts. They do not claim current contract emission and must not become action-specific public topics in the confidential production profile. Soroban receives one uniform batch-anchor event as defined in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 Each event should identify:
 

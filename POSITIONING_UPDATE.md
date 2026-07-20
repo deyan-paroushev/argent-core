@@ -25,9 +25,18 @@ The product direction was refined again without changing the implemented referen
 The repository also makes institutional privacy a first-class control surface. Shared protocol state is minimized, restricted evidence remains encrypted and role-bound, and any selective-disclosure mechanism must state what it proves and what remains authoritative off-chain. The new canonical specifications are:
 
 - `docs/capacity-reservation-and-deliverability.md`;
-- `docs/selective-disclosure-and-institutional-privacy.md`.
+- `docs/selective-disclosure-and-institutional-privacy.md`;
+- `docs/confidential-control-and-public-integrity.md`.
 
 These refinements strengthen Argent as a reserve-capacity orchestration layer beside existing bank and custody systems. They are target-profile specifications, not claims that the current Soroban contracts already implement typed obligations, callbacks, or advanced privacy proofs.
+
+## July 2026 refinement - confidential control and public integrity
+
+The target production architecture now separates the confidential institutional operating plane from the public Soroban integrity plane. Bank, custodian, title, evidence, and signing systems retain the complete facility and custody state. Soroban anchors authorized state versions and enforces sequence, replay refusal, rollback refusal, and root continuity without publishing the commercial transaction.
+
+The bar-identity control is also specified precisely. A randomly salted evidence commitment binds private evidence but cannot enforce uniqueness because a second salt creates a second commitment. The target production profile therefore uses a separate, custodian-controlled deterministic nullifier over a versioned canonical bar identity. The permitted claim is limited to duplicate active allocation within the governed Argent/custodian uniqueness domain; no global duplicate-pledge claim is made.
+
+The current contracts remain a transparent reference profile. They accept a caller-supplied 32-byte uniqueness value, reject an identical active value, store exact quantities and commercial control fields, and emit replayable events. They do not implement the custodian nullifier service, confidential state engine, uniform batch anchor, common relay, or advanced private proofs. Production confidentiality is a deployment gate and a funded extension, not a retrospective claim about the testnet implementation.
 
 
 ## July 2026 refinement - shared gold infrastructure boundary

@@ -20,7 +20,7 @@ This roadmap separates three layers:
 
 The current contracts prove the first layer through a secured-credit profile. They do not yet implement the complete third layer.
 
-The roadmap is ordered to preserve evidence, safety, and reviewability. It does not begin by renaming `credit_ledger` or adding many product types. It first institutionalizes the signing and evidence path, then generalizes the domain model, then adds obligations one family at a time.
+The roadmap is ordered to preserve evidence, safety, confidentiality, and reviewability. It does not begin by renaming `credit_ledger` or adding many product types. It first defines the production public/private boundary and institutionalizes the signing and evidence path, then generalizes the domain model, then adds obligations one family at a time.
 
 ---
 
@@ -60,8 +60,8 @@ The broader protocol category is:
 ### Proven controls
 
 - instrument registration and framework admission;
-- position and lot identity;
-- lot-level uniqueness;
+- position identity and supplied lot-evidence binding;
+- rejection of an identical caller-supplied lot key;
 - custodian immobilization;
 - exclusive pledge;
 - borrowing base and available capacity;
@@ -84,6 +84,29 @@ This stage proves the reserve-control engine through a funded-credit branch. It 
 
 - current source, tests, documentation, and testnet evidence remain reproducible;
 - target obligation claims remain explicitly marked as unimplemented.
+
+### Production confidentiality gate - starts before Stage 1
+
+The transparent reference profile is not promoted into production with real data. Before institutional signing, a live custodian pilot, mainnet use, or any customer data, the build must define and test:
+
+- confidential institutional operating state;
+- versioned canonical bar identity and evidence encoding;
+- separate random evidence commitment and custodian-controlled deterministic nullifier;
+- governed nullifier domain, HSM or equivalent key boundary, rotation, recovery, and compromise handling;
+- private transition envelope and deterministic public minimization;
+- state and nullifier-set roots;
+- minimized batch-anchor contract;
+- common relay, fixed cadence, uniform event, and padding policy;
+- inspection of contract arguments, storage, events, authorization entries, return values, logs, identifiers, graph, timing, and batch-size leakage;
+- synthetic-data-only governance for the transparent reference contracts; this
+  is an operational restriction on write authority, not a contract control, and
+  the reference contracts cannot detect real data (see
+  [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md)
+  section 12.1);
+- delivery of the production profile through the separate minimized batch-anchor
+  contract rather than a retrofit of `credit_ledger` (section 12.2).
+
+This is a cross-cutting deployment gate for Stages 1 through 8, not a late-stage feature. The canonical production architecture is [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
@@ -124,7 +147,7 @@ This stage proves the reserve-control engine through a funded-credit branch. It 
 
 - at least one complete lifecycle path is executed with real governed role approvals;
 - wrong-role and unapproved actions are refused before signature or by the contract;
-- every approval is traceable to the resulting Stellar transaction and canonical event.
+- every approval is traceable privately to the resulting state transition and minimized Stellar batch anchor without exposing the approval envelope.
 
 ---
 
@@ -395,7 +418,9 @@ A holding company or treasury vehicle owns the reserve. Approved subsidiaries re
 
 ---
 
-## 12. Stage 9 - selective disclosure and privacy
+## 12. Stage 9 - advanced selective disclosure
+
+**Baseline confidentiality is already a production gate.** This stage adds richer disclosure products and optional privacy techniques after the private operating plane and minimized public anchor are working.
 
 ### Objective
 
@@ -427,7 +452,7 @@ Prove capacity sufficiency and instrument authenticity without exposing:
 
 The protocol should disclose the minimum fact required by the verifier, while preserving bank, customer, and beneficiary confidentiality. A hash is an integrity commitment, not a privacy guarantee. Event timing, exact values, and stable identifiers must be assessed for correlation leakage.
 
-The canonical specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+The canonical disclosure specification is [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md). The production public/private state boundary is [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 

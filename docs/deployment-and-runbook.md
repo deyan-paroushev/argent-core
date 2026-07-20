@@ -510,7 +510,9 @@ Do not automatically delete or free capacity because an upstream assertion disap
 
 ## 18. Privacy and evidence operations
 
-Apply the data classification and role-view rules in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md).
+Apply the data classification and role-view rules in [`selective-disclosure-and-institutional-privacy.md`](selective-disclosure-and-institutional-privacy.md) and the production public/private boundary in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
+
+The current contracts are a transparent reference profile. They must use synthetic data. A mainnet deployment of those contracts does not become confidential merely because documents are replaced by hashes.
 
 Operational requirements include:
 
@@ -522,8 +524,17 @@ Operational requirements include:
 - incident response for unauthorized access or public metadata leakage;
 - separate keys and environments for development, test, and production;
 - recovery plan for evidence-encryption keys and signing-service credentials.
+- versioned canonical bar-identity and evidence-encoding profile;
+- custodian nullifier service inside an HSM or equivalent controlled boundary;
+- nullifier-domain inventory, key continuity, rotation, migration, recovery, and compromise runbook;
+- private transition-envelope archive and deterministic public-payload derivation;
+- separate state and nullifier-set root reconciliation;
+- common relay, fixed-cadence scheduler, uniform event schema, padding, quiet-period, retry, and fee-funding procedures;
+- automated inspection of public arguments, storage, events, authorization entries, returns, errors, diagnostic logs, identifiers, accounts, timing, and batch sizes.
 
 A hash is an integrity commitment. It is not permission to publish the underlying data or a guarantee that the committed value cannot be guessed.
+
+A randomly salted evidence commitment is also not a uniqueness control. Duplicate-allocation refusal requires the separate deterministic custodian nullifier defined by the governed asset-identity profile.
 
 ## 19. Operational service levels
 
@@ -553,6 +564,14 @@ Ledger availability does not imply that the bank, custodian, document examiner, 
 - [ ] upstream assurance scope, expiry, tolerance breach, and discrepancy paths tested where an external gold source is used;
 - [ ] source outage does not release active capacity or collateral;
 - [ ] role-specific views and evidence permissions tested;
+- [ ] transparent reference contracts contain synthetic data only;
+- [ ] canonical identity implementations reproduce the published test vectors;
+- [ ] alternate evidence salts still produce the same custodian nullifier;
+- [ ] nullifier derivation excludes owner, bank, facility, obligation, and transaction fields;
+- [ ] nullifier key rotation or migration preserves every active lock;
+- [ ] private transition and public anchor roots reconcile deterministically;
+- [ ] epoch replay, rollback, skipped root, duplicate batch, relay retry, and relay compromise tested;
+- [ ] public-surface and observer-simulation review covers identities, amounts, action types, graph, timing, and volume;
 - [ ] privacy and metadata-leakage review completed;
 - [ ] manual exception and disaster-recovery procedures rehearsed;
 - [ ] monitoring, alerting, escalation, and evidence export approved.

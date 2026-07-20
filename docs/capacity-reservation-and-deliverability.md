@@ -762,7 +762,7 @@ The privacy model is specified in [`selective-disclosure-and-institutional-priva
 ### Already proven by the secured-credit reference branch
 
 - unique collateral position identity;
-- prevention of a second active pledge over the same recorded lot;
+- refusal of a second active position using the identical supplied lot key;
 - bank-approved eligibility and treatment;
 - deterministic capacity calculation;
 - refusal above available capacity;
@@ -773,6 +773,8 @@ The privacy model is specified in [`selective-disclosure-and-institutional-priva
 - default, cure, and enforcement sequencing.
 
 ### Required target extensions
+
+The production extension must add canonical custodian identity and deterministic nullifier derivation before upgrading the current identical-key property into a physical-lot duplicate-allocation claim. It must also use the confidential operating-plane and minimized batch-anchor profile defined in [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 - generic `MasterFacility`;
 - product and applicant sublimits;

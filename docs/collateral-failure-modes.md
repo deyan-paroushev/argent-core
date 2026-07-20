@@ -134,13 +134,13 @@ This is the correspondence between the loss record and the shipped Argent core, 
 
 | Failure mode | Failed invariant | Argent control | What Argent does not solve |
 |---|---|---|---|
-| F1. Duplicate financing | Uniqueness | `uniqueness_hash` (bar serials, receipt or parcel id) and refusal of a second active pledge of the same lot; the duplicate that requires opacity to survive fails deterministically against shared state | Double-financing outside the control perimeter, and weak or absent external registries |
+| F1. Duplicate financing | Uniqueness | The current contract refuses an identical active `uniqueness_hash`. The target production profile derives a deterministic nullifier from custodian-controlled canonical lot identity, so another evidence salt or facility does not create another identity inside that domain. | Differently supplied keys in the current reference; double-financing outside the governed domain; compromised authorities; weak or absent external registries |
 | F2. Phantom or recycled documents | Attested identity | `register_position` binds a five-field `LotEvidence` commitment; `confirm_and_immobilize` requires the custodian's own signature; a forged receipt has no custodian willing to sign it in | Truth of the document itself; a determined off-system forgery |
 | F3. False physical content | Independent attestation | `LotEvidence` commits `manifest_hash`, `uniqueness_hash`, `quality_cert_hash`, `quantity_cert_hash`, `location_hash` separately, so assay and weight are their own dated commitments by an independent verifier role | Physical assay, inspection, and warehouse honesty; a fake that passes the tests performed |
 | F4. Unauthorized disposal | Authority and separation | Custody transitions require the custodian's signature; release is two-step, `bank_authorize_release` then `custodian_confirm_release`; `apply_repayment` reduces exposure without releasing | Physical release outside the control system |
 | F5. Borrower-controlled verification | Verifier independence | Role separation with deny-by-default (`approve_party`, `revoke_party`): the owner cannot sign attestations, custody confirmations, or releases; the operator cannot sign for any institutional role | Independence of the parties in the real world, if a lender accepts a compromised verifier |
 | F6. Stale and unverifiable state | Freshness | `revalue_and_check` enforces maximum valuation age and confidence before capacity; the margin lifecycle (`Covered`, `Warning`, `Called`) forces reconciliation on a cadence; the auto-collateralisation layer adds shock-triggered revaluation and recorded monetization drills | Price sourcing and the bank's own credit policy |
-| F7. Fragmented lender visibility | Shared state | Bank, custodian, owner, and verifier sign into one book; the `CollateralEventV1` stream is a replayable evidence record; the read-model answers what is pledged, to whom, since when | Off-chain archive discipline, indexing, and integration quality |
+| F7. Fragmented lender visibility | Shared integrity | The transparent reference uses a replayable `CollateralEventV1` book. The production profile uses a confidential role-authorized read model anchored by uniform Soroban state-root batches, so authorized parties reconcile one state without publishing the facility graph. | Off-chain archive discipline, indexing, integration quality, and activity inference from public cadence |
 | F8. Enforcement-time discovery | Continuous evidence | `open_enforcement_readiness`, `populate_enforcement_readiness`, `record_enforcement` accumulate the pack across the exposure's life, so the enforcement state is the state signed throughout | Court enforcement, insolvency stays, and local perfection of the security interest |
 | F9. Collusion and stale authority | Role-bound revocable authority | `approve_party` / `revoke_party`, `GovernanceEventV1` governance events, and the DFNS role-wallet and approval-policy direction; state-changing functions require the correct role | Internal identity and access-management failures, or collusion outside the system |
 
@@ -177,7 +177,7 @@ Stated as a principle: Argent records signed control state over physical collate
 
 The loss record should shape the build in a specific order.
 
-**Treat uniqueness as a primitive, not a convenience.** The `uniqueness_hash` is the direct answer to Qingdao-style duplicate financing. Every future pool, substitution, auto-collateralisation, and read-model feature must preserve lot-level uniqueness as a first-class invariant, never relax it for throughput.
+**Treat uniqueness as a primitive, not a convenience.** An arbitrary or randomly salted `uniqueness_hash` is not the direct answer to Qingdao-style duplicate financing. The production control must use versioned canonical identity, custodian-controlled deterministic nullifiers, governed domain scope, and key continuity. Every future pool, substitution, auto-collateralisation, and read-model feature must preserve that invariant and state where its visibility ends.
 
 **Keep evidence categories separate.** The five-field `LotEvidence` separation must survive into the read-model, so a bank sees manifest, identity, quality, quantity, and location freshness independently rather than as one opaque hash.
 
@@ -195,7 +195,7 @@ The loss record should shape the build in a specific order.
 
 Following the repository's test-surface convention, these families trace directly to the cases and should exist or be added as the product moves beyond the current core.
 
-**Duplicate financing.** A second active position with the same `uniqueness_hash` is refused; a released lot is reusable only after both bank release and custodian release complete; a substituted lot cannot appear active in both the old and new position; a lot cannot secure two open lines absent an explicit future pari passu pool model.
+**Duplicate financing.** Current tests prove that a second active position with the identical supplied `uniqueness_hash` is refused. Target tests must prove that alternate evidence salts and facility contexts still derive the same custodian nullifier; canonicalization is consistent; key rotation preserves active locks; a released lot is reusable only after bank and custodian release complete; and domain-scope limitations are explicit.
 
 **Evidence completeness.** Missing manifest, uniqueness, quality, quantity, or location commitments are rejected; positions cannot be registered against non-admitted instruments; custodian confirmation must come from the position's own custodian; stale attestation blocks registration or capacity use.
 

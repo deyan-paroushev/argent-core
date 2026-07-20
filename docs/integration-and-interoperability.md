@@ -41,7 +41,8 @@ Argent must name the authoritative system for every material fact.
 | Valuation and eligibility | bank-approved price and collateral-policy sources | enforce freshness, treatment, haircut, sublimit, and refusal rules |
 | Payment and reimbursement | bank core, payment rail, or selected on-chain settlement asset | bind settlement reference to exposure state and reconcile final outcome |
 | Institutional signing | DFNS or equivalent governed signer | require the correct Soroban role authorization and preserve approval evidence |
-| Shared protocol state | Soroban contracts and canonical events | provide deterministic state transitions, refusals, replay, and evidence references |
+| Complete facility control state | confidential Argent read model beside authoritative systems | provide role-authorized transitions, duplicate-allocation checks, facility projection, and evidence references |
+| Public integrity state | minimized Soroban batch anchor | provide authorized root continuity, sequence, replay refusal, rollback refusal, and later disclosure verification |
 
 When authorities disagree, Argent must expose the disagreement and block unsafe progression. It must not silently choose whichever source is most convenient.
 
@@ -271,12 +272,15 @@ Responsibilities:
 
 Responsibilities:
 
-- canonical event ingestion;
+- transparent-profile canonical event ingestion for synthetic verification;
+- production uniform batch-anchor ingestion;
 - ledger cursor and gap detection;
-- state replay;
-- transaction, event, and evidence correlation;
+- reference state replay or production root-history replay;
+- private approval, transition, public anchor, and evidence correlation without publishing the private envelope;
 - divergence alerts;
 - durable archive outside recent-ledger query windows.
+
+The production adapter must not reconstruct or expose the customer facility graph from public identifiers. Exact participants, actions, amounts, evidence, nullifiers, and product references remain in the authorized private projection. See [`confidential-control-and-public-integrity.md`](confidential-control-and-public-integrity.md).
 
 ---
 
