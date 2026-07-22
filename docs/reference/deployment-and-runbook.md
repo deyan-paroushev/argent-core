@@ -301,7 +301,7 @@ Capture for every step:
 - emitted `CollateralEventV1` or `GovernanceEventV1`;
 - relevant state getter output after the transaction.
 
-Update `docs/evidence-pack-index.md` after the run.
+Update `evidence-pack-index.md` after the run.
 
 ---
 
@@ -382,8 +382,8 @@ Do not launch to mainnet until all gates are satisfied:
 
 After deployment, update:
 
-- `docs/evidence-pack-index.md`
-- `docs/REVIEWER_QUICKSTART.md`
+- `evidence-pack-index.md`
+- `REVIEWER_QUICKSTART.md`
 - live demo environment variables;
 - certificate generator contract IDs;
 - application/deck transaction examples;

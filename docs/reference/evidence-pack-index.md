@@ -33,7 +33,7 @@ This document exists so a reviewer can verify the prototype without relying on a
 | Live demonstrator | https://argent-production-4a3f.up.railway.app/demo |
 | StellarExpert (credit_ledger) | https://stellar.expert/explorer/testnet/contract/CA5PIUK6ZQZD5CRLKHWUWWFWK6LZATVWUVWR4B6HR3CNAFENZK6JE4GZ |
 | StellarExpert (settlement_vault) | https://stellar.expert/explorer/testnet/contract/CB45EGGKMQPINDHAFQRDSBAT4MSFNVSTQODBAGMGUPQH6CHIHCI4WZI5 |
-| Test summary | `docs/argent-core-v5-summary.pdf` (in this repository) |
+| Test summary | `argent-core-v5-summary.pdf` (in this repository) |
 
 ---
 
@@ -153,7 +153,7 @@ settlement_vault:  17 passed
 Total:            224 passed, 0 failed
 ```
 
-The full run is also captured in `docs/argent-core-v5-summary.pdf`. Key tests to surface:
+The full run is also captured in `argent-core-v5-summary.pdf`. Key tests to surface:
 
 | Test | Why it matters |
 |---|---|

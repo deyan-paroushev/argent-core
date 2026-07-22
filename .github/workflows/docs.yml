@@ -10,6 +10,12 @@ on:
   push:
     branches: [main]
     paths:
+      - 'README.md'
+      - 'PRODUCT.md'
+      - 'IMPLEMENTATION_STATUS.md'
+      - 'PILOT_PROFILE.md'
+      - 'SECURITY_AND_PRIVACY.md'
+      - 'LEGAL_PILOT_CHECKLIST.md'
       - 'docs/**'
       - 'contracts/**'
       - 'scripts/check_docs.py'
@@ -17,6 +23,12 @@ on:
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
+      - 'README.md'
+      - 'PRODUCT.md'
+      - 'IMPLEMENTATION_STATUS.md'
+      - 'PILOT_PROFILE.md'
+      - 'SECURITY_AND_PRIVACY.md'
+      - 'LEGAL_PILOT_CHECKLIST.md'
       - 'docs/**'
       - 'contracts/**'
       - 'scripts/check_docs.py'
@@ -38,8 +50,8 @@ jobs:
       - name: Check documentation against contract source
         run: python3 scripts/check_docs.py --verbose
 
-      # The check covers EVERY document in docs/, not a subset. If the doc set
-      # ever gets ahead of the code, record the failures in
+      # The check covers the canonical root documents and every Markdown file
+      # under docs/. If the doc set ever gets ahead of the code, record failures in
       # scripts/docs_baseline.txt to unblock, then burn them down.
 
       - name: Explain a failure

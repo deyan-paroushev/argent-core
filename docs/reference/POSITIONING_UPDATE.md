@@ -24,9 +24,9 @@ The product direction was refined again without changing the implemented referen
 
 The repository also makes institutional privacy a first-class control surface. Shared protocol state is minimized, restricted evidence remains encrypted and role-bound, and any selective-disclosure mechanism must state what it proves and what remains authoritative off-chain. The new canonical specifications are:
 
-- `docs/capacity-reservation-and-deliverability.md`;
-- `docs/selective-disclosure-and-institutional-privacy.md`;
-- `docs/confidential-control-and-public-integrity.md`.
+- `capacity-reservation-and-deliverability.md`;
+- `selective-disclosure-and-institutional-privacy.md`;
+- `confidential-control-and-public-integrity.md`.
 
 These refinements strengthen Argent as a reserve-capacity orchestration layer beside existing bank and custody systems. They are target-profile specifications, not claims that the current Soroban contracts already implement typed obligations, callbacks, or advanced privacy proofs.
 
@@ -50,7 +50,7 @@ Independent review of the World Gold Council's Gold247 programme, Wholesale Digi
 
 Argent occupies the final layer. It should consume authoritative reserve assertions from upstream gold infrastructure while remaining authoritative for facility capacity and obligation state. It must not create a duplicate gold token, ownership record, or shadow bar registry.
 
-The repository now adds `docs/shared-gold-infrastructure-and-argent.md` and aligns architecture, reserve profiles, interoperability, privacy, eligibility, capacity, market, custodian, bank-adapter, and roadmap documents. The first profile remains allocated, individually identified bullion. Pooled and digital-gold interests are later candidate profiles requiring separate bank, legal, custody, operator, insolvency, and enforcement analysis.
+The repository now adds `shared-gold-infrastructure-and-argent.md` and aligns architecture, reserve profiles, interoperability, privacy, eligibility, capacity, market, custodian, bank-adapter, and roadmap documents. The first profile remains allocated, individually identified bullion. Pooled and digital-gold interests are later candidate profiles requiring separate bank, legal, custody, operator, insolvency, and enforcement analysis.
 
 No World Gold Council, LBMA, Gold Bar Integrity, Pooled Gold Interests, Wholesale Digital Gold, Standard Gold Unit, or Gold as a Service affiliation or integration is claimed. No current contract or mainnet-delivery commitment has changed.
 

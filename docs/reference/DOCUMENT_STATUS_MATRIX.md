@@ -1,5 +1,7 @@
 # Document status matrix
 
+> **Historical scope map.** This matrix describes the earlier documentation set. The current governing hierarchy is the five canonical root documents listed in [`reference/README.md`](README.md).
+
 This matrix prevents a reader from confusing three different things:
 
 1. **what the current Soroban contracts implement;**

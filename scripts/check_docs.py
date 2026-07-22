@@ -36,6 +36,14 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 DOCS = REPO / "docs"
 CONTRACTS = REPO / "contracts"
+CANONICAL_DOCS = (
+    REPO / "README.md",
+    REPO / "PRODUCT.md",
+    REPO / "IMPLEMENTATION_STATUS.md",
+    REPO / "PILOT_PROFILE.md",
+    REPO / "SECURITY_AND_PRIVACY.md",
+    REPO / "LEGAL_PILOT_CHECKLIST.md",
+)
 
 FAILURES: list[str] = []
 CHECKS_RUN = 0
@@ -98,7 +106,9 @@ def load_docs() -> dict[pathlib.Path, str]:
     if not DOCS.is_dir():
         fail("docs directory", f"{DOCS} does not exist")
         return {}
-    return {p: p.read_text(errors="replace") for p in sorted(DOCS.glob("*.md"))}
+    paths = list(DOCS.rglob("*.md"))
+    paths.extend(path for path in CANONICAL_DOCS if path.exists())
+    return {p: p.read_text(errors="replace") for p in sorted(set(paths))}
 
 
 # ---------------------------------------------------------------------------
@@ -291,15 +301,33 @@ def check_placeholders(docs: dict, verbose: bool) -> None:
 # ---------------------------------------------------------------------------
 
 def check_links(docs: dict, verbose: bool) -> None:
-    present = {p.name for p in docs}
     for path, text in docs.items():
+        refs: set[str] = set()
 
-        # markdown links and bare backticked filenames
-        refs = set(re.findall(r"\]\(\.?/?([\w\-.]+\.md)\)", text))
-        refs |= set(re.findall(r"`(?:docs/)?([\w\-]+\.md)`", text))
+        # Markdown targets, optionally followed by a heading fragment.
+        for target in re.findall(r"\]\(([^)]+)\)", text):
+            target = target.strip().strip("<>").split(maxsplit=1)[0]
+            if target.split("#", 1)[0].endswith((".md", ".pdf")):
+                refs.add(target)
+
+        # Bare backticked document paths used in architecture prose.
+        refs |= set(
+            re.findall(
+                r"`((?:(?:\.\.?/|docs/)[\w./-]+|[\w-]+)\.(?:md|pdf))(?:#[\w-]+)?`(?!\])",
+                text,
+            )
+        )
+
         for ref in refs:
-            if ref not in present and (REPO / ref).exists() is False and (DOCS / ref).exists() is False:
-                fail("broken doc reference", f"{path.name} references '{ref}', which does not exist in docs/")
+            if re.match(r"^[a-z][a-z0-9+.-]*://", ref, re.I):
+                continue
+            clean = ref.split("#", 1)[0]
+            target = (REPO / clean) if clean.startswith("docs/") else (path.parent / clean)
+            if not target.resolve().exists():
+                fail(
+                    "broken doc reference",
+                    f"{path.relative_to(REPO)} references '{ref}', which does not resolve from that document.",
+                )
     ok(verbose, "all inter-document references resolve")
 
 

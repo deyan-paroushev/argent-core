@@ -1,5 +1,7 @@
 # Argent: Product Roadmap
 
+> **Historical design research.** This detailed roadmap is retained for provenance and is not the current public delivery plan. The governing roadmap is the three-gate sequence in [`IMPLEMENTATION_STATUS.md`](../../IMPLEMENTATION_STATUS.md).
+
 **From tested secured-credit reference branch to reserve-backed obligation infrastructure.**
 
 **Status:** product sequencing document; only Stage 0 is fully implemented in this repository  

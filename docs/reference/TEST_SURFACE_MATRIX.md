@@ -32,7 +32,7 @@ row maps to tests in this repository, runnable with `cargo test --workspace`.
 | settlement_vault | 17 |
 | Total | 224 |
 
-All passing on soroban-sdk 23.5.3. See `docs/REVIEWER_QUICKSTART.md` to run them.
+All passing on soroban-sdk 23.5.3. See `REVIEWER_QUICKSTART.md` to run them.
 
 ## Production confidentiality test surface - target, not in the 224-test count
 
